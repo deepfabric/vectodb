@@ -96,7 +96,7 @@ elapsed()
 int main(int argc, char** argv)
 {
     //Sets the number of threads in subsequent parallel regions.
-    omp_set_num_threads(4);
+    omp_set_num_threads(1);
 
     const string usage("vectodb_search index database query groundtruth");
     if (argc != 5) {
