@@ -118,7 +118,7 @@ int main(int argc, char** argv)
         "OPQ16_64,IMI2x8,PQ8+16"
     };
     const char* selected_paramss[9] = {
-        "nprobe=4",
+        "nprobe=256",
         "",
         "ht=118",
         "",

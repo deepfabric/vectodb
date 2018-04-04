@@ -173,7 +173,7 @@ int main(int argc, char** argv)
         printf("R@10 = %.4f\n", n_10 / float(nq));
         printf("R@100 = %.4f\n", n_100 / float(nq));
 
-        if (dynamic_cast<faiss::IndexFlat*>(index) == nullptr && dynamic_cast<faiss::IndexIVFFlat*>(index) == nullptr) {
+        if (dynamic_cast<faiss::IndexFlat*>(index) == nullptr) {
             printf("[%.3f s] refining result\n", elapsed() - t0);
             n_1 = 0;
             n_10 = 0;
