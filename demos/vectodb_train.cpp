@@ -113,7 +113,7 @@ int main(int argc, char** argv)
         "PCA80,Flat",
         "IVF4096,PQ8+16",
         "IVF4096,PQ32",
-        "IMI2x8,PQ8+16",
+        "IMI2x8,PQ32",
         "IMI2x8,PQ8+16",
         "OPQ16_64,IMI2x8,PQ8+16"
     };
