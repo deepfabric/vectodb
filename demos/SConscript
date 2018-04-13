@@ -4,24 +4,8 @@ import glob
 
 Import("env")
 
-# if faiss is not installed to the system path, it need be provided as "Command-Line variable=value Build Variables", or an environment variable.
-key = 'FAISS'
-faiss_dir = ARGUMENTS.get(key, '')
-if faiss_dir == '':
-	if key in env['ENV']:
-		faiss_dir = env['ENV'][key]
-
-cpp_path = []
-libs_path = []
-
-if faiss_dir != '':
-	cpp_path.append(faiss_dir)
-	libs_path.append(faiss_dir)
-
-env.MergeFlags(env.ParseFlags('-fPIC -m64 -Wall -g -O3 -mavx -msse4 -mpopcnt -fopenmp -Wno-sign-compare -fopenmp -std=c++11'))
-
 # Every .cpp is a standalone program.
 cfiles = glob.glob("*.cpp")
 for filename in cfiles:
 	exename = os.path.splitext(filename)[0] 
-	env.Program(exename, filename, CPPPATH=cpp_path, LIBS=['faiss', 'openblas'], LIBPATH=libs_path)
+	env.Program(exename, filename, LIBS=['faiss', 'openblas'], )
