@@ -98,7 +98,7 @@ int main(int argc, char** argv)
     //Sets the number of threads in subsequent parallel regions.
     omp_set_num_threads(1);
 
-    const string usage("vectodb_search index database query groundtruth");
+    const string usage("faiss_search index database query groundtruth");
     if (argc != 5) {
         cerr << usage << endl;
         exit(-1);
