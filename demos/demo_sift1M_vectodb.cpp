@@ -104,7 +104,35 @@ int main()
     long* I = new long[nq];
     vdb.Search(nq, xq, D, I);
 
+    size_t k; // nb of results per query in the GT
+    long* gt; // nq * k matrix of ground-truth nearest-neighbors
+    {
+        printf("[%.3f s] Loading ground truth for %ld queries\n",
+            elapsed() - t0, nq);
+
+        // load ground-truth and convert int to long
+        size_t nq2;
+        int* gt_int = ivecs_read("sift1M/sift_groundtruth.ivecs", &k, &nq2);
+        assert(nq2 == nq || !"incorrect nb of ground truth entries");
+
+        gt = new long[k * nq];
+        for (long i = 0; i < (long)(k * nq); i++) {
+            gt[i] = gt_int[i];
+        }
+        delete[] gt_int;
+    }
+
     printf("[%.3f s] Compute recalls\n", elapsed() - t0);
+    // evaluate result by hand.
+    int n_1 = 0;
+    for (long i = 0; i < (long)nq; i++) {
+        long gt_nn = gt[i * k];
+        if (I[i] == gt_nn) {
+            n_1++;
+        }
+    }
+    printf("R@1 = %.4f\n", n_1 / float(nq));
+
     delete[] D;
     delete[] I;
 }
