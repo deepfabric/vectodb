@@ -1,4 +1,12 @@
 import os
+import os.path
+import inspect
+
+selfPath = os.path.abspath(inspect.getfile(inspect.currentframe()))
+mainDir, _ = os.path.split(selfPath)
+
+cpp_path = [mainDir]
+libs_path = [mainDir]
 
 # if faiss is not installed to the system path, it need be provided as "Command-Line variable=value Build Variables", or an environment variable.
 key = 'FAISS'
@@ -6,9 +14,6 @@ faiss_dir = ARGUMENTS.get(key, '')
 if faiss_dir == '':
 	if key in os.environ:
 		faiss_dir = os.environ[key]
-
-cpp_path = []
-libs_path = []
 
 if faiss_dir != '':
 	cpp_path.append(faiss_dir)
@@ -20,4 +25,4 @@ Export("env")
 
 SConscript(["demos/SConscript"])
 
-env.SharedLibrary('vectodb', ['vectodb.cpp'], LIBS=['libboost_filesystem', 'pthread'])
+env.StaticLibrary('vectodb', ['vectodb.cpp'], LIBS=['boost_filesystem', 'boost_system'])

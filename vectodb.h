@@ -20,7 +20,7 @@ public:
      * @param query_params  input faiss selected params of auto-tuning
      * @param metric_type   input faiss metric, 0 - METRIC_INNER_PRODUCT, 1 - METRIC_INNER_PRODUCT
      */
-    VectoDB(const char* work_dir, long dim, const char* index_key = "IVF4096,PQ32", const char* query_params = "nprobe=4096,ht=256,max_codes=inf", int metric_type = 0);
+    VectoDB(const char* work_dir, long dim, int metric_type = 0, const char* index_key = "IVF4096,PQ32", const char* query_params = "nprobe=4096,ht=256,max_codes=inf");
 
     /** 
      * Deconstruct a VectoDB.
@@ -94,12 +94,13 @@ private:
     std::string getBaseFp() const;
     std::string getIndexFp() const;
     long getIndexSize() const;
+    void buildFlatIndex(faiss::Index*& index, long nb, const float* xb);
 
 private:
     std::string work_dir;
     long dim;
+    int metric_type;
     const char* index_key;
     const char* query_params;
-    int metric_type;
     std::unique_ptr<DbState> state;
 };

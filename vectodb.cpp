@@ -39,12 +39,12 @@ struct DbState {
     faiss::Index* index;
 };
 
-VectoDB::VectoDB(const char* work_dir_in, long dim_in, const char* index_key_in, const char* query_params_in, int metric_type_in)
+VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const char* index_key_in, const char* query_params_in)
     : work_dir(work_dir_in)
     , dim(dim_in)
+    , metric_type(metric_type_in)
     , index_key(index_key_in)
     , query_params(query_params_in)
-    , metric_type(metric_type_in)
 {
     //Sets the number of threads in subsequent parallel regions.
     omp_set_num_threads(1);
@@ -87,6 +87,7 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, const char* index_key_in,
         //Loading index
         st->index = faiss::read_index(fp_index.c_str());
     }
+    buildFlatIndex(st->index, st->uids.size(), &st->base[0]);
     state.reset(st.release());
 }
 
@@ -100,8 +101,10 @@ VectoDB::~VectoDB()
 
 void VectoDB::ActivateIndex(faiss::Index* index)
 {
-    // Output index
-    faiss::write_index(index, getIndexFp().c_str());
+    if (strcmp(index_key, "Flat")) {
+        // Output index
+        faiss::write_index(index, getIndexFp().c_str());
+    }
     delete state->index;
     state->index = index;
 }
@@ -123,19 +126,23 @@ void VectoDB::AddWithIds(long n, const float* xb, const long* xids)
     state->uids.resize(nb + n);
     memcpy(&state->base[nb * dim], xb, n * dim * sizeof(float));
     memcpy(&state->uids[nb], xb, n * sizeof(long));
+    buildFlatIndex(state->index, nb, xb);
+}
 
+void VectoDB::buildFlatIndex(faiss::Index*& index, long nb, const float* xb)
+{
     if (0 == strcmp(index_key, "Flat")) {
         // Build index for Flat directly. Don't need TryBuildIndex, BuildIndex, ActivateIndex.
-        if (state->index) {
+        if (index) {
             if (dynamic_cast<faiss::IndexFlat*>(state->index) == nullptr) {
-                delete state->index;
-                state->index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
+                delete index;
+                index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
             }
         } else {
-            state->index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
+            index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
         }
         // Indexing database
-        state->index->add(nb, xb);
+        index->add(nb, xb);
     }
 }
 
@@ -202,11 +209,11 @@ void VectoDB::Search(long nq, const float* xq, float* distances, long* xids) con
                 faiss::Index* index2 = faiss::index_factory(dim, "Flat");
                 for (int j = 0; j < k; j++)
                     memcpy(xb2 + j * dim, &state->base[I[i * k + j] * dim], sizeof(float) * dim);
-                index2->add_with_ids(k, xb2, &I[i * k]);
+                index2->add(k, xb2);
                 index2->search(1, xq + i * dim, k, D2, I2);
                 delete index2;
                 distances[i] = D2[0];
-                xids[i] = I2[0];
+                xids[i] = I[i * k + I2[0]];
             }
             delete[] xb2;
             delete[] D2;

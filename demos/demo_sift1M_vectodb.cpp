@@ -1,30 +1,14 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD+Patents license found in the
- * LICENSE file in the root directory of this source tree.
- */
+#include "vectodb.h"
+#include <iostream>
+#include <memory>
 
-// Copyright 2004-present Facebook. All Rights Reserved
-
-#include <cassert>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-
+#include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <sys/time.h>
-
-#include <iostream>
-#include <string>
-
-#include "AutoTune.h"
-#include "index_io.h"
+#include <cassert>
 
 using namespace std;
 
@@ -35,7 +19,7 @@ using namespace std;
  *
  * and unzip it to the sudirectory sift1M.
  * 
- * This demo checks if train(or query) vectors are inside the database.
+ * This demo trains an index for the given database.
  **/
 
 /*****************************************************
@@ -90,40 +74,37 @@ elapsed()
 }
 
 // train phase, input: index_key database train_set, output: index
-int main(int argc, char** argv)
+int main()
 {
-    const string usage("vectodb_validate database [train_set] [query]");
-    if (argc < 3) {
-        cerr << usage << endl;
-        exit(-1);
-    }
-    char* database = argv[1];
-    size_t nb, d;
-    float* xb = fvecs_read(database, &d, &nb);
-
     double t0 = elapsed();
 
-    for (int c = 2; c < argc; c++) {
-        size_t nq, d2;
-        float* xq = fvecs_read(argv[c], &d2, &nq);
-        assert(d == d2 || !"dataset does not have same dimension as train set");
-
-        size_t found = 0;
-#pragma omp parallel for
-        for (size_t i = 0; i < nq; i++) {
-            for (size_t j = 0; j < nb; j++) {
-                if (0 == memcmp(xq + i * d, xb + j * d, d * sizeof(float))) {
-                    found++;
-                    break;
-                }
-            }
-        }
-        if (found != nq) {
-            printf("[%.3f s] %s nq %ld, found %ld\n", elapsed() - t0, argv[c], nq, found);
-        }
-        delete[] xq;
+    printf("[%.3f s] Loading database\n", elapsed() - t0);
+    //auto vdb{ std::make_unique<VectoDB>("/tmp", 128, 1) };
+    VectoDB vdb("/tmp", 128, 1);
+    size_t nb, d;
+    float* xb = fvecs_read("sift1M/sift_learn.fvecs", &d, &nb);
+    long* xids = new long[nb];
+    for (long i = 0; i < (long)nb; i++) {
+        xids[i] = i;
     }
+    vdb.AddWithIds(nb, xb, xids);
     delete[] xb;
-    printf("[%.3f s] done\n", elapsed() - t0);
-    return 0;
+    delete[] xids;
+
+    printf("[%.3f s] Building index\n", elapsed() - t0);
+    faiss::Index* index;
+    vdb.BuildIndex(index);
+    vdb.ActivateIndex(index);
+
+    printf("[%.3f s] Searching index\n", elapsed() - t0);
+    size_t nq;
+    size_t d2;
+    float* xq = fvecs_read("sift1M/sift_query.fvecs", &d2, &nq);
+    float* D = new float[nq];
+    long* I = new long[nq];
+    vdb.Search(nq, xq, D, I);
+
+    printf("[%.3f s] Compute recalls\n", elapsed() - t0);
+    delete[] D;
+    delete[] I;
 }
