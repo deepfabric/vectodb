@@ -14,6 +14,7 @@
 #include <sstream>
 #include <stdio.h>
 #include <string>
+#include <sys/time.h>
 #include <unordered_map>
 #include <vector>
 
@@ -111,24 +112,24 @@ void VectoDB::ActivateIndex(faiss::Index* index)
     state->index = index;
 }
 
-void VectoDB::AddWithIds(long n, const float* xb, const long* xids)
+void VectoDB::AddWithIds(long nb, const float* xb, const long* xids)
 {
     assert(state->base.size() == dim * state->uids.size());
     long len_line = sizeof(long) + dim * sizeof(float);
-    long len_buf = n * len_line;
+    long len_buf = nb * len_line;
     std::vector<char> buf(len_buf);
-    for (long i = 0; i < n; i++) {
+    for (long i = 0; i < nb; i++) {
         memcpy(&buf[i * len_line], &xids[i], sizeof(long));
         memcpy(&buf[i * len_line + sizeof(long)], &xb[i * dim], dim * sizeof(float));
     }
     state->fs_base.write(&buf[0], len_buf);
 
-    long nb = state->uids.size();
-    state->base.resize((nb + n) * dim);
-    state->uids.resize(nb + n);
-    memcpy(&state->base[nb * dim], xb, n * dim * sizeof(float));
-    memcpy(&state->uids[nb], xb, n * sizeof(long));
-    buildFlatIndex(state->index, nb, xb);
+    long nb2 = state->uids.size();
+    state->base.resize((nb + nb2) * dim);
+    state->uids.resize(nb + nb2);
+    memcpy(&state->base[nb2 * dim], xb, nb * dim * sizeof(float));
+    memcpy(&state->uids[nb2], xb, nb * sizeof(long));
+    buildFlatIndex(state->index, nb + nb2, xb);
 }
 
 void VectoDB::buildFlatIndex(faiss::Index*& index, long nb, const float* xb)
@@ -149,7 +150,7 @@ void VectoDB::buildFlatIndex(faiss::Index*& index, long nb, const float* xb)
 }
 
 /*
-void VectoDB::UpdateWithIds(long n, const float* xb, const long* xids)
+void VectoDB::UpdateWithIds(long nb, const float* xb, const long* xids)
 {
     throw "TODO";
 }
@@ -166,18 +167,28 @@ void VectoDB::TryBuildIndex(long exhaust_threshold, faiss::Index*& index) const
     BuildIndex(index);
 }
 
+static double elapsed()
+{
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    return tv.tv_sec + tv.tv_usec * 1e-6;
+}
+
 void VectoDB::BuildIndex(faiss::Index*& index_out) const
 {
     assert(state->base.size() == dim * state->uids.size());
+    double t0 = elapsed();
 
     // Prepareing index
+    printf("[%.3f s] Preparing index. dim=%ld, index_key=\"%s\", metric=%d\n", elapsed() - t0, dim, index_key, metric_type);
     faiss::Index* index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
 
     long nb = state->uids.size();
     if (strcmp(index_key, "Flat")) {
         // Generating train set
-        long nt = std::min(nb, std::max(nb / 10, 100000L));
+        long nt = std::min(nb, std::max(nb / 10, 160000L));
         // Training
+        printf("[%.3f s] Training on %ld vectors\n", elapsed() - t0, nt);
         index->train(nt, &state->base[0]);
 
         // selected_params is cached auto-tuning result.
@@ -187,6 +198,7 @@ void VectoDB::BuildIndex(faiss::Index*& index_out) const
     }
 
     // Indexing database
+    printf("[%.3f s] Indexing %ld vectors\n", elapsed() - t0, nb);
     index->add(nb, &state->base[0]);
     index_out = index;
 }

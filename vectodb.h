@@ -48,7 +48,7 @@ public:
      * @param xb     input matrix, size n * d
      * @param xids if non-null, ids to store for the vectors (size n)
      */
-    void AddWithIds(long n, const float* xb, const long* xids);
+    void AddWithIds(long nb, const float* xb, const long* xids);
 
     /** 
      * Update given vectors.
@@ -59,7 +59,7 @@ public:
      * @param xb        input matrix, size n * d
      * @param xids      if non-null, ids to store for the vectors (size n)
      */
-    void UpdateWithIds(long n, const float* xb, const long* xids);
+    void UpdateWithIds(long nb, const float* xb, const long* xids);
 
     /**
      * Reader methods. There could be multiple readers.

@@ -166,12 +166,12 @@ int main(int argc, char** argv)
     size_t nb, d2;
     float* xb = fvecs_read(database, &d2, &nb);
 
-    printf("[%.3f s] Preparing index \"%s\" d=%ld\n", elapsed() - t0, index_key, d2);
+    printf("[%.3f s] Preparing index. d=%ld, index_key=\"%s\", metric=%d\n", elapsed() - t0, d2, index_key, metric);
     faiss::Index* index = faiss::index_factory(d2, index_key, metric);
 
     if (strcmp(index_key, "Flat")) {
-        printf("[%.3f s] Generating train set\n", elapsed() - t0);
-        /*size_t nt = nb / train_ratio;
+        /*printf("[%.3f s] Generating train set\n", elapsed() - t0);
+        size_t nt = nb / train_ratio;
         float* xt = new float[nt * d2];
         for (size_t i = 0; i < nt; i += 1) {
             memcpy(xt + i * d2, xb + i * train_ratio * d2, sizeof(float) * d2);
@@ -181,7 +181,8 @@ int main(int argc, char** argv)
         index->train(nt, xt);
         delete[] xt;
         */
-        long nt = std::min(long(nb), std::max(long(nb / 10), 100000L));
+        long nt = std::min(long(nb), std::max(long(nb / 10), 160000L));
+        printf("[%.3f s] Training on %ld vectors\n", elapsed() - t0, nt);
         index->train(nt, xb);
 
         // selected_params is cached auto-tuning result.
@@ -190,7 +191,7 @@ int main(int argc, char** argv)
         params.set_index_parameters(index, selected_params);
     }
 
-    printf("[%.3f s] Indexing database, size %ld*%ld\n", elapsed() - t0, nb, d2);
+    printf("[%.3f s] Indexing %ld vectors\n", elapsed() - t0, nb);
     index->add(nb, xb);
 
     printf("[%.3f s] Writing %s\n", elapsed() - t0, fname_index);
