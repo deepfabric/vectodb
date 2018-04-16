@@ -36,10 +36,10 @@ public:
      * Activate index built with TryBuildIndex or BuildIndex.
      * If upper layer decide not to activate an index, it shall delete the index to reclaim resource.
      * If index_key is Flat, then TryBuildIndex, BuildIndex, ActivateIndex can be skipped.
-     * @param index                 input index
-     * @param index_size            input the number of vectors contained in index
+     * @param index     input index
+     * @param ntrain    input the number of training points of the index
      */
-    void ActivateIndex(faiss::Index* index);
+    void ActivateIndex(faiss::Index* index, long ntrain);
 
     /** 
      * Add n vectors of dimension d to the index.
@@ -70,14 +70,14 @@ public:
      *
      * @param exhaust_threshold     input exhaust threshold
      */
-    void TryBuildIndex(long exhaust_threshold, faiss::Index*& index) const;
+    void TryBuildIndex(long exhaust_threshold, faiss::Index*& index, long& ntrain) const;
 
     /** 
      * Build index.
      * @param index                 output index
      * @param index_size            output the number of vectors contained in index
      */
-    void BuildIndex(faiss::Index*& index) const;
+    void BuildIndex(faiss::Index*& index, long& ntrain) const;
 
     /** 
      * Query n vectors of dimension d to the index.

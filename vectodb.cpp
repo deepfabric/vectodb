@@ -21,11 +21,12 @@
 using namespace std;
 namespace fs = boost::filesystem;
 
-const char* index_key = "";
+const long MAX_NTRAIN = 160000L; //the number of training points which IVF4096 needs for 1M dataset
 
 struct DbState {
     DbState()
-        : index(nullptr)
+        : ntrain(0L)
+        , index(nullptr)
     {
     }
     ~DbState()
@@ -38,6 +39,7 @@ struct DbState {
     vector<float> base;
     vector<long> uids;
     unordered_map<long, long> uid2num;
+    long ntrain; // the number of training points of the index
     faiss::Index* index;
 };
 
@@ -102,13 +104,14 @@ VectoDB::~VectoDB()
  * Writer methods
  */
 
-void VectoDB::ActivateIndex(faiss::Index* index)
+void VectoDB::ActivateIndex(faiss::Index* index, long ntrain)
 {
     if (strcmp(index_key, "Flat")) {
         // Output index
         faiss::write_index(index, getIndexFp().c_str());
     }
     delete state->index;
+    state->ntrain = ntrain;
     state->index = index;
 }
 
@@ -160,11 +163,11 @@ void VectoDB::UpdateWithIds(long nb, const float* xb, const long* xids)
  * Read methods
  */
 
-void VectoDB::TryBuildIndex(long exhaust_threshold, faiss::Index*& index) const
+void VectoDB::TryBuildIndex(long exhaust_threshold, faiss::Index*& index, long& ntrain) const
 {
     if ((long)state->uids.size() - getIndexSize() <= exhaust_threshold)
         return;
-    BuildIndex(index);
+    BuildIndex(index, ntrain);
 }
 
 static double elapsed()
@@ -174,33 +177,48 @@ static double elapsed()
     return tv.tv_sec + tv.tv_usec * 1e-6;
 }
 
-void VectoDB::BuildIndex(faiss::Index*& index_out) const
+void VectoDB::BuildIndex(faiss::Index*& index_out, long& ntrain) const
 {
     assert(state->base.size() == dim * state->uids.size());
     double t0 = elapsed();
 
     // Prepareing index
-    printf("[%.3f s] Preparing index. dim=%ld, index_key=\"%s\", metric=%d\n", elapsed() - t0, dim, index_key, metric_type);
-    faiss::Index* index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
+    printf("[%.3f s] BuildIndex. dim=%ld, index_key=\"%s\", metric=%d\n", elapsed() - t0, dim, index_key, metric_type);
+    faiss::Index* index = nullptr;
 
     long nb = state->uids.size();
+    long nt = std::min(nb, std::max(nb / 10, MAX_NTRAIN));
     if (strcmp(index_key, "Flat")) {
-        // Generating train set
-        long nt = std::min(nb, std::max(nb / 10, 160000L));
-        // Training
-        printf("[%.3f s] Training on %ld vectors\n", elapsed() - t0, nt);
-        index->train(nt, &state->base[0]);
+        if (nt == state->ntrain) {
+            printf("[%.3f s] Reuse current index since ntrain %ld is unchanged\n", elapsed() - t0, nt);
+            assert(state->index != nullptr);
+            index = faiss::read_index(getIndexFp().c_str());
+            long& ntotal = state->index->ntotal;
+            printf("[%.3f s] Adding %ld vectors to index(ntotal %ld increased to %ld)\n", elapsed() - t0, nb - ntotal, ntotal, nb);
+            index->add(nb - ntotal, &state->base[ntotal * dim]);
+        } else {
+            index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
+            // Training
+            printf("[%.3f s] Training on %ld vectors\n", elapsed() - t0, nt);
+            index->train(nt, &state->base[0]);
 
-        // selected_params is cached auto-tuning result.
-        faiss::ParameterSpace params;
-        params.initialize(index);
-        params.set_index_parameters(index, query_params);
+            // selected_params is cached auto-tuning result.
+            faiss::ParameterSpace params;
+            params.initialize(index);
+            params.set_index_parameters(index, query_params);
+
+            // Indexing database
+            printf("[%.3f s] Indexing %ld vectors\n", elapsed() - t0, nb);
+            index->add(nb, &state->base[0]);
+        }
+    } else {
+        index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
+        // Indexing database
+        printf("[%.3f s] Indexing %ld vectors\n", elapsed() - t0, nb);
+        index->add(nb, &state->base[0]);
     }
-
-    // Indexing database
-    printf("[%.3f s] Indexing %ld vectors\n", elapsed() - t0, nb);
-    index->add(nb, &state->base[0]);
     index_out = index;
+    ntrain = nt;
 }
 
 void VectoDB::Search(long nq, const float* xq, float* distances, long* xids) const

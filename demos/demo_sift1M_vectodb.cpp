@@ -82,21 +82,37 @@ int main()
     const char* work_dir = "/tmp";
     VectoDB::ClearWorkDir(work_dir);
     //auto vdb{ std::make_unique<VectoDB>("/tmp", 128, 1) };
-    VectoDB vdb(work_dir, 128, 1);
+    const long sift_dim = 128L;
+    VectoDB vdb(work_dir, sift_dim, 1);
     size_t nb, d;
     float* xb = fvecs_read("sift1M/sift_base.fvecs", &d, &nb);
     long* xids = new long[nb];
     for (long i = 0; i < (long)nb; i++) {
         xids[i] = i;
     }
-    vdb.AddWithIds(nb, xb, xids);
+
+    const bool incremental = true;
+    if (incremental) {
+        const long batch_size = 200000L;
+        const long batch_num = nb / batch_size;
+        assert(nb % batch_size == 0);
+        for (long i = 0; i < batch_num; i++) {
+            vdb.AddWithIds(batch_size, xb + i * batch_size * sift_dim, xids + i * batch_size);
+            faiss::Index* index;
+            long ntrain;
+            vdb.BuildIndex(index, ntrain);
+            vdb.ActivateIndex(index, ntrain);
+        }
+    } else {
+        vdb.AddWithIds(nb, xb, xids);
+
+        faiss::Index* index;
+        long ntrain;
+        vdb.BuildIndex(index, ntrain);
+        vdb.ActivateIndex(index, ntrain);
+    }
     delete[] xb;
     delete[] xids;
-
-    printf("[%.3f s] Building index\n", elapsed() - t0);
-    faiss::Index* index;
-    vdb.BuildIndex(index);
-    vdb.ActivateIndex(index);
 
     printf("[%.3f s] Searching index\n", elapsed() - t0);
     size_t nq;
