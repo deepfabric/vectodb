@@ -8,20 +8,19 @@
 
 // Copyright 2004-present Facebook. All Rights Reserved
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
+#include <omp.h>
+#include <string>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-#include <iostream>
-#include <string>
-
-#include <omp.h>
 
 #include "AutoTune.h"
 #include "index_io.h"
@@ -172,7 +171,7 @@ int main(int argc, char** argv)
 
     if (strcmp(index_key, "Flat")) {
         printf("[%.3f s] Generating train set\n", elapsed() - t0);
-        size_t nt = nb / train_ratio;
+        /*size_t nt = nb / train_ratio;
         float* xt = new float[nt * d2];
         for (size_t i = 0; i < nt; i += 1) {
             memcpy(xt + i * d2, xb + i * train_ratio * d2, sizeof(float) * d2);
@@ -181,6 +180,9 @@ int main(int argc, char** argv)
         printf("[%.3f s] Training on %ld vectors\n", elapsed() - t0, nt);
         index->train(nt, xt);
         delete[] xt;
+        */
+        long nt = std::min(long(nb), std::max(long(nb / 10), 100000L));
+        index->train(nt, xb);
 
         // selected_params is cached auto-tuning result.
         faiss::ParameterSpace params;

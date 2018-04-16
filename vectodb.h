@@ -20,7 +20,7 @@ public:
      * @param query_params  input faiss selected params of auto-tuning
      * @param metric_type   input faiss metric, 0 - METRIC_INNER_PRODUCT, 1 - METRIC_L2
      */
-    VectoDB(const char* work_dir, long dim, int metric_type = 0, const char* index_key = "IVF4096,PQ32", const char* query_params = "nprobe=4096,ht=256,max_codes=inf");
+    VectoDB(const char* work_dir, long dim, int metric_type = 0, const char* index_key = "IVF4096,PQ32", const char* query_params = "nprobe=256,ht=256");
 
     /** 
      * Deconstruct a VectoDB.
