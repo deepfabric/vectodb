@@ -4,12 +4,14 @@
 #include "IndexFlat.h"
 #include "index_io.h"
 
-#include <algorithm>
 #include <boost/filesystem.hpp>
+#include <glog/logging.h>
+#include <omp.h>
+
+#include <algorithm>
 #include <cassert>
 #include <fstream>
 #include <iostream>
-#include <omp.h>
 #include <pthread.h>
 #include <sstream>
 #include <stdio.h>
@@ -55,8 +57,10 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
 
     static_assert(sizeof(float) == 4, "sizeof(float) must be 4");
     static_assert(sizeof(long) > 4, "sizeof(long) must be larger than 4");
-    fs::path dir;
-    dir += work_dir;
+
+    fs::path dir{ fs::absolute(work_dir_in) };
+    work_dir = dir.string().c_str();
+
     auto st{ std::make_unique<DbState>() }; //Make DbState be exception safe
     st->base.reserve(dim * 1000000);
     st->uids.reserve(1000000);
@@ -170,36 +174,28 @@ void VectoDB::TryBuildIndex(long exhaust_threshold, faiss::Index*& index, long& 
     BuildIndex(index, ntrain);
 }
 
-static double elapsed()
-{
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    return tv.tv_sec + tv.tv_usec * 1e-6;
-}
-
 void VectoDB::BuildIndex(faiss::Index*& index_out, long& ntrain) const
 {
     assert(state->base.size() == dim * state->uids.size());
-    double t0 = elapsed();
 
     // Prepareing index
-    printf("[%.3f s] BuildIndex. dim=%ld, index_key=\"%s\", metric=%d\n", elapsed() - t0, dim, index_key, metric_type);
+    LOG(INFO) << "BuildIndex " << work_dir << ". dim=" << dim << ", index_key=\"" << index_key << "\", metric=" << metric_type;
     faiss::Index* index = nullptr;
 
     long nb = state->uids.size();
     long nt = std::min(nb, std::max(nb / 10, MAX_NTRAIN));
     if (strcmp(index_key, "Flat")) {
         if (nt == state->ntrain) {
-            printf("[%.3f s] Reuse current index since ntrain %ld is unchanged\n", elapsed() - t0, nt);
+            LOG(INFO) << "Reuse current index since ntrain " << nt << " is unchanged";
             assert(state->index != nullptr);
             index = faiss::read_index(getIndexFp().c_str());
             long& ntotal = state->index->ntotal;
-            printf("[%.3f s] Adding %ld vectors to index(ntotal %ld increased to %ld)\n", elapsed() - t0, nb - ntotal, ntotal, nb);
+            LOG(INFO) << "Adding " << nb - ntotal << " vectors to index, ntotal increased from " << ntotal << " to " << nb;
             index->add(nb - ntotal, &state->base[ntotal * dim]);
         } else {
             index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
             // Training
-            printf("[%.3f s] Training on %ld vectors\n", elapsed() - t0, nt);
+            LOG(INFO) << "Training on " << nt << " vectors";
             index->train(nt, &state->base[0]);
 
             // selected_params is cached auto-tuning result.
@@ -208,17 +204,19 @@ void VectoDB::BuildIndex(faiss::Index*& index_out, long& ntrain) const
             params.set_index_parameters(index, query_params);
 
             // Indexing database
-            printf("[%.3f s] Indexing %ld vectors\n", elapsed() - t0, nb);
+            LOG(INFO) << "Indexing " << nb << " vectors";
             index->add(nb, &state->base[0]);
         }
     } else {
         index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
         // Indexing database
-        printf("[%.3f s] Indexing %ld vectors\n", elapsed() - t0, nb);
+        LOG(INFO) << "Indexing " << nb << " vectors";
         index->add(nb, &state->base[0]);
     }
     index_out = index;
     ntrain = nt;
+    LOG(INFO) << "BuildIndex " << work_dir << " done";
+    google::FlushLogFiles(google::INFO);
 }
 
 void VectoDB::Search(long nq, const float* xq, float* distances, long* xids) const

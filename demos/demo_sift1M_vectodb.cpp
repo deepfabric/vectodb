@@ -1,7 +1,9 @@
 #include "vectodb.h"
+
+#include <glog/logging.h>
+
 #include <iostream>
 #include <memory>
-
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -65,20 +67,14 @@ int* ivecs_read(const char* fname, size_t* d_out, size_t* n_out)
     return (int*)fvecs_read(fname, d_out, n_out);
 }
 
-double
-elapsed()
-{
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    return tv.tv_sec + tv.tv_usec * 1e-6;
-}
-
 // train phase, input: index_key database train_set, output: index
-int main()
+int main(int argc, char* argv[])
 {
-    double t0 = elapsed();
+    FLAGS_stderrthreshold = 0;
+    FLAGS_log_dir = ".";
+    google::InitGoogleLogging(argv[0]);
 
-    printf("[%.3f s] Loading database\n", elapsed() - t0);
+    LOG(INFO) << "Loading database";
     const char* work_dir = "/tmp";
     VectoDB::ClearWorkDir(work_dir);
     //auto vdb{ std::make_unique<VectoDB>("/tmp", 128, 1) };
@@ -114,7 +110,7 @@ int main()
     delete[] xb;
     delete[] xids;
 
-    printf("[%.3f s] Searching index\n", elapsed() - t0);
+    LOG(INFO) << "Searching index";
     size_t nq;
     size_t d2;
     float* xq = fvecs_read("sift1M/sift_query.fvecs", &d2, &nq);
@@ -125,8 +121,7 @@ int main()
     size_t k; // nb of results per query in the GT
     long* gt; // nq * k matrix of ground-truth nearest-neighbors
     {
-        printf("[%.3f s] Loading ground truth for %ld queries\n",
-            elapsed() - t0, nq);
+        LOG(INFO) << "Loading ground truth for " << nq << " queries";
 
         // load ground-truth and convert int to long
         size_t nq2;
@@ -140,7 +135,7 @@ int main()
         delete[] gt_int;
     }
 
-    printf("[%.3f s] Compute recalls\n", elapsed() - t0);
+    LOG(INFO) << "Compute recalls";
     // evaluate result by hand.
     int n_1 = 0;
     for (long i = 0; i < (long)nq; i++) {
@@ -149,7 +144,7 @@ int main()
             n_1++;
         }
     }
-    printf("R@1 = %.4f\n", n_1 / float(nq));
+    LOG(INFO) << "R@1 = " << n_1 / float(nq);
 
     delete[] D;
     delete[] I;
