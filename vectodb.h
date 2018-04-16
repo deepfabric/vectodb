@@ -18,7 +18,7 @@ public:
      * @param dim           input dimension of vector
      * @param index_key     input faiss index_key
      * @param query_params  input faiss selected params of auto-tuning
-     * @param metric_type   input faiss metric, 0 - METRIC_INNER_PRODUCT, 1 - METRIC_INNER_PRODUCT
+     * @param metric_type   input faiss metric, 0 - METRIC_INNER_PRODUCT, 1 - METRIC_L2
      */
     VectoDB(const char* work_dir, long dim, int metric_type = 0, const char* index_key = "IVF4096,PQ32", const char* query_params = "nprobe=4096,ht=256,max_codes=inf");
 
@@ -89,6 +89,14 @@ public:
      * @param distances     output pairwise distances, size nq
      */
     void Search(long nq, const float* xq, float* distances, long* xids) const;
+
+public:
+    /** 
+     * Remove base and index files under the given work directory.
+     *
+     * @param work_dir      input working direcotry
+     */
+    static void ClearWorkDir(const char* work_dir);
 
 private:
     std::string getBaseFp() const;

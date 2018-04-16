@@ -30,6 +30,7 @@ struct DbState {
     ~DbState()
     {
         delete index;
+        fs_base.close();
     }
 
     std::fstream fs_base;
@@ -62,26 +63,27 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
     const string fp_base = getBaseFp();
     const string fp_index = getIndexFp();
     //Loading database
-    long len_line = sizeof(long) + dim * sizeof(float);
+    //https://stackoverflow.com/questions/31483349/how-can-i-open-a-file-for-reading-writing-creating-it-if-it-does-not-exist-w
+    st->fs_base.exceptions(std::ios::failbit | std::ios::badbit);
+    st->fs_base.open(fp_base, std::fstream::out); //create file if not exist
+    st->fs_base.close();
     st->fs_base.open(fp_base, std::fstream::in | std::fstream::out | std::fstream::binary);
-    if (st->fs_base.good()) {
-        st->fs_base.exceptions(std::ios::failbit | std::ios::badbit);
-        st->fs_base.seekp(0, ios_base::end); //Set position in output sequence
-        //long len_f = st->fs_base.tellp();
-        long len_f = fs::file_size(fp_base);
-        if (len_f % len_line != 0)
-            throw "file size must be multiple of line length";
-        long num_line = len_f / len_line;
-        st->base.resize(num_line * dim * sizeof(float));
-        st->uids.resize(num_line);
-        vector<char> buf(len_line);
-        for (long i = 0; i < num_line; i++) {
-            st->fs_base.read(&buf[0], len_line);
-            long uid = *(long*)&buf[0];
-            st->uids[i] = uid;
-            st->uid2num[uid] = i;
-            memcpy(&st->base[i * dim], &buf[sizeof(long)], dim * sizeof(float));
-        }
+    st->fs_base.seekp(0, ios_base::end); //Set position in output sequence
+    long len_line = sizeof(long) + dim * sizeof(float);
+    //long len_f = st->fs_base.tellp();
+    long len_f = fs::file_size(fp_base);
+    if (len_f % len_line != 0)
+        throw "file size must be multiple of line length";
+    long num_line = len_f / len_line;
+    st->base.resize(num_line * dim * sizeof(float));
+    st->uids.resize(num_line);
+    vector<char> buf(len_line);
+    for (long i = 0; i < num_line; i++) {
+        st->fs_base.read(&buf[0], len_line);
+        long uid = *(long*)&buf[0];
+        st->uids[i] = uid;
+        st->uid2num[uid] = i;
+        memcpy(&st->base[i * dim], &buf[sizeof(long)], dim * sizeof(float));
     }
     if (fs::is_regular_file(fp_index)) {
         //Loading index
@@ -262,4 +264,23 @@ std::string VectoDB::getIndexFp() const
 long VectoDB::getIndexSize() const
 {
     return (state->index == nullptr) ? 0 : state->index->ntotal;
+}
+
+void VectoDB::ClearWorkDir(const char* work_dir)
+{
+    ostringstream oss;
+    oss << work_dir << "/base.fvecs";
+    fs::remove(oss.str());
+
+    const string suffix_index(".index");
+    for (auto ent = fs::directory_iterator(work_dir); ent != fs::directory_iterator(); ent++) {
+        const fs::path& p = ent->path();
+        if (fs::is_regular_file(p)) {
+            const string fn = p.filename().string();
+            if (fn.length() >= suffix_index.length()
+                && 0 == fn.compare(fn.length() - suffix_index.length(), suffix_index.length(), suffix_index)) {
+                fs::remove(p);
+            }
+        }
+    }
 }

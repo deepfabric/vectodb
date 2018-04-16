@@ -79,10 +79,12 @@ int main()
     double t0 = elapsed();
 
     printf("[%.3f s] Loading database\n", elapsed() - t0);
+    const char* work_dir = "/tmp";
+    VectoDB::ClearWorkDir(work_dir);
     //auto vdb{ std::make_unique<VectoDB>("/tmp", 128, 1) };
-    VectoDB vdb("/tmp", 128, 1);
+    VectoDB vdb(work_dir, 128, 1);
     size_t nb, d;
-    float* xb = fvecs_read("sift1M/sift_learn.fvecs", &d, &nb);
+    float* xb = fvecs_read("sift1M/sift_base.fvecs", &d, &nb);
     long* xids = new long[nb];
     for (long i = 0; i < (long)nb; i++) {
         xids[i] = i;
