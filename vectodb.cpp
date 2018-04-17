@@ -62,8 +62,9 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
     work_dir = dir.string().c_str();
 
     auto st{ std::make_unique<DbState>() }; //Make DbState be exception safe
-    st->base.reserve(dim * 1000000);
-    st->uids.reserve(1000000);
+    state.reset(st.release());
+    state->base.reserve(dim * 1000000);
+    state->uids.reserve(1000000);
     fs::create_directories(dir);
     //filename spec: base.fvecs, index
     //line spec of base.fvecs: <uid> {<dim>}<float>
@@ -71,33 +72,35 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
     const string fp_index = getIndexFp();
     //Loading database
     //https://stackoverflow.com/questions/31483349/how-can-i-open-a-file-for-reading-writing-creating-it-if-it-does-not-exist-w
-    st->fs_base.exceptions(std::ios::failbit | std::ios::badbit);
-    st->fs_base.open(fp_base, std::fstream::out); //create file if not exist
-    st->fs_base.close();
-    st->fs_base.open(fp_base, std::fstream::in | std::fstream::out | std::fstream::binary);
-    st->fs_base.seekp(0, ios_base::end); //Set position in output sequence
+    state->fs_base.exceptions(std::ios::failbit | std::ios::badbit);
+    state->fs_base.open(fp_base, std::fstream::out); //create file if not exist
+    state->fs_base.close();
+    state->fs_base.open(fp_base, std::fstream::in | std::fstream::out | std::fstream::binary);
+    state->fs_base.seekp(0, ios_base::end); //Set position in output sequence
     long len_line = sizeof(long) + dim * sizeof(float);
-    //long len_f = st->fs_base.tellp();
+    //long len_f = state->fs_base.tellp();
     long len_f = fs::file_size(fp_base);
-    if (len_f % len_line != 0)
-        throw "file size must be multiple of line length";
+    if (len_f % len_line != 0) {
+        ostringstream oss;
+        oss << fp_base << " file size " << len_f << " is not multiple of line length " << len_line;
+        throw std::length_error(oss.str());
+    }
     long num_line = len_f / len_line;
-    st->base.resize(num_line * dim * sizeof(float));
-    st->uids.resize(num_line);
+    state->base.resize(num_line * dim * sizeof(float));
+    state->uids.resize(num_line);
     vector<char> buf(len_line);
     for (long i = 0; i < num_line; i++) {
-        st->fs_base.read(&buf[0], len_line);
+        state->fs_base.read(&buf[0], len_line);
         long uid = *(long*)&buf[0];
-        st->uids[i] = uid;
-        st->uid2num[uid] = i;
-        memcpy(&st->base[i * dim], &buf[sizeof(long)], dim * sizeof(float));
+        state->uids[i] = uid;
+        state->uid2num[uid] = i;
+        memcpy(&state->base[i * dim], &buf[sizeof(long)], dim * sizeof(float));
     }
     if (fs::is_regular_file(fp_index)) {
         //Loading index
-        st->index = faiss::read_index(fp_index.c_str());
+        state->index = faiss::read_index(fp_index.c_str());
     }
-    buildFlatIndex(st->index, st->uids.size(), &st->base[0]);
-    state.reset(st.release());
+    buildFlatIndex(state->index, state->uids.size(), &state->base[0]);
 }
 
 VectoDB::~VectoDB()
