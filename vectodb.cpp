@@ -62,45 +62,51 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
     work_dir = dir.string().c_str();
 
     auto st{ std::make_unique<DbState>() }; //Make DbState be exception safe
-    state.reset(st.release());
+    state = std::move(st); // equivalent to state.reset(st.release());
     state->base.reserve(dim * 1000000);
     state->uids.reserve(1000000);
     fs::create_directories(dir);
-    //filename spec: base.fvecs, index
+    //filename spec: base.fvecs, <index_key>.<ntrain>.index
     //line spec of base.fvecs: <uid> {<dim>}<float>
     const string fp_base = getBaseFp();
-    const string fp_index = getIndexFp();
     //Loading database
     //https://stackoverflow.com/questions/31483349/how-can-i-open-a-file-for-reading-writing-creating-it-if-it-does-not-exist-w
     state->fs_base.exceptions(std::ios::failbit | std::ios::badbit);
-    state->fs_base.open(fp_base, std::fstream::out); //create file if not exist
+    state->fs_base.open(fp_base, std::fstream::out | std::fstream::app); //create file if not exist, otherwise do nothing
     state->fs_base.close();
     state->fs_base.open(fp_base, std::fstream::in | std::fstream::out | std::fstream::binary);
-    state->fs_base.seekp(0, ios_base::end); //Set position in output sequence
     long len_line = sizeof(long) + dim * sizeof(float);
-    //long len_f = state->fs_base.tellp();
-    long len_f = fs::file_size(fp_base);
+    long len_f = fs::file_size(fp_base); //equivalent to "fs_base.seekp(0, ios_base::end); long len_f = fs_base.tellp();"
     if (len_f % len_line != 0) {
         ostringstream oss;
         oss << fp_base << " file size " << len_f << " is not multiple of line length " << len_line;
         throw std::length_error(oss.str());
     }
     long num_line = len_f / len_line;
-    state->base.resize(num_line * dim * sizeof(float));
-    state->uids.resize(num_line);
-    vector<char> buf(len_line);
-    for (long i = 0; i < num_line; i++) {
-        state->fs_base.read(&buf[0], len_line);
-        long uid = *(long*)&buf[0];
-        state->uids[i] = uid;
-        state->uid2num[uid] = i;
-        memcpy(&state->base[i * dim], &buf[sizeof(long)], dim * sizeof(float));
+    if (num_line > 0) {
+        LOG(INFO) << "Loading base " << fp_base;
+        state->base.resize(num_line * dim);
+        state->uids.resize(num_line);
+        vector<char> buf(len_line);
+        for (long i = 0; i < num_line; i++) {
+            state->fs_base.read(&buf[0], len_line);
+            long uid = *(long*)&buf[0];
+            state->uids[i] = uid;
+            state->uid2num[uid] = i;
+            memcpy(&state->base[i * dim], &buf[sizeof(long)], dim * sizeof(float));
+        }
     }
-    if (fs::is_regular_file(fp_index)) {
+    state->fs_base.seekp(0, ios_base::end); //a particular libstdc++ implementation may use a single pointer for both seekg and seekp.
+    long ntrain = getIndexFpNtrain();
+    if (num_line >= ntrain && ntrain > 0) {
         //Loading index
+        const string& fp_index = getIndexFp(ntrain);
+        LOG(INFO) << "Loading index " << fp_index;
         state->index = faiss::read_index(fp_index.c_str());
+        state->ntrain = ntrain;
     }
     buildFlatIndex(state->index, state->uids.size(), &state->base[0]);
+    google::FlushLogFiles(google::INFO);
 }
 
 VectoDB::~VectoDB()
@@ -113,9 +119,13 @@ VectoDB::~VectoDB()
 
 void VectoDB::ActivateIndex(faiss::Index* index, long ntrain)
 {
+    if (index == nullptr)
+        return;
     if (strcmp(index_key, "Flat")) {
+        if (state->ntrain != 0)
+            fs::remove(getIndexFp(state->ntrain));
         // Output index
-        faiss::write_index(index, getIndexFp().c_str());
+        faiss::write_index(index, getIndexFp(ntrain).c_str());
     }
     delete state->index;
     state->ntrain = ntrain;
@@ -186,15 +196,21 @@ void VectoDB::BuildIndex(faiss::Index*& index_out, long& ntrain) const
     faiss::Index* index = nullptr;
 
     long nb = state->uids.size();
-    long nt = std::min(nb, std::max(nb / 10, MAX_NTRAIN));
     if (strcmp(index_key, "Flat")) {
+        long nt = std::min(nb, std::max(nb / 10, MAX_NTRAIN));
         if (nt == state->ntrain) {
-            LOG(INFO) << "Reuse current index since ntrain " << nt << " is unchanged";
             assert(state->index != nullptr);
-            index = faiss::read_index(getIndexFp().c_str());
             long& ntotal = state->index->ntotal;
-            LOG(INFO) << "Adding " << nb - ntotal << " vectors to index, ntotal increased from " << ntotal << " to " << nb;
-            index->add(nb - ntotal, &state->base[ntotal * dim]);
+            if (nb == ntotal) {
+                LOG(INFO) << "Nothing to do since ntrain " << nt << " and ntotal " << ntotal << " are unchanged";
+                index_out = nullptr;
+            } else {
+                LOG(INFO) << "Reuse current index since ntrain " << nt << " is unchanged";
+                index = faiss::read_index(getIndexFp(nt).c_str());
+                LOG(INFO) << "Adding " << nb - ntotal << " vectors to index, ntotal increased from " << ntotal << " to " << nb;
+                index->add(nb - ntotal, &state->base[ntotal * dim]);
+                index_out = index;
+            }
         } else {
             index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
             // Training
@@ -209,15 +225,17 @@ void VectoDB::BuildIndex(faiss::Index*& index_out, long& ntrain) const
             // Indexing database
             LOG(INFO) << "Indexing " << nb << " vectors";
             index->add(nb, &state->base[0]);
+            index_out = index;
         }
+        ntrain = nt;
     } else {
         index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
         // Indexing database
         LOG(INFO) << "Indexing " << nb << " vectors";
         index->add(nb, &state->base[0]);
+        index_out = index;
+        ntrain = 0;
     }
-    index_out = index;
-    ntrain = nt;
     LOG(INFO) << "BuildIndex " << work_dir << " done";
     google::FlushLogFiles(google::INFO);
 }
@@ -285,11 +303,36 @@ std::string VectoDB::getBaseFp() const
     return oss.str();
 }
 
-std::string VectoDB::getIndexFp() const
+std::string VectoDB::getIndexFp(long ntrain) const
 {
     ostringstream oss;
-    oss << work_dir << "/" << index_key << ".index";
+    oss << work_dir << "/" << index_key << "." << ntrain << ".index";
     return oss.str();
+}
+
+long VectoDB::getIndexFpNtrain() const
+{
+    long max_ntrain = 0;
+    fs::path fp_index;
+    string prefix(index_key);
+    prefix.append(".");
+    const string suffix(".index");
+    for (auto ent = fs::directory_iterator(work_dir); ent != fs::directory_iterator(); ent++) {
+        const fs::path& p = ent->path();
+        if (fs::is_regular_file(p)) {
+            const string fn = p.filename().string();
+            if (fn.length() >= suffix.length()
+                && 0 == fn.compare(fn.length() - suffix.length(), suffix.length(), suffix)
+                && 0 == fn.compare(0, prefix.length(), prefix)) {
+                long ntrain = std::stol(fn.substr(prefix.length(), fn.length() - prefix.length() - suffix.length()));
+                if (ntrain > max_ntrain) {
+                    max_ntrain = ntrain;
+                    fp_index = p;
+                }
+            }
+        }
+    }
+    return max_ntrain;
 }
 
 long VectoDB::getIndexSize() const
@@ -303,13 +346,13 @@ void VectoDB::ClearWorkDir(const char* work_dir)
     oss << work_dir << "/base.fvecs";
     fs::remove(oss.str());
 
-    const string suffix_index(".index");
+    const string suffix(".index");
     for (auto ent = fs::directory_iterator(work_dir); ent != fs::directory_iterator(); ent++) {
         const fs::path& p = ent->path();
         if (fs::is_regular_file(p)) {
             const string fn = p.filename().string();
-            if (fn.length() >= suffix_index.length()
-                && 0 == fn.compare(fn.length() - suffix_index.length(), suffix_index.length(), suffix_index)) {
+            if (fn.length() >= suffix.length()
+                && 0 == fn.compare(fn.length() - suffix.length(), suffix.length(), suffix)) {
                 fs::remove(p);
             }
         }

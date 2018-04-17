@@ -100,7 +100,8 @@ public:
 
 private:
     std::string getBaseFp() const;
-    std::string getIndexFp() const;
+    std::string getIndexFp(long ntrain) const;
+    long getIndexFpNtrain() const;
     long getIndexSize() const;
     void buildFlatIndex(faiss::Index*& index, long nb, const float* xb);
 

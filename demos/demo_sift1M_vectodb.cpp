@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <thread>
 #include <unistd.h>
 
 #include <cassert>
@@ -75,10 +76,10 @@ int main(int argc, char* argv[])
     google::InitGoogleLogging(argv[0]);
 
     LOG(INFO) << "Loading database";
-    const char* work_dir = "/tmp";
-    VectoDB::ClearWorkDir(work_dir);
-    //auto vdb{ std::make_unique<VectoDB>("/tmp", 128, 1) };
     const long sift_dim = 128L;
+    const char* work_dir = "/tmp";
+
+    VectoDB::ClearWorkDir(work_dir);
     VectoDB vdb(work_dir, sift_dim, 1);
     size_t nb, d;
     float* xb = fvecs_read("sift1M/sift_base.fvecs", &d, &nb);
@@ -116,7 +117,25 @@ int main(int argc, char* argv[])
     float* xq = fvecs_read("sift1M/sift_query.fvecs", &d2, &nq);
     float* D = new float[nq];
     long* I = new long[nq];
-    vdb.Search(nq, xq, D, I);
+    const long num_thread = 4;
+    if (num_thread >= 2) {
+        const long batch_size = (long)nq / num_thread;
+        nq = num_thread * batch_size;
+        vector<thread> workers;
+        for (long i = 0; i < num_thread; i++) {
+            std::thread worker{ [&vdb, batch_size, i, &xq, &D, &I]() {
+                LOG(INFO) << "thread " << i << " begins";
+                vdb.Search(batch_size, xq + i * batch_size * sift_dim, D + i * batch_size, I + i * batch_size);
+                LOG(INFO) << "thread " << i << " ends";
+            } };
+            workers.push_back(std::move(worker));
+        }
+        for (long i = 0; i < num_thread; i++) {
+            workers[i].join();
+        }
+    } else {
+        vdb.Search(nq, xq, D, I);
+    }
 
     size_t k; // nb of results per query in the GT
     long* gt; // nq * k matrix of ground-truth nearest-neighbors
