@@ -1,29 +1,29 @@
 #pragma once
 
-class VectoDB;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+struct VectoDB;
+
 /**
  * Constructor and destructor methods.
  */
-VectoDB* VectodbNew(char* work_dir, long dim, int metric_type, char* index_key, char* query_params);
-void VectodbDelete(VectoDB* vdb);
+struct VectoDB* VectodbNew(char* work_dir, long dim, int metric_type, char* index_key, char* query_params);
+void VectodbDelete(struct VectoDB* vdb);
 
 /**
  * Writer methods. There could be multiple writers.
  */
-void VectodbActivateIndex(VectoDB* vdb, void* index, long ntrain);
-void VectodbAddWithIds(VectoDB* vdb, long nb, float* xb, long* xids);
+void VectodbActivateIndex(struct VectoDB* vdb, void* index, long ntrain);
+void VectodbAddWithIds(struct VectoDB* vdb, long nb, float* xb, long* xids);
 
 /**
  * Reader methods. There could be multiple readers.
  */
-void* VectodbTryBuildIndex(VectoDB* vdb, long exhaust_threshold, long* ntrain);
-void* VectodbBuildIndex(VectoDB* vdb, long* ntrain);
-void VectodbSearch(VectoDB* vdb, long nq, float* xq, float* distances, long* xids);
+void* VectodbTryBuildIndex(struct VectoDB* vdb, long exhaust_threshold, long* ntrain);
+void* VectodbBuildIndex(struct VectoDB* vdb, long* ntrain);
+void VectodbSearch(struct VectoDB* vdb, long nq, float* xq, float* distances, long* xids);
 
 /**
  * Static methods.

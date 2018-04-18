@@ -1,8 +1,6 @@
 package vectodb
 
-// #cgo CFLAGS: -I{SRCDIR} -I{SRCDIR}/faiss
-// #cgo CXXFLAGS: -I{SRCDIR} -I{SRCDIR}/faiss
-// #cgo LDFLAGS: -lstdc++ -L${SRCDIR} -lvectodb -L${SRCDIR}/faiss -lfaiss
+// #cgo CXXFLAGS: -I${SRCDIR}
+// #cgo LDFLAGS: -L${SRCDIR}/faiss -lboost_filesystem -lboost_system -lglog -lgflags -lfaiss -lopenblas -lgomp -lstdc++
 // #include "vectodb.h"
-
 import "C"
