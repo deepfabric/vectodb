@@ -122,7 +122,7 @@ void VectoDB::ActivateIndex(faiss::Index* index, long ntrain)
 {
     if (index == nullptr)
         return;
-    if (strcmp(index_key, "Flat")) {
+    if (index_key.compare("Flat")) {
         if (state->ntrain != 0)
             fs::remove(getIndexFp(state->ntrain));
         // Output index
@@ -155,15 +155,15 @@ void VectoDB::AddWithIds(long nb, const float* xb, const long* xids)
 
 void VectoDB::buildFlatIndex(faiss::Index*& index, long nb, const float* xb)
 {
-    if (0 == strcmp(index_key, "Flat")) {
+    if (0 == index_key.compare("Flat")) {
         // Build index for Flat directly. Don't need TryBuildIndex, BuildIndex, ActivateIndex.
         if (index) {
             if (dynamic_cast<faiss::IndexFlat*>(state->index) == nullptr) {
                 delete index;
-                index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
+                index = faiss::index_factory(dim, index_key.c_str(), metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
             }
         } else {
-            index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
+            index = faiss::index_factory(dim, index_key.c_str(), metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
         }
         // Indexing database
         index->add(nb, xb);
@@ -197,7 +197,7 @@ void VectoDB::BuildIndex(faiss::Index*& index_out, long& ntrain) const
     faiss::Index* index = nullptr;
 
     long nb = state->uids.size();
-    if (strcmp(index_key, "Flat")) {
+    if (index_key.compare("Flat")) {
         long nt = std::min(nb, std::max(nb / 10, MAX_NTRAIN));
         if (nt == state->ntrain) {
             assert(state->index != nullptr);
@@ -213,7 +213,7 @@ void VectoDB::BuildIndex(faiss::Index*& index_out, long& ntrain) const
                 index_out = index;
             }
         } else {
-            index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
+            index = faiss::index_factory(dim, index_key.c_str(), metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
             // Training
             LOG(INFO) << "Training on " << nt << " vectors";
             index->train(nt, &state->base[0]);
@@ -221,7 +221,7 @@ void VectoDB::BuildIndex(faiss::Index*& index_out, long& ntrain) const
             // selected_params is cached auto-tuning result.
             faiss::ParameterSpace params;
             params.initialize(index);
-            params.set_index_parameters(index, query_params);
+            params.set_index_parameters(index, query_params.c_str());
 
             // Indexing database
             LOG(INFO) << "Indexing " << nb << " vectors";
@@ -230,7 +230,7 @@ void VectoDB::BuildIndex(faiss::Index*& index_out, long& ntrain) const
         }
         ntrain = nt;
     } else {
-        index = faiss::index_factory(dim, index_key, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
+        index = faiss::index_factory(dim, index_key.c_str(), metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
         // Indexing database
         LOG(INFO) << "Indexing " << nb << " vectors";
         index->add(nb, &state->base[0]);

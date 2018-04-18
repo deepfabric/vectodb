@@ -109,7 +109,7 @@ private:
     std::string work_dir;
     long dim;
     int metric_type;
-    const char* index_key;
-    const char* query_params;
+    std::string index_key;
+    std::string query_params;
     std::unique_ptr<DbState> state;
 };
