@@ -1,0 +1,11 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/git-commands/git-subrepo#readme
+;
+[subrepo]
+	remote = https://github.com/facebookresearch/faiss.git
+	branch = master
+	commit = 1ae7494491ecc3f13299e217ea466030980f4a70
+	parent = cf5ee03dbc8ab86c11c597fc12e4d730f2f8c379
+	cmdver = 0.3.1

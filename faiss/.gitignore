@@ -1,0 +1,13 @@
+/bin/
+/c_api/bin/
+/c_api/gpu/bin/
+/makefile.inc
+/tests/demo_ivfpq_indexing
+*.swp
+*.swo
+*.o
+*.a
+*.dSYM
+*.so
+*.pyc
+*~
