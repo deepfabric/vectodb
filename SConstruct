@@ -12,7 +12,7 @@ import subprocess
 # $ make demos/demo_sift1M
 
 env = Environment()
-env.Command('faiss/libfaiss.a', 'faiss/makefile.inc', 'pushd faiss && cp example_makefiles/makefile.inc.Linux makefile.inc && make demos/demo_sift1M && popd')
+env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && cp example_makefiles/makefile.inc.Linux makefile.inc && make demos/demo_sift1M && popd')
 if env.GetOption('clean'):
     subprocess.call('pushd faiss && make clean && popd', shell=True)
 
