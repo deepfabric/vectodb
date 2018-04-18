@@ -364,44 +364,44 @@ void VectoDB::ClearWorkDir(const char* work_dir)
  * C wrappers.
  */
 
-VectoDB* VectodbNew(char* work_dir, long dim, int metric_type, char* index_key, char* query_params)
+void* VectodbNew(char* work_dir, long dim, int metric_type, char* index_key, char* query_params)
 {
     VectoDB* vdb = new VectoDB(work_dir, dim, metric_type, index_key, query_params);
     return vdb;
 }
 
-void VectodbDelete(VectoDB* vdb)
+void VectodbDelete(void* vdb)
 {
-    delete vdb;
+    delete static_cast<VectoDB*>(vdb);
 }
 
-void VectodbActivateIndex(VectoDB* vdb, void* index, long ntrain)
+void VectodbActivateIndex(void* vdb, void* index, long ntrain)
 {
-    vdb->ActivateIndex(static_cast<faiss::Index*>(index), ntrain);
+    static_cast<VectoDB*>(vdb)->ActivateIndex(static_cast<faiss::Index*>(index), ntrain);
 }
 
-void VectodbAddWithIds(VectoDB* vdb, long nb, float* xb, long* xids)
+void VectodbAddWithIds(void* vdb, long nb, float* xb, long* xids)
 {
-    vdb->AddWithIds(nb, xb, xids);
+    static_cast<VectoDB*>(vdb)->AddWithIds(nb, xb, xids);
 }
 
-void* VectodbTryBuildIndex(VectoDB* vdb, long exhaust_threshold, long* ntrain)
+void* VectodbTryBuildIndex(void* vdb, long exhaust_threshold, long* ntrain)
 {
     faiss::Index* index = nullptr;
-    vdb->TryBuildIndex(exhaust_threshold, index, *ntrain);
+    static_cast<VectoDB*>(vdb)->TryBuildIndex(exhaust_threshold, index, *ntrain);
     return index;
 }
 
-void* VectodbBuildIndex(VectoDB* vdb, long* ntrain)
+void* VectodbBuildIndex(void* vdb, long* ntrain)
 {
     faiss::Index* index = nullptr;
-    vdb->BuildIndex(index, *ntrain);
+    static_cast<VectoDB*>(vdb)->BuildIndex(index, *ntrain);
     return index;
 }
 
-void VectodbSearch(VectoDB* vdb, long nq, float* xq, float* distances, long* xids)
+void VectodbSearch(void* vdb, long nq, float* xq, float* distances, long* xids)
 {
-    vdb->Search(nq, xq, distances, xids);
+    static_cast<VectoDB*>(vdb)->Search(nq, xq, distances, xids);
 }
 
 void VectodbClearWorkDir(char* work_dir)
