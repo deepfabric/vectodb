@@ -29,3 +29,5 @@ Export("env")
 SConscript(["demos/SConscript"])
 
 env.StaticLibrary('vectodb', ['vectodb.cpp'], LIBS=['boost_filesystem', 'boost_system'])
+
+env.Alias('go', 'demos/demo_sift1M_vectodb', "go install -x ./...")
