@@ -24,10 +24,10 @@
 #include <omp.h>
 #include <string>
 
-#include "AutoTune.h"
-#include "IndexFlat.h"
-#include "IndexIVFFlat.h"
-#include "index_io.h"
+#include "faiss/AutoTune.h"
+#include "faiss/IndexFlat.h"
+#include "faiss/IndexIVFFlat.h"
+#include "faiss/index_io.h"
 
 using namespace std;
 

@@ -19,7 +19,7 @@ if env.GetOption('clean'):
 selfPath = os.path.abspath(inspect.getfile(inspect.currentframe()))
 mainDir, _ = os.path.split(selfPath)
 faissDir = os.path.join(mainDir, 'faiss')
-cpp_path = [mainDir, faissDir]
+cpp_path = [mainDir]
 libs_path = [mainDir, faissDir]
 
 env = Environment(ENV=os.environ, CPPPATH=cpp_path, LIBPATH=libs_path, PRJNAME="vectodb")

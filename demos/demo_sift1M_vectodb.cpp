@@ -1,4 +1,4 @@
-#include "vectodb.h"
+#include "vectodb.hpp"
 
 #include <glog/logging.h>
 

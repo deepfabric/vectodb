@@ -1,8 +1,9 @@
+#include "vectodb.hpp"
 #include "vectodb.h"
 
-#include "AutoTune.h"
-#include "IndexFlat.h"
-#include "index_io.h"
+#include "faiss/AutoTune.h"
+#include "faiss/IndexFlat.h"
+#include "faiss/index_io.h"
 
 #include <boost/filesystem.hpp>
 #include <glog/logging.h>
@@ -357,4 +358,53 @@ void VectoDB::ClearWorkDir(const char* work_dir)
             }
         }
     }
+}
+
+/**
+ * C wrappers.
+ */
+
+VectoDB* VectodbNew(char* work_dir, long dim, int metric_type, char* index_key, char* query_params)
+{
+    VectoDB* vdb = new VectoDB(work_dir, dim, metric_type, index_key, query_params);
+    return vdb;
+}
+
+void VectodbDelete(VectoDB* vdb)
+{
+    delete vdb;
+}
+
+void VectodbActivateIndex(VectoDB* vdb, void* index, long ntrain)
+{
+    vdb->ActivateIndex(static_cast<faiss::Index*>(index), ntrain);
+}
+
+void VectodbAddWithIds(VectoDB* vdb, long nb, float* xb, long* xids)
+{
+    vdb->AddWithIds(nb, xb, xids);
+}
+
+void* VectodbTryBuildIndex(VectoDB* vdb, long exhaust_threshold, long* ntrain)
+{
+    faiss::Index* index = nullptr;
+    vdb->TryBuildIndex(exhaust_threshold, index, *ntrain);
+    return index;
+}
+
+void* VectodbBuildIndex(VectoDB* vdb, long* ntrain)
+{
+    faiss::Index* index = nullptr;
+    vdb->BuildIndex(index, *ntrain);
+    return index;
+}
+
+void VectodbSearch(VectoDB* vdb, long nq, float* xq, float* distances, long* xids)
+{
+    vdb->Search(nq, xq, distances, xids);
+}
+
+void VectodbClearWorkDir(char* work_dir)
+{
+    VectoDB::ClearWorkDir(work_dir);
 }

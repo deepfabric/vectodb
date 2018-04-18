@@ -22,8 +22,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "AutoTune.h"
-#include "index_io.h"
+#include "faiss/AutoTune.h"
+#include "faiss/index_io.h"
 
 using namespace std;
 
