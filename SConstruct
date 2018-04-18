@@ -1,23 +1,26 @@
 import os
 import os.path
 import inspect
+import subprocess
+
+# Prepare faiss on CentOS 7 x86_64:
+# 1. Checkout faiss(https://github.com/facebookresearch/faiss.git) at faiss.
+# 2. Enable EPEL.
+# $ cd faiss
+# $ sudo yum -y install openblas-devel gtest-devel
+# $ cp example_makefiles/makefile.inc.Linux makefile.inc
+# $ make demos/demo_sift1M
+
+env = Environment()
+env.Command('faiss/libfaiss.a', 'faiss/makefile.inc', 'pushd faiss && cp example_makefiles/makefile.inc.Linux makefile.inc && make demos/demo_sift1M && popd')
+if env.GetOption('clean'):
+    subprocess.call('pushd faiss && make clean && popd', shell=True)
 
 selfPath = os.path.abspath(inspect.getfile(inspect.currentframe()))
 mainDir, _ = os.path.split(selfPath)
-
-cpp_path = [mainDir]
-libs_path = [mainDir]
-
-# if faiss is not installed to the system path, it need be provided as "Command-Line variable=value Build Variables", or an environment variable.
-key = 'FAISS'
-faiss_dir = ARGUMENTS.get(key, '')
-if faiss_dir == '':
-	if key in os.environ:
-		faiss_dir = os.environ[key]
-
-if faiss_dir != '':
-	cpp_path.append(faiss_dir)
-	libs_path.append(faiss_dir)
+faissDir = os.path.join(mainDir, 'faiss')
+cpp_path = [mainDir, faissDir]
+libs_path = [mainDir, faissDir]
 
 env = Environment(ENV=os.environ, CPPPATH=cpp_path, LIBPATH=libs_path, PRJNAME="vectodb")
 env.MergeFlags(env.ParseFlags('-Wall -Wextra -g -O2 -fopenmp -std=c++17'))
