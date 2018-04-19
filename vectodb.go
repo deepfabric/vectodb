@@ -35,50 +35,60 @@ func (vdb *VectoDB) Destroy() (err error) {
 	return
 }
 
-func (vdb *VectoDB) ActivateIndex(index unsafe.Pointer, ntrain int64) {
+/**
+ * Writer methods. There could be multiple writers.
+ */
+
+func (vdb *VectoDB) ActivateIndex(index unsafe.Pointer, ntrain int64) (err error) {
 	vdb.rwlock.Lock()
+	defer vdb.rwlock.Unlock()
 	C.VectodbActivateIndex(vdb.vdb_c, index, C.long(ntrain))
-	vdb.rwlock.Unlock()
+	return
 }
 
-func (vdb *VectoDB) AddWithIds(nb int64, xb []float32, xids []int64) {
+func (vdb *VectoDB) AddWithIds(nb int64, xb []float32, xids []int64) (err error) {
 	vdb.rwlock.Lock()
+	defer vdb.rwlock.Unlock()
 	C.VectodbAddWithIds(vdb.vdb_c, C.long(nb), (*C.float)(&xb[0]), (*C.long)(&xids[0]))
-	vdb.rwlock.Unlock()
+	return
 }
 
 /**
  * Reader methods. There could be multiple readers.
  */
-func (vdb *VectoDB) TryBuildIndex(exhaust_threshold int64) (index unsafe.Pointer, ntrain int64) {
+
+func (vdb *VectoDB) TryBuildIndex(exhaust_threshold int64) (index unsafe.Pointer, ntrain int64, err error) {
 	vdb.rwlock.RLock()
+	defer vdb.rwlock.RUnlock()
 	var ntrain_c C.long
 	index = C.VectodbTryBuildIndex(vdb.vdb_c, C.long(exhaust_threshold), &ntrain_c)
 	ntrain = int64(ntrain_c)
-	vdb.rwlock.RUnlock()
 	return
 }
 
-func (vdb *VectoDB) BuildIndex() (index unsafe.Pointer, ntrain int64) {
+func (vdb *VectoDB) BuildIndex() (index unsafe.Pointer, ntrain int64, err error) {
 	vdb.rwlock.RLock()
+	defer vdb.rwlock.RUnlock()
 	var ntrain_c C.long
 	index = C.VectodbBuildIndex(vdb.vdb_c, &ntrain_c)
 	ntrain = int64(ntrain_c)
-	vdb.rwlock.RUnlock()
 	return
 }
 
-func (vdb *VectoDB) Search(nq int64, xq []float32, distances []float32, xids []int64) {
+func (vdb *VectoDB) Search(nq int64, xq []float32, distances []float32, xids []int64) (err error) {
 	vdb.rwlock.RLock()
+	defer vdb.rwlock.RUnlock()
 	C.VectodbSearch(vdb.vdb_c, C.long(nq), (*C.float)(&xq[0]), (*C.float)(&distances[0]), (*C.long)(&xids[0]))
-	vdb.rwlock.RUnlock()
+	return
 }
 
 /**
  * Static methods.
  */
-func (_ *VectoDB) ClearWorkDir(workDir string) {
+
+func VectodbClearWorkDir(workDir string) (err error) {
 	workDir_c := C.CString(workDir)
 	C.VectodbClearWorkDir(workDir_c)
 	C.free(unsafe.Pointer(workDir_c))
+	return
 }

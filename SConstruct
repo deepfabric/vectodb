@@ -4,10 +4,12 @@ import inspect
 import subprocess
 
 # Prepare faiss on CentOS 7 x86_64:
-# 1. Checkout faiss(https://github.com/facebookresearch/faiss.git) at faiss.
-# 2. Enable EPEL.
-# $ cd faiss
+# 1. Enable EPEL.
+# 2. Install dependencies.
 # $ sudo yum -y install openblas-devel gtest-devel
+# 3. Checkout faiss(https://github.com/facebookresearch/faiss.git) at faiss.
+# 4. Build it:
+# $ cd faiss
 # $ cp example_makefiles/makefile.inc.Linux makefile.inc
 # $ make demos/demo_sift1M
 
@@ -30,4 +32,7 @@ SConscript(["demos/SConscript"])
 
 env.StaticLibrary('vectodb', ['vectodb.cpp'], LIBS=['boost_filesystem', 'boost_system'])
 
-env.Alias('go', 'demos/demo_sift1M_vectodb', "go install -x ./...")
+
+env.Command('demos/demo_sift1M_vectodb_go', ['demos/demo_sift1M_vectodb.go', 'vectodb.go', 'demos/demo_sift1M_vectodb'], 'go install -x . && pushd demos && go build -o demo_sift1M_vectodb_go demo_sift1M_vectodb.go && popd')
+
+env.Alias('go', 'demos/demo_sift1M_vectodb_go')
