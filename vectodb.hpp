@@ -2,6 +2,7 @@
 
 #include <memory> //std::shared_ptr
 #include <string>
+#include <vector>
 
 class DbState;
 namespace faiss {
@@ -97,17 +98,23 @@ public:
      * @param work_dir      input working direcotry
      */
     static void ClearWorkDir(const char* work_dir);
+    static void mmapFile(const std::string& fp, uint8_t*& data, long& len_data);
+    static void munmapFile(const std::string& fp, uint8_t*& data, long& len_data);
 
 private:
     std::string getBaseFp() const;
     std::string getIndexFp(long ntrain) const;
     long getIndexFpNtrain() const;
     long getIndexSize() const;
-    void buildFlatIndex(faiss::Index*& index, long nb, const float* xb);
+    long getFlatSize() const;
+    void readBase(const uint8_t* data, long len_data, long start_num, std::vector<float>& base) const;
+    void readXids(const uint8_t* data, long len_data, long start_num, std::vector<long>& xids) const;
+    void buildFlat();
 
 private:
     std::string work_dir;
     long dim;
+    long len_line;
     int metric_type;
     std::string index_key;
     std::string query_params;
