@@ -1,13 +1,29 @@
 package main
 
 import (
+	"bytes"
 	"log"
 	"os"
+	"os/signal"
+	runPprof "runtime/pprof"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/infinivision/vectodb"
 	"github.com/pkg/errors"
+)
+
+const (
+	siftDim    int = 128
+	siftMetric int = 1 //0 - IP, 1 - L2
+
+	siftBase   string = "sift1M/sift_base.fvecs"
+	siftQuery  string = "sift1M/sift_query.fvecs"
+	siftGround string = "sift1M/sift_groundtruth.ivecs"
+
+	siftIndexKey    string = "IVF4096,PQ32"
+	siftQueryParams string = "nprobe=256,ht=256"
 )
 
 //FileMmap mmaps the given file.
@@ -85,16 +101,145 @@ func ivecs_read(fname string) (x []int32, d, n int, err error) {
 	return
 }
 
-func main() {
+func builderLoop(vdb *vectodb.VectoDB, quit <-chan interface{}) {
+	ticker := time.Tick(5 * time.Second)
+	threshold := 1000
+	var index unsafe.Pointer
+	var ntrain, ntotal, nflat int
+	var err error
+	for {
+		select {
+		case <-quit:
+			return
+		case <-ticker:
+			log.Printf("build iteration begin")
+			if ntrain, ntotal, nflat, err = vdb.GetIndexState(); err != nil {
+				log.Fatal("%+v", err)
+			}
+			log.Printf("ntrain %d, ntotal %d, nflat %d", ntrain, ntotal, nflat)
+			if nflat >= threshold {
+				if index, ntrain, err = vdb.BuildIndex(ntrain, ntotal); err != nil {
+					log.Fatalf("%+v", err)
+				}
+				log.Printf("BuildIndex done")
+				if ntrain != 0 {
+					if err = vdb.ActivateIndex(index, ntrain); err != nil {
+						log.Fatalf("%+v", err)
+					}
+				}
+			}
+			log.Printf("build iteration done")
+		}
+	}
+}
+
+func searcherLoop(vdb *vectodb.VectoDB, quit <-chan interface{}) {
+	ticker := time.Tick(1 * time.Second)
+	var err error
+	log.Printf("Searching index")
+	var xq []float32
+	var dim2 int
+	var nq int
+	if xq, dim2, nq, err = fvecs_read(siftQuery); err != nil {
+		log.Fatalf("%+v", err)
+	}
+	if dim2 != siftDim {
+		log.Fatalf("%s dim %d, expects %d", siftQuery, dim2, siftDim)
+	}
+	nq = 500
+	D := make([]float32, nq)
+	I := make([]int64, nq)
+	var ntrain, ntotal, nflat int
+	for {
+		select {
+		case <-quit:
+			return
+		case <-ticker:
+		default:
+			log.Printf("search iteration begin")
+			if ntrain, ntotal, nflat, err = vdb.GetIndexState(); err != nil {
+				log.Fatal("%+v", err)
+			}
+			log.Printf("ntrain %d, ntotal %d, nflat %d", ntrain, ntotal, nflat)
+			if err = vdb.Search(nq, xq, D, I); err != nil {
+				log.Fatalf("%+v", err)
+			}
+			log.Printf("search iteration done")
+		}
+	}
+}
+
+func benchmark() {
 	var err error
 	var vdb *vectodb.VectoDB
 
 	workDir := "/tmp"
-	siftDim := 128
 	if err = vectodb.VectodbClearWorkDir(workDir); err != nil {
 		log.Fatalf("%+v", err)
 	}
-	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, 1, "IVF4096,PQ32", "nprobe=256,ht=256"); err != nil {
+	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, siftMetric, siftIndexKey, siftQueryParams); err != nil {
+		log.Fatalf("%+v", err)
+	}
+
+	quit1 := make(chan interface{})
+	quit2 := make(chan interface{})
+	go builderLoop(vdb, quit1)
+	go searcherLoop(vdb, quit2)
+
+	log.Printf("Loading database")
+	var xb []float32
+	var dim int
+	var nb int
+	if xb, dim, nb, err = fvecs_read(siftBase); err != nil {
+		log.Fatalf("%+v", err)
+	}
+	if dim != siftDim {
+		log.Fatalf("%s dim %d, expects 128", siftBase, dim)
+	}
+
+	xids := make([]int64, nb)
+	for i := 0; i < nb; i++ {
+		xids[i] = int64(i)
+	}
+
+	batchSize := 2
+	for i := 0; i < nb/batchSize; i++ {
+		vdb.AddWithIds(batchSize, xb[i*batchSize:(i+1)*batchSize], xids[i*batchSize:(i+1)*batchSize])
+	}
+	log.Printf("added %d vectors\n", nb)
+	quit1 <- "quit"
+	quit2 <- "quit"
+
+}
+
+func main() {
+	var err error
+	var vdb *vectodb.VectoDB
+
+	go func() {
+		sc := make(chan os.Signal, 1)
+		signal.Notify(sc, syscall.SIGUSR1)
+		for {
+			sig := <-sc
+			switch sig {
+			case syscall.SIGUSR1:
+				buf := bytes.NewBuffer([]byte{})
+				_ = runPprof.Lookup("goroutine").WriteTo(buf, 1)
+				log.Printf("got signal=<%d>.", sig)
+				log.Println(buf.String())
+				continue
+			}
+		}
+	}()
+
+	benchmark()
+	return
+
+	workDir := "/tmp"
+	if err = vectodb.VectodbClearWorkDir(workDir); err != nil {
+		log.Fatalf("%+v", err)
+	}
+	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, siftMetric, siftIndexKey, siftQueryParams); err != nil {
 		log.Fatalf("%+v", err)
 	}
 
@@ -102,11 +247,11 @@ func main() {
 	var xb []float32
 	var dim int
 	var nb int
-	if xb, dim, nb, err = fvecs_read("sift1M/sift_base.fvecs"); err != nil {
+	if xb, dim, nb, err = fvecs_read(siftBase); err != nil {
 		log.Fatalf("%+v", err)
 	}
 	if dim != siftDim {
-		log.Fatalf("sift_base.fvecs dim %d, expects 128", dim)
+		log.Fatalf("%s dim %d, expects 128", siftBase, dim)
 	}
 
 	xids := make([]int64, nb)
@@ -120,7 +265,7 @@ func main() {
 
 	var index unsafe.Pointer
 	var ntrain int
-	if index, ntrain, err = vdb.BuildIndex(); err != nil {
+	if index, ntrain, err = vdb.BuildIndex(0, 0); err != nil {
 		log.Fatalf("%+v", err)
 	}
 	if err = vdb.ActivateIndex(index, ntrain); err != nil {
@@ -131,11 +276,11 @@ func main() {
 	var xq []float32
 	var dim2 int
 	var nq int
-	if xq, dim2, nq, err = fvecs_read("sift1M/sift_query.fvecs"); err != nil {
+	if xq, dim2, nq, err = fvecs_read(siftQuery); err != nil {
 		log.Fatalf("%+v", err)
 	}
 	if dim2 != siftDim {
-		log.Fatalf("sift_query.fvecs dim %d, expects %d", dim2, siftDim)
+		log.Fatalf("%s dim %d, expects %d", siftQuery, dim2, siftDim)
 	}
 	D := make([]float32, nq)
 	I := make([]int64, nq)
@@ -147,11 +292,11 @@ func main() {
 	var gt []int32
 	var k int
 	var nq2 int
-	if gt, k, nq2, err = ivecs_read("sift1M/sift_groundtruth.ivecs"); err != nil {
+	if gt, k, nq2, err = ivecs_read(siftGround); err != nil {
 		log.Fatalf("%+v", err)
 	}
 	if nq2 != nq {
-		log.Fatalf("sift1M/sift_groundtruth.ivecs nq %d, expects %d", nq2, nq)
+		log.Fatalf("%s nq %d, expects %d", siftGround, nq2, nq)
 	}
 
 	log.Printf("Compute recalls")

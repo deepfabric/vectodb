@@ -111,6 +111,67 @@ VectoDB::~VectoDB()
     munmapFile(getBaseFp(), state->data, state->len_data);
 }
 
+void VectoDB::BuildIndex(long cur_ntrain, long cur_ntotal, faiss::Index*& index_out, long& ntrain) const
+{
+    index_out = nullptr;
+    ntrain = 0;
+    if (0 == index_key.compare("Flat")) {
+        return;
+    }
+
+    uint8_t* data = nullptr;
+    long len_data = 0;
+    mmapFile(getBaseFp(), data, len_data);
+    long nb = len_data / len_line;
+
+    // Prepareing index
+    LOG(INFO) << "BuildIndex " << work_dir << ". dim=" << dim << ", index_key=\"" << index_key << "\", metric=" << metric_type << ", nb=" << nb;
+    if (nb == 0) {
+        munmapFile(getBaseFp(), data, len_data);
+        return;
+    }
+    faiss::Index* index = nullptr;
+
+    long nt = std::min(nb, std::max(nb / 10, MAX_NTRAIN));
+    if (nt == cur_ntrain) {
+        long& index_size = cur_ntotal;
+        if (nb == index_size) {
+            LOG(INFO) << "Nothing to do since ntrain " << nt << " and index_size " << index_size << " are unchanged";
+            index_out = nullptr;
+        } else {
+            LOG(INFO) << "Reuse current index since ntrain " << nt << " is unchanged";
+            index = faiss::read_index(getIndexFp(nt).c_str());
+            LOG(INFO) << "Adding " << nb - index_size << " vectors to index, index_size increased from " << index_size << " to " << nb;
+            vector<float> base2;
+            readBase(data, len_data, index_size, base2);
+            index->add(nb - index_size, &base2[0]);
+            index_out = index;
+        }
+    } else {
+        index = faiss::index_factory(dim, index_key.c_str(), metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
+        // Training
+        LOG(INFO) << "Training on " << nt << " vectors";
+        vector<float> base;
+        readBase(data, len_data, 0, base);
+        assert((long)base.size() >= nt * dim);
+        index->train(nt, &base[0]);
+
+        // selected_params is cached auto-tuning result.
+        faiss::ParameterSpace params;
+        params.initialize(index);
+        params.set_index_parameters(index, query_params.c_str());
+
+        // Indexing database
+        LOG(INFO) << "Indexing " << nb << " vectors";
+        index->add(nb, &base[0]);
+        index_out = index;
+    }
+    ntrain = nt;
+    munmapFile(getBaseFp(), data, len_data);
+    LOG(INFO) << "BuildIndex " << work_dir << " done";
+    google::FlushLogFiles(google::INFO);
+}
+
 /**
  * Writer methods
  */
@@ -172,73 +233,15 @@ void VectoDB::UpdateWithIds(long nb, const float* xb, const long* xids)
  * Read methods
  */
 
-void VectoDB::TryBuildIndex(long exhaust_threshold, faiss::Index*& index, long& ntrain) const
+void VectoDB::GetIndexState(long& ntrain, long& ntotal, long& nflat) const
 {
-    if (getFlatSize() <= exhaust_threshold)
-        return;
-    BuildIndex(index, ntrain);
-}
-
-void VectoDB::BuildIndex(faiss::Index*& index_out, long& ntrain) const
-{
-    index_out = nullptr;
-    ntrain = 0;
-    if (0 == index_key.compare("Flat")) {
-        return;
-    }
-
-    uint8_t* data = nullptr;
-    long len_data = 0;
-    mmapFile(getBaseFp(), data, len_data);
-    long nb = len_data / len_line;
-
-    // Prepareing index
-    LOG(INFO) << "BuildIndex " << work_dir << ". dim=" << dim << ", index_key=\"" << index_key << "\", metric=" << metric_type << ", nb=" << nb;
-    if (nb == 0) {
-        munmapFile(getBaseFp(), data, len_data);
-        return;
-    }
-    faiss::Index* index = nullptr;
-
-    long nt = std::min(nb, std::max(nb / 10, MAX_NTRAIN));
-    if (nt == state->ntrain) {
-        assert(state->index != nullptr);
-        long& index_size = state->index->ntotal;
-        if (nb == index_size) {
-            LOG(INFO) << "Nothing to do since ntrain " << nt << " and index_size " << index_size << " are unchanged";
-            index_out = nullptr;
-        } else {
-            LOG(INFO) << "Reuse current index since ntrain " << nt << " is unchanged";
-            index = faiss::read_index(getIndexFp(nt).c_str());
-            LOG(INFO) << "Adding " << nb - index_size << " vectors to index, index_size increased from " << index_size << " to " << nb;
-            vector<float> base2;
-            readBase(data, len_data, index_size, base2);
-            index->add(nb - index_size, &base2[0]);
-            index_out = index;
-        }
+    ntrain = state->ntrain;
+    if (state->index) {
+        ntotal = state->index->ntotal;
     } else {
-        index = faiss::index_factory(dim, index_key.c_str(), metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
-        // Training
-        LOG(INFO) << "Training on " << nt << " vectors";
-        vector<float> base;
-        readBase(data, len_data, 0, base);
-        assert((long)base.size() >= nt * dim);
-        index->train(nt, &base[0]);
-
-        // selected_params is cached auto-tuning result.
-        faiss::ParameterSpace params;
-        params.initialize(index);
-        params.set_index_parameters(index, query_params.c_str());
-
-        // Indexing database
-        LOG(INFO) << "Indexing " << nb << " vectors";
-        index->add(nb, &base[0]);
-        index_out = index;
+        ntotal = 0;
     }
-    ntrain = nt;
-    munmapFile(getBaseFp(), data, len_data);
-    LOG(INFO) << "BuildIndex " << work_dir << " done";
-    google::FlushLogFiles(google::INFO);
+    nflat = state->flat->ntotal;
 }
 
 void VectoDB::Search(long nq, const float* xq, float* distances, long* xids) const
@@ -425,6 +428,13 @@ void VectodbDelete(void* vdb)
     delete static_cast<VectoDB*>(vdb);
 }
 
+void* VectodbBuildIndex(void* vdb, long cur_ntrain, long cur_ntotal, long* ntrain)
+{
+    faiss::Index* index = nullptr;
+    static_cast<VectoDB*>(vdb)->BuildIndex(cur_ntrain, cur_ntotal, index, *ntrain);
+    return index;
+}
+
 void VectodbActivateIndex(void* vdb, void* index, long ntrain)
 {
     static_cast<VectoDB*>(vdb)->ActivateIndex(static_cast<faiss::Index*>(index), ntrain);
@@ -435,18 +445,9 @@ void VectodbAddWithIds(void* vdb, long nb, float* xb, long* xids)
     static_cast<VectoDB*>(vdb)->AddWithIds(nb, xb, xids);
 }
 
-void* VectodbTryBuildIndex(void* vdb, long exhaust_threshold, long* ntrain)
+void VectodbGetIndexState(void* vdb, long* ntrain, long* ntotal, long* nflat)
 {
-    faiss::Index* index = nullptr;
-    static_cast<VectoDB*>(vdb)->TryBuildIndex(exhaust_threshold, index, *ntrain);
-    return index;
-}
-
-void* VectodbBuildIndex(void* vdb, long* ntrain)
-{
-    faiss::Index* index = nullptr;
-    static_cast<VectoDB*>(vdb)->BuildIndex(index, *ntrain);
-    return index;
+    static_cast<VectoDB*>(vdb)->GetIndexState(*ntrain, *ntotal, *nflat);
 }
 
 void VectodbSearch(void* vdb, long nq, float* xq, float* distances, long* xids)

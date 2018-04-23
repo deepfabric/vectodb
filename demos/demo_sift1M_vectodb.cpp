@@ -89,23 +89,25 @@ int main(int argc, char* argv[])
     }
 
     const bool incremental = true;
+    long cur_ntrain, cur_ntotal, cur_nflat;
     if (incremental) {
         const long batch_size = 200000L;
         const long batch_num = nb / batch_size;
         assert(nb % batch_size == 0);
         for (long i = 0; i < batch_num; i++) {
             vdb.AddWithIds(batch_size, xb + i * batch_size * sift_dim, xids + i * batch_size);
+            vdb.GetIndexState(cur_ntrain, cur_ntotal, cur_nflat);
             faiss::Index* index;
             long ntrain;
-            vdb.BuildIndex(index, ntrain);
+            vdb.BuildIndex(cur_ntrain, cur_ntotal, index, ntrain);
             vdb.ActivateIndex(index, ntrain);
         }
     } else {
         vdb.AddWithIds(nb, xb, xids);
-
+        vdb.GetIndexState(cur_ntrain, cur_ntotal, cur_nflat);
         faiss::Index* index;
         long ntrain;
-        vdb.BuildIndex(index, ntrain);
+        vdb.BuildIndex(cur_ntrain, cur_ntotal, index, ntrain);
         vdb.ActivateIndex(index, ntrain);
     }
     delete[] xb;

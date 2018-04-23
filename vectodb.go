@@ -35,6 +35,13 @@ func (vdb *VectoDB) Destroy() (err error) {
 	return
 }
 
+func (vdb *VectoDB) BuildIndex(cur_ntrain, cur_ntotal int) (index unsafe.Pointer, ntrain int, err error) {
+	var ntrain_c C.long
+	index = C.VectodbBuildIndex(vdb.vdb_c, C.long(cur_ntrain), C.long(cur_ntotal), &ntrain_c)
+	ntrain = int(ntrain_c)
+	return
+}
+
 /**
  * Writer methods. There could be multiple writers.
  */
@@ -56,29 +63,21 @@ func (vdb *VectoDB) AddWithIds(nb int, xb []float32, xids []int64) (err error) {
 /**
  * Reader methods. There could be multiple readers.
  */
-
-func (vdb *VectoDB) TryBuildIndex(exhaust_threshold int) (index unsafe.Pointer, ntrain int, err error) {
+func (vdb *VectoDB) GetIndexState() (ntrain, ntotal, nflat int, err error) {
 	vdb.rwlock.RLock()
 	defer vdb.rwlock.RUnlock()
-	var ntrain_c C.long
-	index = C.VectodbTryBuildIndex(vdb.vdb_c, C.long(exhaust_threshold), &ntrain_c)
+	var ntrain_c, ntotal_c, nflat_c C.long
+	C.VectodbGetIndexState(vdb.vdb_c, &ntrain_c, &ntotal_c, &nflat_c)
 	ntrain = int(ntrain_c)
-	return
-}
-
-func (vdb *VectoDB) BuildIndex() (index unsafe.Pointer, ntrain int, err error) {
-	vdb.rwlock.RLock()
-	defer vdb.rwlock.RUnlock()
-	var ntrain_c C.long
-	index = C.VectodbBuildIndex(vdb.vdb_c, &ntrain_c)
-	ntrain = int(ntrain_c)
+	ntotal = int(ntotal_c)
+	nflat = int(nflat_c)
 	return
 }
 
 func (vdb *VectoDB) Search(nq int, xq []float32, distances []float32, xids []int64) (err error) {
 	vdb.rwlock.RLock()
-	defer vdb.rwlock.RUnlock()
 	C.VectodbSearch(vdb.vdb_c, C.long(nq), (*C.float)(&xq[0]), (*C.float)(&distances[0]), (*C.long)(&xids[0]))
+	vdb.rwlock.RUnlock()
 	return
 }
 

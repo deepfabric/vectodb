@@ -12,6 +12,10 @@ class Index;
 
 class VectoDB {
 public:
+    /**
+     * Following methods needn't lock protection.
+     */
+
     /** 
      * Construct a VectoDB, load base and index from work_dir.
      *
@@ -27,6 +31,13 @@ public:
      * Deconstruct a VectoDB.
      */
     virtual ~VectoDB();
+
+    /** 
+     * Build index.
+     * @param index                 output index
+     * @param index_size            output the number of vectors contained in index
+     */
+    void BuildIndex(long cur_ntrain, long cur_ntotal, faiss::Index*& index, long& ntrain) const;
 
     /**
      * Writer methods. There could be multiple writers.
@@ -67,18 +78,14 @@ public:
      * Avoid rwlock intentionally since C++ locks interfere with goroutines scheduling.
      */
 
-    /** Same as build_index but skip building if current number of exhaust vectors is under the given threshold.
-     *
-     * @param exhaust_threshold     input exhaust threshold
-     */
-    void TryBuildIndex(long exhaust_threshold, faiss::Index*& index, long& ntrain) const;
-
     /** 
-     * Build index.
-     * @param index                 output index
-     * @param index_size            output the number of vectors contained in index
+     * Get index state.
+     *
+     * @param ntain         output number of index train points
+     * @param ntotal        output number of index points
+     * @param nflat         output number of points not indexed
      */
-    void BuildIndex(faiss::Index*& index, long& ntrain) const;
+    void GetIndexState(long& ntrain, long& ntotal, long& nflat) const;
 
     /** 
      * Query n vectors of dimension d to the index.
