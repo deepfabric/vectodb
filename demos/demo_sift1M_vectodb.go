@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"flag"
 	"log"
 	"os"
 	"os/signal"
@@ -101,7 +103,7 @@ func ivecs_read(fname string) (x []int32, d, n int, err error) {
 	return
 }
 
-func builderLoop(vdb *vectodb.VectoDB, quit <-chan interface{}) {
+func builderLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 	ticker := time.Tick(5 * time.Second)
 	threshold := 1000
 	var index unsafe.Pointer
@@ -109,7 +111,7 @@ func builderLoop(vdb *vectodb.VectoDB, quit <-chan interface{}) {
 	var err error
 	for {
 		select {
-		case <-quit:
+		case <-ctx.Done():
 			return
 		case <-ticker:
 			log.Printf("build iteration begin")
@@ -133,8 +135,7 @@ func builderLoop(vdb *vectodb.VectoDB, quit <-chan interface{}) {
 	}
 }
 
-func searcherLoop(vdb *vectodb.VectoDB, quit <-chan interface{}) {
-	ticker := time.Tick(1 * time.Second)
+func searcherLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 	var err error
 	log.Printf("Searching index")
 	var xq []float32
@@ -152,9 +153,8 @@ func searcherLoop(vdb *vectodb.VectoDB, quit <-chan interface{}) {
 	var ntrain, ntotal, nflat int
 	for {
 		select {
-		case <-quit:
+		case <-ctx.Done():
 			return
-		case <-ticker:
 		default:
 			log.Printf("search iteration begin")
 			if ntrain, ntotal, nflat, err = vdb.GetIndexState(); err != nil {
@@ -169,7 +169,7 @@ func searcherLoop(vdb *vectodb.VectoDB, quit <-chan interface{}) {
 	}
 }
 
-func benchmark() {
+func benchmarkAdd() {
 	var err error
 	var vdb *vectodb.VectoDB
 
@@ -181,10 +181,9 @@ func benchmark() {
 		log.Fatalf("%+v", err)
 	}
 
-	quit1 := make(chan interface{})
-	quit2 := make(chan interface{})
-	go builderLoop(vdb, quit1)
-	go searcherLoop(vdb, quit2)
+	ctx, cancel := context.WithCancel(context.Background())
+	go builderLoop(ctx, vdb)
+	go searcherLoop(ctx, vdb)
 
 	log.Printf("Loading database")
 	var xb []float32
@@ -202,38 +201,43 @@ func benchmark() {
 		xids[i] = int64(i)
 	}
 
+	begin := time.Now()
 	batchSize := 2
 	for i := 0; i < nb/batchSize; i++ {
 		vdb.AddWithIds(batchSize, xb[i*batchSize:(i+1)*batchSize], xids[i*batchSize:(i+1)*batchSize])
 	}
-	log.Printf("added %d vectors\n", nb)
-	quit1 <- "quit"
-	quit2 <- "quit"
-
+	log.Printf("added %d vectors in %v\n", nb, time.Since(begin))
+	cancel()
+	time.Sleep(1 * time.Second)
+	return
 }
 
 func main() {
+	var bench bool
+	flag.BoolVar(&bench, "b", false, "benchmark (*VectoDB)AddWithIds")
+	flag.Parse()
+	if bench {
+		go func() {
+			sc := make(chan os.Signal, 1)
+			signal.Notify(sc, syscall.SIGUSR1)
+			for {
+				sig := <-sc
+				switch sig {
+				case syscall.SIGUSR1:
+					buf := bytes.NewBuffer([]byte{})
+					_ = runPprof.Lookup("goroutine").WriteTo(buf, 1)
+					log.Printf("got signal=<%d>.", sig)
+					log.Println(buf.String())
+					continue
+				}
+			}
+		}()
+		benchmarkAdd()
+		return
+	}
+
 	var err error
 	var vdb *vectodb.VectoDB
-
-	go func() {
-		sc := make(chan os.Signal, 1)
-		signal.Notify(sc, syscall.SIGUSR1)
-		for {
-			sig := <-sc
-			switch sig {
-			case syscall.SIGUSR1:
-				buf := bytes.NewBuffer([]byte{})
-				_ = runPprof.Lookup("goroutine").WriteTo(buf, 1)
-				log.Printf("got signal=<%d>.", sig)
-				log.Println(buf.String())
-				continue
-			}
-		}
-	}()
-
-	benchmark()
-	return
 
 	workDir := "/tmp"
 	if err = vectodb.VectodbClearWorkDir(workDir); err != nil {

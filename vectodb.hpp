@@ -12,10 +12,6 @@ class Index;
 
 class VectoDB {
 public:
-    /**
-     * Following methods needn't lock protection.
-     */
-
     /** 
      * Construct a VectoDB, load base and index from work_dir.
      *
@@ -39,8 +35,17 @@ public:
      */
     void BuildIndex(long cur_ntrain, long cur_ntotal, faiss::Index*& index, long& ntrain) const;
 
+    /** 
+     * Add n vectors of dimension d to the index.
+     * The upper layer does memory management for xb, xids.
+     *
+     * @param xb     input matrix, size n * d
+     * @param xids if non-null, ids to store for the vectors (size n)
+     */
+    void AddWithIds(long nb, const float* xb, const long* xids);
+
     /**
-     * Writer methods. There could be multiple writers.
+     * Methods assuming Go write-lock already holded. There could be multiple writers.
      * Avoid rwlock intentionally since C++ locks interfere with goroutines scheduling.
      */
 
@@ -54,15 +59,6 @@ public:
     void ActivateIndex(faiss::Index* index, long ntrain);
 
     /** 
-     * Add n vectors of dimension d to the index.
-     * The upper layer does memory management for xb, xids.
-     *
-     * @param xb     input matrix, size n * d
-     * @param xids if non-null, ids to store for the vectors (size n)
-     */
-    void AddWithIds(long nb, const float* xb, const long* xids);
-
-    /** 
      * Update given vectors.
      * Assuming this operation is very rare, i.e. once a day.
      * This causes disagreement between database and index, so user shall invoke build_index later. 
@@ -74,7 +70,7 @@ public:
     void UpdateWithIds(long nb, const float* xb, const long* xids);
 
     /**
-     * Reader methods. There could be multiple readers.
+     * Methods assuming Go read-lock already holded. There could be multiple readers.
      * Avoid rwlock intentionally since C++ locks interfere with goroutines scheduling.
      */
 

@@ -42,6 +42,11 @@ func (vdb *VectoDB) BuildIndex(cur_ntrain, cur_ntotal int) (index unsafe.Pointer
 	return
 }
 
+func (vdb *VectoDB) AddWithIds(nb int, xb []float32, xids []int64) (err error) {
+	C.VectodbAddWithIds(vdb.vdb_c, C.long(nb), (*C.float)(&xb[0]), (*C.long)(&xids[0]))
+	return
+}
+
 /**
  * Writer methods. There could be multiple writers.
  */
@@ -50,13 +55,6 @@ func (vdb *VectoDB) ActivateIndex(index unsafe.Pointer, ntrain int) (err error) 
 	vdb.rwlock.Lock()
 	defer vdb.rwlock.Unlock()
 	C.VectodbActivateIndex(vdb.vdb_c, index, C.long(ntrain))
-	return
-}
-
-func (vdb *VectoDB) AddWithIds(nb int, xb []float32, xids []int64) (err error) {
-	vdb.rwlock.Lock()
-	defer vdb.rwlock.Unlock()
-	C.VectodbAddWithIds(vdb.vdb_c, C.long(nb), (*C.float)(&xb[0]), (*C.long)(&xids[0]))
 	return
 }
 

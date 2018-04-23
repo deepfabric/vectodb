@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <pthread.h>
 #include <sstream>
 #include <stdio.h>
@@ -28,6 +29,7 @@
 
 using namespace std;
 namespace fs = boost::filesystem;
+using uniq_lck = unique_lock<mutex>;
 
 const long MAX_NTRAIN = 160000L; //the number of training points which IVF4096 needs for 1M dataset
 
@@ -46,6 +48,7 @@ struct DbState {
         fs_base.close();
     }
 
+    // following members are protected by Go rwlock.
     std::fstream fs_base;
     uint8_t* data; //mapped (readonly) base file. remap after activating an index
     long len_data; //length of mapped file
@@ -53,6 +56,10 @@ struct DbState {
     long ntrain; // the number of training points of the index
     faiss::Index* index;
     faiss::Index* flat; // vectors not in index
+
+    // following members are protected by C++ mutex.
+    mutex mut;
+    vector<float> base; //vectors not in index + flat
 };
 
 VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const char* index_key_in, const char* query_params_in)
@@ -191,26 +198,6 @@ void VectoDB::ActivateIndex(faiss::Index* index, long ntrain)
     buildFlat();
 }
 
-void VectoDB::AddWithIds(long nb, const float* xb, const long* xids)
-{
-    long ntotal = getIndexSize() + getFlatSize();
-    long len_buf = nb * len_line;
-    std::vector<char> buf(len_buf);
-    for (long i = 0; i < nb; i++) {
-        memcpy(&buf[i * len_line], &xids[i], sizeof(long));
-        memcpy(&buf[i * len_line + sizeof(long)], &xb[i * dim], dim * sizeof(float));
-    }
-    state->fs_base.write(&buf[0], len_buf);
-
-    if (state->flat == nullptr) {
-        state->flat = faiss::index_factory(dim, "Flat", metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
-    }
-    state->flat->add(nb, xb);
-    for (long i = 0; i < nb; i++) {
-        state->uid2num[xids[i]] = ntotal + i;
-    }
-}
-
 void VectoDB::buildFlat()
 {
     faiss::Index* flat = faiss::index_factory(dim, "Flat", metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
@@ -244,6 +231,26 @@ void VectoDB::GetIndexState(long& ntrain, long& ntotal, long& nflat) const
     nflat = state->flat->ntotal;
 }
 
+void VectoDB::AddWithIds(long nb, const float* xb, const long* xids)
+{
+    uniq_lck l{ state->mut };
+    long ntotal = getIndexSize() + getFlatSize() + state->base.size() / dim;
+    long len_buf = nb * len_line;
+    std::vector<char> buf(len_buf);
+    for (long i = 0; i < nb; i++) {
+        memcpy(&buf[i * len_line], &xids[i], sizeof(long));
+        memcpy(&buf[i * len_line + sizeof(long)], &xb[i * dim], dim * sizeof(float));
+    }
+    state->fs_base.write(&buf[0], len_buf);
+
+    for (long i = 0; i < nb; i++) {
+        state->uid2num[xids[i]] = ntotal + i;
+    }
+    for (long i = 0; i < nb * dim; i++) {
+        state->base.push_back(xb[i]);
+    }
+}
+
 void VectoDB::Search(long nq, const float* xq, float* distances, long* xids) const
 {
     // output buffers
@@ -274,6 +281,15 @@ void VectoDB::Search(long nq, const float* xq, float* distances, long* xids) con
         }
     }
     long index_size = getIndexSize();
+
+    {
+        uniq_lck l{ state->mut };
+        long memSize = state->base.size() / dim;
+        if (memSize != 0) {
+            state->flat->add(memSize, &state->base[0]);
+            state->base.clear();
+        }
+    }
     if (state->flat->ntotal != 0) {
         state->flat->search(nq, xq, k, D, I);
         for (int i = 0; i < nq; i++) {
