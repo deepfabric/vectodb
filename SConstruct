@@ -6,7 +6,7 @@ import subprocess
 # Prepare faiss on CentOS 7 x86_64:
 # 1. Enable EPEL.
 # 2. Install dependencies.
-# $ sudo yum -y install openblas-devel gtest-devel
+# $ sudo yum -y install openblas-devel
 # 3. Checkout faiss(https://github.com/facebookresearch/faiss.git) at faiss.
 # 4. Build it:
 # $ cd faiss
@@ -14,6 +14,17 @@ import subprocess
 # $ make demos/demo_sift1M
 
 env = Environment()
+conf = Configure(env)
+for header in 'omp.h openblas/openblas_config.h'.split():
+    if not conf.CheckCHeader(header):
+        print header, ' must be installed!'
+        Exit(1)
+for header in 'boost/filesystem.hpp boost/system/system_error.hpp boost/thread/shared_mutex.hpp gflags/gflags.h glog/logging.h'.split():
+    if not conf.CheckCXXHeader(header):
+        print header, ' must be installed!'
+        Exit(1)
+env = conf.Finish()
+
 env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && cp example_makefiles/makefile.inc.Linux makefile.inc && make demos/demo_sift1M && popd')
 if env.GetOption('clean'):
     subprocess.call('pushd faiss && make clean && popd', shell=True)
