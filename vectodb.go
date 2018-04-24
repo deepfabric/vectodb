@@ -1,7 +1,7 @@
 package vectodb
 
 // #cgo CXXFLAGS: -I${SRCDIR}
-// #cgo LDFLAGS: -L${SRCDIR}/faiss -lboost_filesystem -lboost_system -lglog -lgflags -lfaiss -lopenblas -lgomp -lstdc++
+// #cgo LDFLAGS: -L${SRCDIR}/faiss -lboost_thread -lboost_filesystem -lboost_system -lglog -lgflags -lfaiss -lopenblas -lgomp -lstdc++
 // #include "vectodb.h"
 // #include <stdlib.h>
 import "C"
@@ -47,6 +47,12 @@ func (vdb *VectoDB) AddWithIds(nb int, xb []float32, xids []int64) (err error) {
 	return
 }
 
+func (vdb *VectoDB) GetFlatSize() (nsize int, err error) {
+	nsize_c := C.VectodbGetFlatSize(vdb.vdb_c)
+	nsize = int(nsize_c)
+	return
+}
+
 /**
  * Writer methods. There could be multiple writers.
  */
@@ -61,21 +67,21 @@ func (vdb *VectoDB) ActivateIndex(index unsafe.Pointer, ntrain int) (err error) 
 /**
  * Reader methods. There could be multiple readers.
  */
-func (vdb *VectoDB) GetIndexState() (ntrain, ntotal, nflat int, err error) {
+func (vdb *VectoDB) GetIndexSize() (ntrain, nsize int, err error) {
 	vdb.rwlock.RLock()
 	defer vdb.rwlock.RUnlock()
-	var ntrain_c, ntotal_c, nflat_c C.long
-	C.VectodbGetIndexState(vdb.vdb_c, &ntrain_c, &ntotal_c, &nflat_c)
+	var ntrain_c, nsize_c C.long
+	C.VectodbGetIndexSize(vdb.vdb_c, &ntrain_c, &nsize_c)
 	ntrain = int(ntrain_c)
-	ntotal = int(ntotal_c)
-	nflat = int(nflat_c)
+	nsize = int(nsize_c)
 	return
 }
 
-func (vdb *VectoDB) Search(nq int, xq []float32, distances []float32, xids []int64) (err error) {
+func (vdb *VectoDB) Search(nq int, xq []float32, distances []float32, xids []int64) (ntotal int, err error) {
 	vdb.rwlock.RLock()
-	C.VectodbSearch(vdb.vdb_c, C.long(nq), (*C.float)(&xq[0]), (*C.float)(&distances[0]), (*C.long)(&xids[0]))
+	ntotal_c := C.VectodbSearch(vdb.vdb_c, C.long(nq), (*C.float)(&xq[0]), (*C.float)(&distances[0]), (*C.long)(&xids[0]))
 	vdb.rwlock.RUnlock()
+	ntotal = int(ntotal_c)
 	return
 }
 

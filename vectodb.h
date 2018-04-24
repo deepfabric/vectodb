@@ -15,17 +15,18 @@ void VectodbDelete(void* vdb);
  */
 void* VectodbBuildIndex(void* vdb, long cur_ntrain, long cur_ntotal, long* ntrain);
 void VectodbAddWithIds(void* vdb, long nb, float* xb, long* xids);
+long VectodbGetFlatSize(void* vdb);
 
 /**
- * Methods assuming Go write-lock already holded. There could be multiple writers.
+ * Methods assuming Go write-lock already held. There could be multiple writers.
  */
 void VectodbActivateIndex(void* vdb, void* index, long ntrain);
 
 /**
- * Methods assuming Go read-lock already holded. There could be multiple readers.
+ * Methods assuming Go read-lock already held. There could be multiple readers.
  */
-void VectodbGetIndexState(void* vdb, long* ntrain, long* ntotal, long* nflat);
-void VectodbSearch(void* vdb, long nq, float* xq, float* distances, long* xids);
+void VectodbGetIndexSize(void* vdb, long* ntrain, long* nsize);
+long VectodbSearch(void* vdb, long nq, float* xq, float* distances, long* xids);
 
 /**
  * Static methods.

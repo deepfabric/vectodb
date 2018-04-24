@@ -96,7 +96,7 @@ int main(int argc, char* argv[])
         assert(nb % batch_size == 0);
         for (long i = 0; i < batch_num; i++) {
             vdb.AddWithIds(batch_size, xb + i * batch_size * sift_dim, xids + i * batch_size);
-            vdb.GetIndexState(cur_ntrain, cur_ntotal, cur_nflat);
+            vdb.GetIndexSize(cur_ntrain, cur_ntotal);
             faiss::Index* index;
             long ntrain;
             vdb.BuildIndex(cur_ntrain, cur_ntotal, index, ntrain);
@@ -104,7 +104,7 @@ int main(int argc, char* argv[])
         }
     } else {
         vdb.AddWithIds(nb, xb, xids);
-        vdb.GetIndexState(cur_ntrain, cur_ntotal, cur_nflat);
+        vdb.GetIndexSize(cur_ntrain, cur_ntotal);
         faiss::Index* index;
         long ntrain;
         vdb.BuildIndex(cur_ntrain, cur_ntotal, index, ntrain);

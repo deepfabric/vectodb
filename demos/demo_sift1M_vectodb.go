@@ -115,11 +115,14 @@ func builderLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 			return
 		case <-ticker:
 			log.Printf("build iteration begin")
-			if ntrain, ntotal, nflat, err = vdb.GetIndexState(); err != nil {
+			if nflat, err = vdb.GetFlatSize(); err != nil {
 				log.Fatal("%+v", err)
 			}
-			log.Printf("ntrain %d, ntotal %d, nflat %d", ntrain, ntotal, nflat)
+			log.Printf("nflat %d", nflat)
 			if nflat >= threshold {
+				if ntrain, ntotal, err = vdb.GetIndexSize(); err != nil {
+					log.Fatal("%+v", err)
+				}
 				if index, ntrain, err = vdb.BuildIndex(ntrain, ntotal); err != nil {
 					log.Fatalf("%+v", err)
 				}
@@ -150,21 +153,21 @@ func searcherLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 	nq = 500
 	D := make([]float32, nq)
 	I := make([]int64, nq)
-	var ntrain, ntotal, nflat int
+	var nflat, ntotal int
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 			log.Printf("search iteration begin")
-			if ntrain, ntotal, nflat, err = vdb.GetIndexState(); err != nil {
+			if nflat, err = vdb.GetFlatSize(); err != nil {
 				log.Fatal("%+v", err)
 			}
-			log.Printf("ntrain %d, ntotal %d, nflat %d", ntrain, ntotal, nflat)
-			if err = vdb.Search(nq, xq, D, I); err != nil {
+			log.Printf("nflat %d", nflat)
+			if ntotal, err = vdb.Search(nq, xq, D, I); err != nil {
 				log.Fatalf("%+v", err)
 			}
-			log.Printf("search iteration done")
+			log.Printf("search iteration done, ntotal=%d", ntotal)
 		}
 	}
 }
@@ -288,9 +291,11 @@ func main() {
 	}
 	D := make([]float32, nq)
 	I := make([]int64, nq)
-	if err = vdb.Search(nq, xq, D, I); err != nil {
+	var ntotal int
+	if ntotal, err = vdb.Search(nq, xq, D, I); err != nil {
 		log.Fatalf("%+v", err)
 	}
+	log.Printf("Search done on %d vectors", ntotal)
 
 	log.Printf("Loading ground truth for %d queries", nq)
 	var gt []int32

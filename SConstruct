@@ -30,7 +30,7 @@ Export("env")
 
 SConscript(["demos/SConscript"])
 
-env.StaticLibrary('vectodb', ['vectodb.cpp'], LIBS=['boost_filesystem', 'boost_system'])
+env.StaticLibrary('vectodb', ['vectodb.cpp'], LIBS=['boost_thread', 'boost_filesystem', 'boost_system'])
 
 
 env.Command('demos/demo_sift1M_vectodb_go', ['demos/demo_sift1M_vectodb.go', 'vectodb.go', 'demos/demo_sift1M_vectodb'], 'go install -x . && pushd demos && go build -o demo_sift1M_vectodb_go demo_sift1M_vectodb.go && popd')

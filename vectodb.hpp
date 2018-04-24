@@ -44,8 +44,14 @@ public:
      */
     void AddWithIds(long nb, const float* xb, const long* xids);
 
+    /** 
+     * Get flat size.
+     *
+     */
+    long GetFlatSize();
+
     /**
-     * Methods assuming Go write-lock already holded. There could be multiple writers.
+     * Methods assuming Go write-lock already held. There could be multiple writers.
      * Avoid rwlock intentionally since C++ locks interfere with goroutines scheduling.
      */
 
@@ -70,18 +76,17 @@ public:
     void UpdateWithIds(long nb, const float* xb, const long* xids);
 
     /**
-     * Methods assuming Go read-lock already holded. There could be multiple readers.
+     * Methods assuming Go read-lock already held. There could be multiple readers.
      * Avoid rwlock intentionally since C++ locks interfere with goroutines scheduling.
      */
 
     /** 
-     * Get index state.
+     * Get index size.
      *
      * @param ntain         output number of index train points
-     * @param ntotal        output number of index points
-     * @param nflat         output number of points not indexed
+     * @param nsize         output number of index points
      */
-    void GetIndexState(long& ntrain, long& ntotal, long& nflat) const;
+    void GetIndexSize(long& ntrain, long& nsize) const;
 
     /** 
      * Query n vectors of dimension d to the index.
@@ -92,7 +97,7 @@ public:
      * @param xids          output labels of the 1-NNs, size nq
      * @param distances     output pairwise distances, size nq
      */
-    void Search(long nq, const float* xq, float* distances, long* xids) const;
+    long Search(long nq, const float* xq, float* distances, long* xids);
 
 public:
     /** 
@@ -108,11 +113,10 @@ private:
     std::string getBaseFp() const;
     std::string getIndexFp(long ntrain) const;
     long getIndexFpNtrain() const;
-    long getIndexSize() const;
-    long getFlatSize() const;
     void readBase(const uint8_t* data, long len_data, long start_num, std::vector<float>& base) const;
     void readXids(const uint8_t* data, long len_data, long start_num, std::vector<long>& xids) const;
     void buildFlat();
+    void mergeToFlat();
 
 private:
     std::string work_dir;
