@@ -243,9 +243,9 @@ func main() {
 	var vdb *vectodb.VectoDB
 
 	workDir := "/tmp"
-	if err = vectodb.VectodbClearWorkDir(workDir); err != nil {
+	/*if err = vectodb.VectodbClearWorkDir(workDir); err != nil {
 		log.Fatalf("%+v", err)
-	}
+	}*/
 	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, siftMetric, siftIndexKey, siftQueryParams); err != nil {
 		log.Fatalf("%+v", err)
 	}

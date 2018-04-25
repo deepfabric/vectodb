@@ -79,7 +79,7 @@ int main(int argc, char* argv[])
     const long sift_dim = 128L;
     const char* work_dir = "/tmp";
 
-    VectoDB::ClearWorkDir(work_dir);
+    //VectoDB::ClearWorkDir(work_dir);
     VectoDB vdb(work_dir, sift_dim, 1);
     size_t nb, d;
     float* xb = fvecs_read("sift1M/sift_base.fvecs", &d, &nb);

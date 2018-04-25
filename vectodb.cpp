@@ -126,6 +126,7 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
     for (long i = 0; i < (long)xids.size(); i++) {
         state->xid2num[xids[i]] = i;
     }
+    state->xids = std::move(xids);
 
     state->total = state->len_data / len_line;
     google::FlushLogFiles(google::INFO);
@@ -251,6 +252,12 @@ void VectoDB::AddWithIds(long nb, const float* xb, const long* xids)
         memcpy(&buf[i * len_line + sizeof(long)], &xb[i * dim], dim * sizeof(float));
     }
     mtxlock m{ state->m_base };
+    // deduplicate xids
+    {
+        rlock r{ state->rw_xids };
+        if (state->xid2num.count(xids[0]) > 0)
+            return;
+    }
     long ntotal = state->total.fetch_add(nb);
     state->fs_base.write(&buf[0], len_buf);
     for (long i = 0; i < nb * dim; i++) {
