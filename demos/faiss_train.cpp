@@ -23,6 +23,8 @@
 #include <unistd.h>
 
 #include "faiss/AutoTune.h"
+#include "faiss/IndexHNSW.h"
+#include "faiss/IndexIVFFlat.h"
 #include "faiss/index_io.h"
 
 using namespace std;
@@ -94,7 +96,7 @@ elapsed()
 int main(int argc, char** argv)
 {
     //Sets the number of threads in subsequent parallel regions.
-    omp_set_num_threads(2);
+    omp_set_num_threads(1);
 
     const string usage("faiss_train index_key metric_type database (output)index");
     if (argc != 5) {
@@ -105,7 +107,7 @@ int main(int argc, char** argv)
     char* metric_type = argv[2];
     char* database = argv[3];
     char* fname_index = argv[4];
-    const char* supported_index_keys[9] = {
+    const char* supported_index_keys[10] = {
         "IVF4096,Flat",
         "Flat",
         "PQ32",
@@ -114,9 +116,10 @@ int main(int argc, char** argv)
         "IVF4096,PQ32",
         "IMI2x8,PQ32",
         "IMI2x8,PQ8+16",
-        "OPQ16_64,IMI2x8,PQ8+16"
+        "OPQ16_64,IMI2x8,PQ8+16",
+        "IVF16384_HNSW32,Flat"
     };
-    const char* selected_paramss[9] = {
+    const char* selected_paramss[10] = {
         "nprobe=256",
         "",
         "ht=118",
@@ -125,7 +128,8 @@ int main(int argc, char** argv)
         "nprobe=256,ht=256",
         "nprobe=4096,ht=256,max_codes=inf",
         "nprobe=4096,ht=64,max_codes=32768,k_factor=16",
-        "nprobe=4096,ht=64,max_codes=inf,k_factor=64"
+        "nprobe=4096,ht=64,max_codes=inf,k_factor=64",
+        "nprobe=384"
     };
 
     const char* selected_params = nullptr;
@@ -170,17 +174,17 @@ int main(int argc, char** argv)
     faiss::Index* index = faiss::index_factory(d2, index_key, metric);
 
     if (strcmp(index_key, "Flat")) {
-        /*printf("[%.3f s] Generating train set\n", elapsed() - t0);
-        size_t nt = nb / train_ratio;
-        float* xt = new float[nt * d2];
-        for (size_t i = 0; i < nt; i += 1) {
-            memcpy(xt + i * d2, xb + i * train_ratio * d2, sizeof(float) * d2);
+        // according to faiss/benchs/bench_hnsw.py, ivf_hnsw_quantizer.
+        auto index_ivf = dynamic_cast<faiss::IndexIVFFlat*>(index);
+        if (index_ivf != nullptr) {
+            index_ivf->cp.min_points_per_centroid = 5; //quiet warning
+            index_ivf->quantizer_trains_alone = 2;
+            auto quantizer = dynamic_cast<faiss::IndexHNSWFlat*>(index_ivf->quantizer);
+            if (quantizer != nullptr) {
+                quantizer->hnsw.efSearch = 64;
+            }
         }
 
-        printf("[%.3f s] Training on %ld vectors\n", elapsed() - t0, nt);
-        index->train(nt, xt);
-        delete[] xt;
-        */
         long nt = std::min(long(nb), std::max(long(nb / 10), 160000L));
         printf("[%.3f s] Training on %ld vectors\n", elapsed() - t0, nt);
         index->train(nt, xb);

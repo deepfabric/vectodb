@@ -26,6 +26,8 @@ const (
 
 	siftIndexKey    string = "IVF4096,PQ32"
 	siftQueryParams string = "nprobe=256,ht=256"
+	//siftIndexKey    string = "IVF16384_HNSW32,Flat"
+	//siftQueryParams string = "nprobe=384"
 )
 
 //FileMmap mmaps the given file.
@@ -107,7 +109,7 @@ func builderLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 	ticker := time.Tick(5 * time.Second)
 	threshold := 1000
 	var index unsafe.Pointer
-	var ntrain, ntotal, nflat int
+	var cur_ntrain, cur_nsize, ntrain, nflat int
 	var err error
 	for {
 		select {
@@ -116,14 +118,15 @@ func builderLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 		case <-ticker:
 			log.Printf("build iteration begin")
 			if nflat, err = vdb.GetFlatSize(); err != nil {
-				log.Fatal("%+v", err)
+				log.Fatalf("%+v", err)
 			}
 			log.Printf("nflat %d", nflat)
 			if nflat >= threshold {
-				if ntrain, ntotal, err = vdb.GetIndexSize(); err != nil {
-					log.Fatal("%+v", err)
+				if cur_ntrain, cur_nsize, err = vdb.GetIndexSize(); err != nil {
+					log.Fatalf("%+v", err)
 				}
-				if index, ntrain, err = vdb.BuildIndex(ntrain, ntotal); err != nil {
+				log.Printf("cur_ntrain %d, cur_nsize %d", cur_ntrain, cur_nsize)
+				if index, ntrain, err = vdb.BuildIndex(cur_ntrain, cur_nsize); err != nil {
 					log.Fatalf("%+v", err)
 				}
 				log.Printf("BuildIndex done")
@@ -161,7 +164,7 @@ func searcherLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 		default:
 			log.Printf("search iteration begin")
 			if nflat, err = vdb.GetFlatSize(); err != nil {
-				log.Fatal("%+v", err)
+				log.Fatalf("%+v", err)
 			}
 			log.Printf("nflat %d", nflat)
 			if ntotal, err = vdb.Search(nq, xq, D, I); err != nil {
@@ -271,8 +274,12 @@ func main() {
 	}
 
 	var index unsafe.Pointer
-	var ntrain int
-	if index, ntrain, err = vdb.BuildIndex(0, 0); err != nil {
+	var cur_ntrain, cur_nsize, ntrain int
+	if cur_ntrain, cur_nsize, err = vdb.GetIndexSize(); err != nil {
+		log.Fatalf("%+v", err)
+	}
+	log.Printf("cur_ntrain %d, cur_nsize %d", cur_ntrain, cur_nsize)
+	if index, ntrain, err = vdb.BuildIndex(cur_ntrain, cur_nsize); err != nil {
 		log.Fatalf("%+v", err)
 	}
 	if err = vdb.ActivateIndex(index, ntrain); err != nil {

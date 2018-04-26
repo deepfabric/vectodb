@@ -92,10 +92,10 @@ int main()
     // const char* index_key = "PQ32";
     // const char* index_key = "PCA80,Flat";
     // const char* index_key = "IVF4096,PQ8+16";
-    // const char* index_key = "IVF4096,PQ32";
+    const char* index_key = "IVF4096,PQ32";
     // const char* index_key = "IMI2x8,PQ32";
     // const char* index_key = "IMI2x8,PQ8+16";
-    const char* index_key = "OPQ16_64,IMI2x8,PQ8+16";
+    //const char* index_key = "OPQ16_64,IMI2x8,PQ8+16";
 
     faiss::Index* index;
 

@@ -25,7 +25,7 @@ for header in 'boost/filesystem.hpp boost/system/system_error.hpp boost/thread/s
         Exit(1)
 env = conf.Finish()
 
-env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && cp example_makefiles/makefile.inc.Linux makefile.inc && make demos/demo_sift1M && popd')
+env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && cp example_makefiles/makefile.inc.Linux makefile.inc && make demos/demo_sift1M py && popd')
 if env.GetOption('clean'):
     subprocess.call('pushd faiss && make clean && popd', shell=True)
 

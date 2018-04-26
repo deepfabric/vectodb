@@ -80,7 +80,9 @@ int main(int argc, char* argv[])
     const char* work_dir = "/tmp";
 
     //VectoDB::ClearWorkDir(work_dir);
-    VectoDB vdb(work_dir, sift_dim, 1);
+    //VectoDB vdb(work_dir, sift_dim, 1);
+    VectoDB vdb(work_dir, sift_dim, 1, "IVF4096,PQ32", "nprobe=256,ht=256");
+    //VectoDB vdb(work_dir, sift_dim, 1, "IVF16384_HNSW32,Flat", "nprobe=384");
     size_t nb, d;
     float* xb = fvecs_read("sift1M/sift_base.fvecs", &d, &nb);
     long* xids = new long[nb];
@@ -89,25 +91,26 @@ int main(int argc, char* argv[])
     }
 
     const bool incremental = true;
-    long cur_ntrain, cur_ntotal, cur_nflat;
+    long cur_ntrain, cur_nsize;
     if (incremental) {
         const long batch_size = 200000L;
         const long batch_num = nb / batch_size;
         assert(nb % batch_size == 0);
         for (long i = 0; i < batch_num; i++) {
             vdb.AddWithIds(batch_size, xb + i * batch_size * sift_dim, xids + i * batch_size);
-            vdb.GetIndexSize(cur_ntrain, cur_ntotal);
+            vdb.GetIndexSize(cur_ntrain, cur_nsize);
+            LOG(INFO) << "cur_ntrain " << cur_ntrain << ", cur_nsize " << cur_nsize;
             faiss::Index* index;
             long ntrain;
-            vdb.BuildIndex(cur_ntrain, cur_ntotal, index, ntrain);
+            vdb.BuildIndex(cur_ntrain, cur_nsize, index, ntrain);
             vdb.ActivateIndex(index, ntrain);
         }
     } else {
         vdb.AddWithIds(nb, xb, xids);
-        vdb.GetIndexSize(cur_ntrain, cur_ntotal);
+        vdb.GetIndexSize(cur_ntrain, cur_nsize);
         faiss::Index* index;
         long ntrain;
-        vdb.BuildIndex(cur_ntrain, cur_ntotal, index, ntrain);
+        vdb.BuildIndex(cur_ntrain, cur_nsize, index, ntrain);
         vdb.ActivateIndex(index, ntrain);
     }
     delete[] xb;

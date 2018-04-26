@@ -30,10 +30,12 @@ public:
 
     /** 
      * Build index.
-     * @param index                 output index
-     * @param index_size            output the number of vectors contained in index
+     * @param cur_ntrain    input the number of train vectors of current index
+     * @param cur_nsize     input the number of vectors of current index
+     * @param index     output index
+     * @param ntrain    output the number of train vectors
      */
-    void BuildIndex(long cur_ntrain, long cur_ntotal, faiss::Index*& index, long& ntrain) const;
+    void BuildIndex(long cur_ntrain, long cur_nsize, faiss::Index*& index, long& ntrain) const;
 
     /** 
      * Add n vectors of dimension d to the index.

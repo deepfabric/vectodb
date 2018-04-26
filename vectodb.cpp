@@ -3,6 +3,8 @@
 
 #include "faiss/AutoTune.h"
 #include "faiss/IndexFlat.h"
+#include "faiss/IndexHNSW.h"
+#include "faiss/IndexIVFFlat.h"
 #include "faiss/index_io.h"
 
 #include <boost/filesystem.hpp>
@@ -165,18 +167,23 @@ void VectoDB::BuildIndex(long cur_ntrain, long cur_ntotal, faiss::Index*& index_
             LOG(INFO) << "Nothing to do since ntrain " << nt << " and index_size " << index_size << " are unchanged";
             index_out = nullptr;
         } else {
-            LOG(INFO) << "Reuse current index since ntrain " << nt << " is unchanged";
+            LOG(INFO) << "Reuse current index since ntrain " << nt << " is unchanged. index_size will increase from " << index_size << " to " << nb;
             index = faiss::read_index(getIndexFp(nt).c_str());
-            LOG(INFO) << "Adding " << nb - index_size << " vectors to index, index_size increased from " << index_size << " to " << nb;
             vector<float> base2;
             readBase(data, len_data, index_size, base2);
             index->add(nb - index_size, &base2[0]);
             index_out = index;
         }
     } else {
+        LOG(INFO) << "Training on " << nt << " vectors. cur_ntrain is " << cur_ntrain;
         index = faiss::index_factory(dim, index_key.c_str(), metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
+        // according to faiss/benchs/bench_hnsw.py, ivf_hnsw_quantizer.
+        auto index_ivf = dynamic_cast<faiss::IndexIVFFlat*>(index);
+        if (index_ivf != nullptr) {
+            index_ivf->cp.min_points_per_centroid = 5; //quiet warning
+            index_ivf->quantizer_trains_alone = 2;
+        }
         // Training
-        LOG(INFO) << "Training on " << nt << " vectors";
         vector<float> base;
         readBase(data, len_data, 0, base);
         assert((long)base.size() >= nt * dim);
@@ -217,7 +224,7 @@ void VectoDB::ActivateIndex(faiss::Index* index, long ntrain)
 // Needs Go write-lock
 void VectoDB::buildFlat()
 {
-    faiss::Index* flat = faiss::index_factory(dim, "Flat", metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
+    faiss::Index* flat = new faiss::IndexFlat(dim, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
     vector<float> base;
     long index_size = (state->index == nullptr) ? 0 : state->index->ntotal;
     readBase(state->data, state->len_data, index_size, base);
@@ -301,18 +308,19 @@ long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
         state->index->search(nq, xq, k, &D[0], &I[0]);
 
         // Refine result
+        faiss::Index* index2 = new faiss::IndexFlat(dim, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
         for (int i = 0; i < nq; i++) {
-            faiss::Index* index2 = faiss::index_factory(dim, "Flat");
             for (int j = 0; j < k; j++) {
                 long line_num = I[i * k + j];
                 memcpy(xb2 + j * dim, &state->data[len_line * line_num + sizeof(long)], sizeof(float) * dim);
             }
             index2->add(k, xb2);
             index2->search(1, xq + i * dim, k, D2, I2);
-            delete index2;
+            index2->reset();
             distances[i] = D2[0];
             xids[i] = I[i * k + I2[0]];
         }
+        delete index2;
     }
     long index_size = (state->index == nullptr) ? 0 : state->index->ntotal;
 

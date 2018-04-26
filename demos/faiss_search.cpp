@@ -26,6 +26,7 @@
 
 #include "faiss/AutoTune.h"
 #include "faiss/IndexFlat.h"
+#include "faiss/IndexHNSW.h"
 #include "faiss/IndexIVFFlat.h"
 #include "faiss/index_io.h"
 
@@ -113,6 +114,14 @@ int main(int argc, char** argv)
     printf("[%.3f s] Loading index\n", elapsed() - t0);
     faiss::Index* index = faiss::read_index(fname_index);
 
+    auto index_ivf = dynamic_cast<faiss::IndexIVFFlat*>(index);
+    if (index_ivf != nullptr) {
+        auto quantizer = dynamic_cast<faiss::IndexHNSWFlat*>(index_ivf->quantizer);
+        if (quantizer != nullptr) {
+            printf("[%.3f s] index_ivf->nprobe = %d, quantizer->hnsw.efSearch = %d\n", elapsed() - t0, index_ivf->nprobe, quantizer->hnsw.efSearch);
+        }
+    }
+
     printf("[%.3f s] Loading database\n", elapsed() - t0);
     size_t nb, d;
     float* xb = fvecs_read(database, &d, &nb);
@@ -178,9 +187,9 @@ int main(int argc, char** argv)
             n_1 = 0;
             n_10 = 0;
             n_100 = 0;
+            faiss::Index* index2 = new faiss::IndexFlat(d2, index->metric_type);
             for (int i = 0; i < nq; i++) {
                 int gt_nn = gt[i * k];
-                faiss::Index* index2 = faiss::index_factory(d2, "Flat");
                 float* xb2 = new float[d2 * k];
                 float* D2 = new float[k];
                 faiss::Index::idx_t* I2 = new faiss::Index::idx_t[k];
@@ -198,10 +207,12 @@ int main(int argc, char** argv)
                             n_100++;
                     }
                 }
+                index2->reset();
                 delete[] xb2;
                 delete[] D2;
                 delete[] I2;
             }
+            delete index2;
             printf("R@1 = %.4f\n", n_1 / float(nq));
             printf("R@10 = %.4f\n", n_10 / float(nq));
             printf("R@100 = %.4f\n", n_100 / float(nq));
