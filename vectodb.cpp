@@ -37,6 +37,7 @@ using mtxlock = unique_lock<mutex>;
 using rlock = unique_lock<boost::shared_mutex>;
 using wlock = boost::shared_lock<boost::shared_mutex>;
 
+const long MIN_NTRAIN = 10000L;
 const long MAX_NTRAIN = 160000L; //the number of training points which IVF4096 needs for 1M dataset
 
 struct DbState {
@@ -151,16 +152,15 @@ void VectoDB::BuildIndex(long cur_ntrain, long cur_ntotal, faiss::Index*& index_
     long len_data = 0;
     mmapFile(getBaseFp(), data, len_data);
     long nb = len_data / len_line;
+    faiss::Index* index = nullptr;
+    long nt = 0;
 
     // Prepareing index
     LOG(INFO) << "BuildIndex " << work_dir << ". dim=" << dim << ", index_key=\"" << index_key << "\", metric=" << metric_type << ", nb=" << nb;
-    if (nb == 0) {
-        munmapFile(getBaseFp(), data, len_data);
-        return;
-    }
-    faiss::Index* index = nullptr;
+    if (nb < MIN_NTRAIN)
+        goto quit;
 
-    long nt = std::min(nb, std::max(nb / 10, MAX_NTRAIN));
+    nt = std::min(nb, std::max(nb / 10, MAX_NTRAIN));
     if (nt == cur_ntrain) {
         long& index_size = cur_ntotal;
         if (nb == index_size) {
@@ -199,6 +199,7 @@ void VectoDB::BuildIndex(long cur_ntrain, long cur_ntotal, faiss::Index*& index_
         index->add(nb, &base[0]);
         index_out = index;
     }
+quit:
     ntrain = nt;
     munmapFile(getBaseFp(), data, len_data);
     LOG(INFO) << "BuildIndex " << work_dir << " done";
