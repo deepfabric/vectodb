@@ -47,6 +47,11 @@ func (vdb *VectoDB) AddWithIds(nb int, xb []float32, xids []int64) (err error) {
 	return
 }
 
+func (vdb *VectoDB) UpdateWithIds(nb int, xb []float32, xids []int64) (err error) {
+	C.VectodbUpdateWithIds(vdb.vdb_c, C.long(nb), (*C.float)(&xb[0]), (*C.long)(&xids[0]))
+	return
+}
+
 func (vdb *VectoDB) GetFlatSize() (nsize int, err error) {
 	nsize_c := C.VectodbGetFlatSize(vdb.vdb_c)
 	nsize = int(nsize_c)

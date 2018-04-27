@@ -208,15 +208,15 @@ void VectoDB::BuildIndex(long cur_ntrain, long cur_ntotal, faiss::Index*& index_
 // Needs Go write-lock
 void VectoDB::ActivateIndex(faiss::Index* index, long ntrain)
 {
-    if (index == nullptr || 0 == index_key.compare("Flat"))
-        return;
-    if (state->ntrain != 0)
-        fs::remove(getIndexFp(state->ntrain));
-    // Output index
-    faiss::write_index(index, getIndexFp(ntrain).c_str());
-    delete state->index;
-    state->ntrain = ntrain;
-    state->index = index;
+    if (index != nullptr) {
+        if (state->ntrain != 0)
+            fs::remove(getIndexFp(state->ntrain));
+        // Output index
+        faiss::write_index(index, getIndexFp(ntrain).c_str());
+        delete state->index;
+        state->ntrain = ntrain;
+        state->index = index;
+    }
     mmapFile(getBaseFp(), state->data, state->len_data);
     buildFlat();
 }
@@ -275,6 +275,25 @@ void VectoDB::AddWithIds(long nb, const float* xb, const long* xids)
         state->xids.push_back(xids[i]);
         state->xid2num[xids[i]] = ntotal + i;
     }
+}
+
+void VectoDB::UpdateWithIds(long nb, const float* xb, const long* xids)
+{
+    mtxlock m{ state->m_base };
+    {
+        rlock r{ state->rw_xids };
+        auto end = state->xid2num.end();
+        long len_vec = len_line - sizeof(long);
+        for (long i = 0; i < nb; i++) {
+            auto it = state->xid2num.find(xids[i]);
+            if (it == end)
+                continue;
+            long line_num = it->second;
+            state->fs_base.seekp(line_num * len_line + sizeof(long), ios_base::beg);
+            state->fs_base.write((const char*)&xb[i * dim], len_vec);
+        }
+    }
+    state->fs_base.seekp(0, ios_base::end);
 }
 
 void VectoDB::mergeToFlat()
@@ -489,6 +508,11 @@ void* VectodbBuildIndex(void* vdb, long cur_ntrain, long cur_ntotal, long* ntrai
 void VectodbAddWithIds(void* vdb, long nb, float* xb, long* xids)
 {
     static_cast<VectoDB*>(vdb)->AddWithIds(nb, xb, xids);
+}
+
+void VectodbUpdateWithIds(void* vdb, long nb, float* xb, long* xids)
+{
+    static_cast<VectoDB*>(vdb)->UpdateWithIds(nb, xb, xids);
 }
 
 long VectodbGetFlatSize(void* vdb)

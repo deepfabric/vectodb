@@ -47,6 +47,17 @@ public:
     void AddWithIds(long nb, const float* xb, const long* xids);
 
     /** 
+     * Update given vectors.
+     * Assuming this operation is very rare, i.e. once a day.
+     * This causes disagreement between database and index, so user shall invoke buildIndex and ActivateIndex later. 
+     * The upper layer does memory management for xb, xids.
+     *
+     * @param xb        input matrix, size n * d
+     * @param xids      if non-null, ids to store for the vectors (size n)
+     */
+    void UpdateWithIds(long nb, const float* xb, const long* xids);
+
+    /** 
      * Get flat size.
      *
      */
@@ -65,17 +76,6 @@ public:
      * @param ntrain    input the number of training points of the index
      */
     void ActivateIndex(faiss::Index* index, long ntrain);
-
-    /** 
-     * Update given vectors.
-     * Assuming this operation is very rare, i.e. once a day.
-     * This causes disagreement between database and index, so user shall invoke build_index later. 
-     * The upper layer does memory management for xb, xids.
-     *
-     * @param xb        input matrix, size n * d
-     * @param xids      if non-null, ids to store for the vectors (size n)
-     */
-    void UpdateWithIds(long nb, const float* xb, const long* xids);
 
     /**
      * Methods assuming Go read-lock already held. There could be multiple readers.
