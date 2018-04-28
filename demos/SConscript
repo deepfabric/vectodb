@@ -6,8 +6,8 @@ Import("env")
 # Every .cpp is a standalone program.
 for filename in ['demo_sift1M.cpp', 'faiss_train.cpp', 'faiss_search.cpp']:
 	exename = os.path.splitext(filename)[0] 
-	env.Program(exename, filename, LIBS=['faiss', 'openblas'], )
+	env.Program(exename, filename, LIBS=['faiss', 'mkl_intel_ilp64', 'mkl_core', 'mkl_gnu_thread'], )
 
 for filename in ['demo_sift1M_vectodb.cpp']:
 	exename = os.path.splitext(filename)[0] 
-	env.Program(exename, filename, LIBS=['vectodb', 'faiss', 'openblas', 'boost_thread', 'boost_filesystem', 'boost_system', 'glog', 'gflags'], )
+	env.Program(exename, filename, LIBS=['vectodb', 'faiss', 'mkl_intel_ilp64', 'mkl_core', 'mkl_gnu_thread', 'boost_thread', 'boost_filesystem', 'boost_system', 'glog', 'gflags'], )

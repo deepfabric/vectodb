@@ -321,52 +321,11 @@ long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
     vector<float> D(nq * k);
     vector<faiss::Index::idx_t> I(nq * k);
 
-    float xb2[dim * k];
-    float D2[k];
-    faiss::Index::idx_t I2[k];
-
     if (state->index) {
         // Perform a search
         state->index->search(nq, xq, k, &D[0], &I[0]);
-
-        // Refine result
-        faiss::Index* index2 = new faiss::IndexFlat(dim, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
-        for (int i = 0; i < nq; i++) {
-            for (int j = 0; j < k; j++) {
-                long line_num = I[i * k + j];
-                memcpy(xb2 + j * dim, &state->data[len_line * line_num + sizeof(long)], sizeof(float) * dim);
-            }
-            index2->add(k, xb2);
-            index2->search(1, xq + i * dim, k, D2, I2);
-            index2->reset();
-            distances[i] = D2[0];
-            xids[i] = I[i * k + I2[0]];
-        }
-        delete index2;
     }
     long index_size = (state->index == nullptr) ? 0 : state->index->ntotal;
-
-    mergeToFlat();
-
-    {
-        rlock r{ state->rw_flat };
-        if (state->flat->ntotal != 0) {
-            state->flat->search(nq, xq, k, &D[0], &I[0]);
-            for (int i = 0; i < nq; i++) {
-                if (0 == index_size || distances[i] > D[i * k]) {
-                    distances[i] = D[i * k];
-                    xids[i] = I[i * k];
-                }
-            }
-        }
-    }
-
-    {
-        rlock r{ state->rw_xids };
-        for (int i = 0; i < nq; i++) {
-            xids[i] = state->xids[xids[i]];
-        }
-    }
     return total;
 }
 

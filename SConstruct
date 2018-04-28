@@ -25,15 +25,17 @@ for header in 'boost/filesystem.hpp boost/system/system_error.hpp boost/thread/s
         Exit(1)
 env = conf.Finish()
 
-env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && cp example_makefiles/makefile.inc.Linux makefile.inc && make demos/demo_sift1M py && popd')
+env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && cp ../makefile.inc.LinuxMKL makefile.inc && make tests/test_blas demos/demo_sift1M py && popd')
 if env.GetOption('clean'):
     subprocess.call('pushd faiss && make clean && popd', shell=True)
 
 selfPath = os.path.abspath(inspect.getfile(inspect.currentframe()))
 mainDir, _ = os.path.split(selfPath)
 faissDir = os.path.join(mainDir, 'faiss')
+MKLROOT='/opt/intel/compilers_and_libraries/linux/mkl/'
+mklDir = os.path.join(MKLROOT, 'lib/intel64')
 cpp_path = [mainDir]
-libs_path = [mainDir, faissDir]
+libs_path = [mainDir, faissDir, mklDir]
 
 env = Environment(ENV=os.environ, CPPPATH=cpp_path, LIBPATH=libs_path, PRJNAME="vectodb")
 env.MergeFlags(env.ParseFlags('-Wall -Wextra -g -O2 -fopenmp -std=c++17'))
