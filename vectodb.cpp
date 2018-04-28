@@ -290,6 +290,8 @@ void VectoDB::UpdateWithIds(long nb, const float* xb, const long* xids)
             if (it == end)
                 continue;
             long line_num = it->second;
+            // The experiment indicates that the readers of mmaped file are not ware to following changes untill they be flushed.
+            // TODO: Is it possible that readers get the middle state of a change?
             state->fs_base.seekp(line_num * len_line + sizeof(long), ios_base::beg);
             state->fs_base.write((const char*)&xb[i * dim], len_vec);
         }
