@@ -58,6 +58,12 @@ public:
     void UpdateWithIds(long nb, const float* xb, const long* xids);
 
     /** 
+     * Get total number of vectors.
+     *
+     */
+    long GetTotal();
+
+    /** 
      * Get flat size.
      *
      */

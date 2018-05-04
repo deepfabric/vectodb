@@ -16,6 +16,7 @@ void VectodbDelete(void* vdb);
 void* VectodbBuildIndex(void* vdb, long cur_ntrain, long cur_ntotal, long* ntrain);
 void VectodbAddWithIds(void* vdb, long nb, float* xb, long* xids);
 void VectodbUpdateWithIds(void* vdb, long nb, float* xb, long* xids);
+long VectodbGetTotal(void* vdb);
 long VectodbGetFlatSize(void* vdb);
 
 /**

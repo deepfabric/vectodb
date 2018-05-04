@@ -136,7 +136,7 @@ VectoDB::~VectoDB()
     munmapFile(getBaseFp(), state->data, state->len_data);
 }
 
-void VectoDB::BuildIndex(long cur_ntrain, long cur_ntotal, faiss::Index*& index_out, long& ntrain) const
+void VectoDB::BuildIndex(long cur_ntrain, long cur_nsize, faiss::Index*& index_out, long& ntrain) const
 {
     index_out = nullptr;
     ntrain = 0;
@@ -158,7 +158,7 @@ void VectoDB::BuildIndex(long cur_ntrain, long cur_ntotal, faiss::Index*& index_
 
     nt = std::min(nb, std::max(nb / 10, MAX_NTRAIN));
     if (nt == cur_ntrain) {
-        long& index_size = cur_ntotal;
+        long& index_size = cur_nsize;
         if (nb == index_size) {
             LOG(INFO) << "Nothing to do since ntrain " << nt << " and index_size " << index_size << " are unchanged";
             index_out = nullptr;
@@ -237,6 +237,11 @@ void VectoDB::GetIndexSize(long& ntrain, long& nsize) const
 {
     ntrain = state->ntrain;
     nsize = (state->index == nullptr) ? 0 : state->index->ntotal;
+}
+
+long VectoDB::GetTotal()
+{
+    return state->total;
 }
 
 long VectoDB::GetFlatSize()
@@ -497,10 +502,10 @@ void VectodbDelete(void* vdb)
     delete static_cast<VectoDB*>(vdb);
 }
 
-void* VectodbBuildIndex(void* vdb, long cur_ntrain, long cur_ntotal, long* ntrain)
+void* VectodbBuildIndex(void* vdb, long cur_ntrain, long cur_nsize, long* ntrain)
 {
     faiss::Index* index = nullptr;
-    static_cast<VectoDB*>(vdb)->BuildIndex(cur_ntrain, cur_ntotal, index, *ntrain);
+    static_cast<VectoDB*>(vdb)->BuildIndex(cur_ntrain, cur_nsize, index, *ntrain);
     return index;
 }
 
@@ -512,6 +517,11 @@ void VectodbAddWithIds(void* vdb, long nb, float* xb, long* xids)
 void VectodbUpdateWithIds(void* vdb, long nb, float* xb, long* xids)
 {
     static_cast<VectoDB*>(vdb)->UpdateWithIds(nb, xb, xids);
+}
+
+long VectodbGetTotal(void* vdb)
+{
+    return static_cast<VectoDB*>(vdb)->GetTotal();
 }
 
 long VectodbGetFlatSize(void* vdb)

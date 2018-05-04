@@ -90,10 +90,14 @@ func TestVectodbUpdate(t *testing.T) {
 	err = vdb.AddWithIds(nb, xb, xids)
 	require.NoError(t, err)
 
+	total, err := vdb.GetTotal()
+	require.NoError(t, err)
+	require.Equal(t, nb, total)
+
 	D := make([]float32, nb)
 	I := make([]int64, nb)
 
-	total, err := vdb.Search(nb, xb, D, I)
+	total, err = vdb.Search(nb, xb, D, I)
 	require.NoError(t, err)
 	require.Equal(t, nb, total)
 	fmt.Printf("D: %+v\n", D)
