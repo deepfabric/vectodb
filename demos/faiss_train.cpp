@@ -15,7 +15,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-#include <omp.h>
 #include <string>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -95,9 +94,6 @@ elapsed()
 // train phase, input: index_key database train_set, output: index
 int main(int argc, char** argv)
 {
-    //Sets the number of threads in subsequent parallel regions.
-    omp_set_num_threads(1);
-
     const string usage("faiss_train index_key metric_type database (output)index");
     if (argc != 5) {
         cerr << usage << endl;

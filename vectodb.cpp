@@ -11,7 +11,6 @@
 #include <boost/system/system_error.hpp>
 #include <boost/thread/shared_mutex.hpp>
 #include <glog/logging.h>
-#include <omp.h>
 
 #include <algorithm>
 #include <atomic>
@@ -90,9 +89,6 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
     , index_key(index_key_in)
     , query_params(query_params_in)
 {
-    //Sets the number of threads in subsequent parallel regions.
-    omp_set_num_threads(1);
-
     static_assert(sizeof(float) == 4, "sizeof(float) must be 4");
     static_assert(sizeof(long) > 4, "sizeof(long) must be larger than 4");
 
