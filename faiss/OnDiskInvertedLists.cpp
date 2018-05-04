@@ -574,7 +574,6 @@ size_t OnDiskInvertedLists::merge_from (const InvertedLists **ils, int n_il)
 
     update_totsize (cums);
 
-#pragma omp parallel for
     for (size_t j = 0; j < nlist; j++) {
         List & l = lists[j];
         for (int i = 0; i < n_il; i++) {

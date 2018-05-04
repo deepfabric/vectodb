@@ -388,7 +388,6 @@ long IndexIVF::remove_ids (const IDSelector & sel)
 
     std::vector<long> toremove(nlist);
 
-#pragma omp parallel for
     for (long i = 0; i < nlist; i++) {
         long l0 = invlists->list_size (i), l = l0, j = 0;
         const idx_t *idsi = invlists->get_ids (i);
@@ -486,7 +485,6 @@ void IndexIVF::merge_from (IndexIVF &other, idx_t add_id)
                   "can only merge indexes of the same type");
 
     InvertedLists *oivf = other.invlists;
-#pragma omp parallel for
     for (long i = 0; i < nlist; i++) {
         size_t list_size = oivf->list_size (i);
         const idx_t * ids = oivf->get_ids (i);

@@ -938,7 +938,6 @@ void IndexIVFPQ::search_preassigned (idx_t nx, const float *qx, idx_t k,
         labels, distances
     };
 
-#pragma omp parallel
     {
         InvertedListScanner<long> qt (*this);
         size_t stats_nlist = 0;
@@ -947,7 +946,6 @@ void IndexIVFPQ::search_preassigned (idx_t nx, const float *qx, idx_t k,
         uint64_t scan_cycles = 0;
         uint64_t heap_cycles = 0;
 
-#pragma omp  for
         for (size_t i = 0; i < nx; i++) {
             const float *qi = qx + i * d;
             const long * keysi = keys + i * nprobe;
@@ -1007,7 +1005,6 @@ void IndexIVFPQ::search_preassigned (idx_t nx, const float *qx, idx_t k,
             heap_cycles += TOC;
         }
 
-#pragma omp critical
         {
             indexIVFPQ_stats.n_hamming_pass += qt.n_hamming_pass;
             indexIVFPQ_stats.nlist += stats_nlist;
@@ -1183,13 +1180,11 @@ void IndexIVFPQR::search_preassigned (idx_t n, const float *x, idx_t k,
 
     // 3rd level refinement
     size_t n_refine = 0;
-#pragma omp parallel reduction(+ : n_refine)
     {
         // tmp buffers
         float *residual_1 = new float [2 * d];
         ScopeDeleter<float> del (residual_1);
         float *residual_2 = residual_1 + d;
-#pragma omp for
         for (idx_t i = 0; i < n; i++) {
             const float *xq = x + i * d;
             const long * shortlist = coarse_labels + k_coarse * i;

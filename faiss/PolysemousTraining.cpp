@@ -769,7 +769,6 @@ void PolysemousTraining::optimize_reproduce_distances (
     int n = pq.ksub;
     int nbits = pq.nbits;
 
-#pragma omp parallel for
     for (int m = 0; m < pq.M; m++) {
         std::vector<double> dis_table;
 
@@ -840,7 +839,6 @@ void PolysemousTraining::optimize_ranking (
     if (n == 0)
         pq.compute_sdc_table ();
 
-#pragma omp parallel for
     for (int m = 0; m < pq.M; m++) {
         size_t nq, nb;
         std::vector <uint32_t> codes; // query codes, then db codes

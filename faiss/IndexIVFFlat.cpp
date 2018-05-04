@@ -98,7 +98,6 @@ void search_knn_inner_product (const IndexIVFFlat & ivf,
     size_t nlistv = 0, ndis = 0;
     size_t d = ivf.d;
 
-#pragma omp parallel for reduction(+: nlistv, ndis)
     for (size_t i = 0; i < nx; i++) {
         const float * xi = x + i * d;
         const long * keysi = keys + i * ivf.nprobe;
@@ -157,7 +156,6 @@ void search_knn_L2sqr (const IndexIVFFlat &ivf,
     const size_t k = res->k;
     size_t nlistv = 0, ndis = 0;
     size_t d = ivf.d;
-#pragma omp parallel for reduction(+: nlistv, ndis)
     for (size_t i = 0; i < nx; i++) {
         const float * xi = x + i * d;
         const long * keysi = keys + i * ivf.nprobe;
@@ -235,7 +233,6 @@ void IndexIVFFlat::range_search (idx_t nx, const float *x, float radius,
     ScopeDeleter<idx_t> del (keys);
     quantizer->assign (nx, x, keys, nprobe);
 
-#pragma omp parallel
     {
         RangeSearchPartialResult pres(result);
 

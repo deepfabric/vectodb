@@ -185,10 +185,8 @@ TEST(ONDISK, make_invlists_threaded) {
         list_nos[i] = int(nlist * d * d); // skewed distribution
     }
 
-#pragma omp parallel
     {
         std::vector<uint8_t> code(32);
-#pragma omp for
         for (int i = 0; i < nadd; i++) {
             int list_no = list_nos[i];
             int * ar = (int*)code.data();

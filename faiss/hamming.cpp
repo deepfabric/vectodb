@@ -277,7 +277,6 @@ void hammings_knn_hc (
 
     /* The computation here does not involved any blockization, which
        is suboptimal for many queries in parallel. */
-#pragma omp parallel for
     for (size_t i = 0; i < ha->nh; i++) {
         HammingComputer hc (bs1 + i * bytes_per_code, bytes_per_code);
 
@@ -317,7 +316,6 @@ void hammings_knn_1 (
         ha->heapify ();
     }
 
-#pragma omp parallel for
     for (size_t i = 0; i < ha->nh; i++) {
         const uint64_t bs1_ = bs1 [i];
         const uint64_t * bs2_ = bs2;
@@ -373,7 +371,6 @@ void fvec2bitvec (const float * x, uint8_t * b, size_t d)
 void fvecs2bitvecs (const float * x, uint8_t * b, size_t d, size_t n)
 {
     const long ncodes = ((d + 7) / 8);
-#pragma omp parallel for
     for (size_t i = 0; i < n; i++)
         fvec2bitvec (x + i * d, b + i * ncodes, d);
 }
@@ -650,7 +647,6 @@ void generalized_hammings_knn (
     if (ordered)
         ha->heapify ();
 
-#pragma omp parallel for
     for (int i = 0; i < na; i++) {
         const uint8_t *ca = a + i * code_size;
         const uint8_t *cb = b;
