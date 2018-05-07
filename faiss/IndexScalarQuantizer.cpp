@@ -435,7 +435,6 @@ void train_NonUniform(RangeStat rs, float rs_arg,
             }
         }
         std::vector<float> trained_d(2);
-#pragma omp parallel for
         for (size_t j = 0; j < d; j++) {
             train_Uniform(rs, rs_arg,
                           n, k, xt.data() + j * n,
@@ -758,7 +757,6 @@ void ScalarQuantizer::compute_codes (const float * x,
 {
     Quantizer *squant = select_quantizer (*this);
     ScopeDeleter1<Quantizer> del(squant);
-#pragma omp parallel for
     for (size_t i = 0; i < n; i++)
         squant->encode_vector (x + i * d, codes + i * code_size);
 }
@@ -767,7 +765,6 @@ void ScalarQuantizer::decode (const uint8_t *codes, float *x, size_t n) const
 {
     Quantizer *squant = select_quantizer (*this);
     ScopeDeleter1<Quantizer> del(squant);
-#pragma omp parallel for
     for (size_t i = 0; i < n; i++)
         squant->decode_vector (codes + i * code_size, x + i * d);
 }
@@ -834,13 +831,11 @@ void search_flat_scalar_quantizer(
     size_t code_size = index.code_size;
     size_t d = index.d;
 
-#pragma omp parallel
     {
         DistanceComputer *dc =
             index.sq.get_distance_computer(index.metric_type);
         ScopeDeleter1<DistanceComputer> del(dc);
 
-#pragma omp for
         for (size_t i = 0; i < n; i++) {
             idx_t *idxi = labels + i * k;
             float *simi = distances + i * k;
@@ -930,7 +925,6 @@ void IndexIVFScalarQuantizer::train_residual (idx_t n, const float *x)
     float *residuals = new float [n * d];
     ScopeDeleter<float> del2 (residuals);
 
-#pragma omp parallel for
     for (idx_t i = 0; i < n; i++) {
         quantizer->compute_residual (x + i * d, residuals + i * d, idx[i]);
     }
@@ -951,7 +945,6 @@ void IndexIVFScalarQuantizer::add_with_ids
     Quantizer *squant = select_quantizer (sq);
     ScopeDeleter1<Quantizer> del2 (squant);
 
-#pragma omp parallel reduction(+: nadd)
     {
         std::vector<float> residual (d);
         std::vector<uint8_t> one_code (code_size);
@@ -1082,11 +1075,9 @@ void IndexIVFScalarQuantizer::search_preassigned (
 
 
     if (metric_type == METRIC_INNER_PRODUCT) {
-#pragma omp parallel
         {
             DistanceComputer *dc = sq.get_distance_computer (metric_type);
             ScopeDeleter1<DistanceComputer> del(dc);
-#pragma omp for
             for (size_t i = 0; i < n; i++) {
                 search_with_probes_ip (*this, x + i * d,
                                        idx + i * nprobe, dis + i * nprobe, *dc,
@@ -1095,11 +1086,9 @@ void IndexIVFScalarQuantizer::search_preassigned (
             }
         }
     } else {
-#pragma omp parallel
         {
             DistanceComputer *dc = sq.get_distance_computer (metric_type);
             ScopeDeleter1<DistanceComputer> del(dc);
-#pragma omp for
             for (size_t i = 0; i < n; i++) {
                 search_with_probes_L2 (*this, x + i * d,
                                        idx + i * nprobe, quantizer, *dc,

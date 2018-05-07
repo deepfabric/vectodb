@@ -235,7 +235,6 @@ void float_rand (float * x, size_t n, long seed)
     RandomGenerator rng0 (seed);
     int a0 = rng0.rand_int (), b0 = rng0.rand_int ();
 
-#pragma omp parallel for
     for (size_t j = 0; j < nblock; j++) {
 
         RandomGenerator rng (a0 + j * b0);
@@ -257,7 +256,6 @@ void float_randn (float * x, size_t n, long seed)
     RandomGenerator rng0 (seed);
     int a0 = rng0.rand_int (), b0 = rng0.rand_int ();
 
-#pragma omp parallel for
     for (size_t j = 0; j < nblock; j++) {
         RandomGenerator rng (a0 + j * b0);
 
@@ -294,7 +292,6 @@ void long_rand (long * x, size_t n, long seed)
     RandomGenerator rng0 (seed);
     int a0 = rng0.rand_int (), b0 = rng0.rand_int ();
 
-#pragma omp parallel for
     for (size_t j = 0; j < nblock; j++) {
 
         RandomGenerator rng (a0 + j * b0);
@@ -331,7 +328,6 @@ void byte_rand (uint8_t * x, size_t n, long seed)
     RandomGenerator rng0 (seed);
     int a0 = rng0.rand_int (), b0 = rng0.rand_int ();
 
-#pragma omp parallel for
     for (size_t j = 0; j < nblock; j++) {
 
         RandomGenerator rng (a0 + j * b0);
@@ -697,7 +693,6 @@ void fvec_norms_L2 (float * __restrict nr,
                     size_t d, size_t nx)
 {
 
-#pragma omp parallel for
     for (size_t i = 0; i < nx; i++) {
         nr[i] = sqrtf (fvec_norm_L2sqr (x + i * d, d));
     }
@@ -707,7 +702,6 @@ void fvec_norms_L2sqr (float * __restrict nr,
                        const float * __restrict x,
                        size_t d, size_t nx)
 {
-#pragma omp parallel for
     for (size_t i = 0; i < nx; i++)
         nr[i] = fvec_norm_L2sqr (x + i * d, d);
 }
@@ -716,7 +710,6 @@ void fvec_norms_L2sqr (float * __restrict nr,
 
 void fvec_renorm_L2 (size_t d, size_t nx, float * __restrict x)
 {
-#pragma omp parallel for
     for (size_t i = 0; i < nx; i++) {
         float * __restrict xi = x + i * d;
 
@@ -761,7 +754,6 @@ static void knn_inner_product_sse (const float * x,
 {
     size_t k = res->k;
 
-#pragma omp parallel for
     for (size_t i = 0; i < nx; i++) {
         const float * x_ = x + i * d;
         const float * y_ = y;
@@ -793,7 +785,6 @@ static void knn_L2sqr_sse (
 {
     size_t k = res->k;
 
-#pragma omp parallel for
     for (size_t i = 0; i < nx; i++) {
         const float * x_ = x + i * d;
         const float * y_ = y;
@@ -904,7 +895,6 @@ static void knn_L2sqr_blas (const float * x,
             }
 
             /* collect minima */
-#pragma omp parallel for
             for (size_t i = i0; i < i1; i++) {
                 float * __restrict simi = res->get_val(i);
                 long * __restrict idxi = res->get_ids (i);
@@ -1010,7 +1000,6 @@ void fvec_inner_products_by_idx (float * __restrict ip,
                                  const long * __restrict ids, /* for y vecs */
                                  size_t d, size_t nx, size_t ny)
 {
-#pragma omp parallel for
     for (size_t j = 0; j < nx; j++) {
         const long * __restrict idsj = ids + j * ny;
         const float * xj = x + j * d;
@@ -1031,7 +1020,6 @@ void fvec_L2sqr_by_idx (float * __restrict dis,
                         const long * __restrict ids, /* ids of y vecs */
                         size_t d, size_t nx, size_t ny)
 {
-#pragma omp parallel for
     for (size_t j = 0; j < nx; j++) {
         const long * __restrict idsj = ids + j * ny;
         const float * xj = x + j * d;
@@ -1058,7 +1046,6 @@ void knn_inner_products_by_idx (const float * x,
 {
     size_t k = res->k;
 
-#pragma omp parallel for
     for (size_t i = 0; i < nx; i++) {
         const float * x_ = x + i * d;
         const long * idsi = ids + i * ny;
@@ -1089,7 +1076,6 @@ void knn_L2sqr_by_idx (const float * x,
 {
     size_t k = res->k;
 
-#pragma omp parallel for
     for (size_t i = 0; i < nx; i++) {
         const float * x_ = x + i * d;
         const long * __restrict idsi = ids + i * ny;
@@ -1227,11 +1213,9 @@ static void range_search_sse (const float * x,
 {
     FAISS_THROW_IF_NOT (d % 4 == 0);
 
-#pragma omp parallel
     {
         RangeSearchPartialResult pres (res);
 
-#pragma omp for
         for (size_t i = 0; i < nx; i++) {
             const float * x_ = x + i * d;
             const float * y_ = y;
@@ -1310,7 +1294,6 @@ void inner_product_to_L2sqr (float * __restrict dis,
                              size_t n1, size_t n2)
 {
 
-#pragma omp parallel for
     for (size_t j = 0 ; j < n1 ; j++) {
         float * disj = dis + j * n2;
         for (size_t i = 0 ; i < n2 ; i++)
@@ -1355,11 +1338,9 @@ void pairwise_L2sqr (long d,
     // store in beginning of distance matrix to avoid malloc
     float *b_norms = dis;
 
-#pragma omp parallel for
     for (long i = 0; i < nb; i++)
         b_norms [i] = fvec_norm_L2sqr (xb + i * ldb, d);
 
-#pragma omp parallel for
     for (long i = 1; i < nq; i++) {
         float q_norm = fvec_norm_L2sqr (xq + i * ldq, d);
         for (long j = 0; j < nb; j++)
@@ -1410,7 +1391,6 @@ int km_update_centroids (const float * x,
     std::vector<size_t> hassign(k);
     memset (centroids, 0, sizeof(*centroids) * d * k);
 
-#pragma omp parallel
     {
         int nt = omp_get_num_threads();
         int rank = omp_get_thread_num();
@@ -1436,7 +1416,6 @@ int km_update_centroids (const float * x,
 
     }
 
-#pragma omp parallel for
     for (size_t ci = 0; ci < k; ci++) {
         float * c = centroids + ci * d;
         float ni = (float) hassign[ci];
@@ -1516,12 +1495,10 @@ size_t merge_result_table_with (size_t n, size_t k,
 {
     size_t n1 = 0;
 
-#pragma omp parallel reduction(+:n1)
     {
         std::vector<long> tmpI (k);
         std::vector<float> tmpD (k);
 
-#pragma omp for
         for (size_t i = 0; i < n; i++) {
             long *lI0 = I0 + i * k;
             float *lD0 = D0 + i * k;
@@ -1712,7 +1689,6 @@ namespace {
         s2s[nt - 1].i1 = s2.i1;
 
         // not sure parallel actually helps here
-#pragma omp parallel for num_threads(nt)
         for (int t = 0; t < nt; t++) {
             s1s[t].i0 = s1.i0 + s1.len() * t / nt;
             s1s[t].i1 = s1.i0 + s1.len() * (t + 1) / nt;
@@ -1741,7 +1717,6 @@ namespace {
         assert(sws[nt - 1].i1 == s1.i1);
 
         // do the actual merging
-#pragma omp parallel for num_threads(nt)
         for (int t = 0; t < nt; t++) {
             SegmentS sw = sws[t];
             SegmentS s1t = s1s[t];
@@ -1795,7 +1770,6 @@ void fvec_argsort_parallel (size_t n, const float *vals,
         }
     }
 
-#pragma omp parallel
     for (size_t i = 0; i < n; i++) permA[i] = i;
 
     ArgsortComparator comp = {vals};
@@ -1803,7 +1777,6 @@ void fvec_argsort_parallel (size_t n, const float *vals,
     SegmentS segs[nt];
 
     // independent sorts
-#pragma omp parallel for
     for (int t = 0; t < nt; t++) {
         size_t i0 = t * n / nt;
         size_t i1 = (t + 1) * n / nt;
@@ -1820,7 +1793,6 @@ void fvec_argsort_parallel (size_t n, const float *vals,
         int sub_nt = nseg % 2 == 0 ? nt : nt - 1;
         int sub_nseg1 = nseg / 2;
 
-#pragma omp parallel for num_threads(nseg1)
         for (int s = 0; s < nseg; s += 2) {
             if (s + 1 == nseg) { // otherwise isolated segment
                 memcpy(permB + segs[s].i0, permA + segs[s].i0,

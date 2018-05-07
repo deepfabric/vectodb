@@ -7,20 +7,15 @@ import argparse
 
 extpatt = re.compile('^\.(c|cc|cpp|cxx|c\+\+|h|hh|hpp|hxx|h\+\+)$')
 pragma_omp = re.compile('^\s*#pragma omp')
-omp_func = re.compile('omp_')
 
 
 def remove_pragma_fp(fp):
-    '''Return whether the file contains OMP function calls.'''
+    '''Return whether the file contains OMP pragma.'''
     print(fp)
     lines = []
     omp_continue = False  # is inside an pragma block?
     found_omp = False
     for line in open(fp).readlines():
-        match_func = omp_func.search(line)
-        if match_func is not None:
-            print(line.rstrip(), "\t***skipped***")
-            return True
         match_pragma = pragma_omp.search(line)
         if not omp_continue and match_pragma is None:
             lines.append(line)
@@ -38,11 +33,11 @@ def remove_pragma_fp(fp):
         tmpf.writelines(lines)
         tmpf.close()
         os.rename(tmpfp, fp)
-    return False
+    return found_omp
 
 
 def remove_pragma(dir_path):
-    '''Return list of files which contain OMP function calls.'''
+    '''Return list of files which contain OMP pragma'''
     omp_files = []
     dir_path = os.path.abspath(dir_path)
     if(os.path.isfile(dir_path)):
@@ -72,15 +67,8 @@ def main():
     args = parser.parse_args()
     roots = sorted(args.root)
     # print(roots)
-    omp_files = []
     for root in roots:
-        omp_files2 = remove_pragma(root)
-        omp_files += omp_files2
-    if 0 != len(omp_files):
-        print('*'*120)
-        print('WARNING: following files are skipped since they contain OMP function calls:')
-        for fp in sorted(omp_files):
-            print(fp)
+        remove_pragma(root)
 
 
 if __name__ == '__main__':

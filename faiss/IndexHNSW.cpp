@@ -473,7 +473,6 @@ int search_from_candidates(const HNSW & hnsw,
     }
 
     if (level == 0) {
-#pragma omp critical
         {
             hnsw_stats.n1 ++;
             if (candidates.size() == 0)
@@ -591,8 +590,6 @@ void HNSW::print_neighbor_stats(int level) const
     printf("stats on level %d, max %d neighbors per vertex:\n",
            level, nb_neighbors(level));
     size_t tot_neigh = 0, tot_common = 0, tot_reciprocal = 0, n_node = 0;
-#pragma omp parallel for reduction(+: tot_neigh) reduction(+: tot_common) \
-                         reduction(+: tot_reciprocal) reduction(+: n_node)
     for (int i = 0; i < levels.size(); i++) {
         if (levels[i] > level) {
             n_node++;
@@ -662,7 +659,6 @@ void HNSW::add_with_locks(
     //  greedy search on upper levels
 
     storage_idx_t nearest;
-#pragma omp critical
     {
         nearest = entry_point;
 
@@ -870,7 +866,6 @@ void hnsw_add_vertices(IndexHNSW &index_hnsw,
             for (int j = i0; j < i1; j++)
                 std::swap(order[j], order[j + rng2.rand_int(i1 - j)]);
 
-#pragma omp parallel
             {
                 VisitedTable vt (ntotal);
 
@@ -878,7 +873,6 @@ void hnsw_add_vertices(IndexHNSW &index_hnsw,
                 ScopeDeleter1<DistanceComputer> del(dis);
                 int prev_display = verbose && omp_get_thread_num() == 0 ? 0 : -1;
 
-#pragma omp  for schedule(dynamic)
                 for (int i = i0; i < i1; i++) {
                     storage_idx_t pt_id = order[i];
                     dis->set_query (x + (pt_id - n0) * dis->d);
@@ -987,14 +981,12 @@ void IndexHNSW::search (idx_t n, const float *x, idx_t k,
 
 {
 
-#pragma omp parallel
     {
         VisitedTable vt (ntotal);
         DistanceComputer *dis = get_distance_computer();
         ScopeDeleter1<DistanceComputer> del(dis);
         size_t nreorder = 0;
 
-#pragma omp for
         for(int i = 0; i < n; i++) {
             idx_t * idxi = labels + i * k;
             float * simi = distances + i * k;
@@ -1018,7 +1010,6 @@ void IndexHNSW::search (idx_t n, const float *x, idx_t k,
                 maxheap_reorder (k_reorder, simi, idxi);
             }
         }
-#pragma omp critical
         {
             hnsw_stats.nreorder += nreorder;
         }
@@ -1054,12 +1045,10 @@ void IndexHNSW::reconstruct (idx_t key, float* recons) const
 
 void IndexHNSW::shrink_level_0_neighbors(int new_size)
 {
-#pragma omp parallel
     {
         DistanceComputer *dis = get_distance_computer();
         ScopeDeleter1<DistanceComputer> del(dis);
 
-#pragma omp for
         for (idx_t i = 0; i < ntotal; i++) {
 
             size_t begin, end;
@@ -1097,14 +1086,12 @@ void IndexHNSW::search_level_0(
 {
 
     storage_idx_t ntotal = hnsw.levels.size();
-#pragma omp parallel
     {
         DistanceComputer *qdis = get_distance_computer();
         ScopeDeleter1<DistanceComputer> del(qdis);
 
         VisitedTable vt (ntotal);
 
-#pragma omp for
         for(idx_t i = 0; i < n; i++) {
             idx_t * idxi = labels + i * k;
             float * simi = distances + i * k;
@@ -1164,7 +1151,6 @@ void IndexHNSW::init_level_0_from_knngraph(
 {
     int dest_size = hnsw.nb_neighbors (0);
 
-#pragma omp parallel for
     for (idx_t i = 0; i < ntotal; i++) {
         DistanceComputer *qdis = get_distance_computer();
         float vec[d];
@@ -1206,7 +1192,6 @@ void IndexHNSW::init_level_0_from_entry_points(
     for(int i = 0; i < ntotal; i++)
         omp_init_lock(&locks[i]);
 
-#pragma omp parallel
     {
         VisitedTable vt (ntotal);
 
@@ -1214,7 +1199,6 @@ void IndexHNSW::init_level_0_from_entry_points(
         ScopeDeleter1<DistanceComputer> del(dis);
         float vec[storage->d];
 
-#pragma omp  for schedule(dynamic)
         for (int i = 0; i < n; i++) {
             storage_idx_t pt_id = points[i];
             storage_idx_t nearest = nearests[i];
@@ -1242,7 +1226,6 @@ void IndexHNSW::reorder_links()
 {
     int M = hnsw.nb_neighbors(0);
 
-#pragma omp parallel
     {
         std::vector<float> distances (M);
         std::vector<size_t> order (M);
@@ -1250,7 +1233,6 @@ void IndexHNSW::reorder_links()
         DistanceComputer *dis = get_distance_computer();
         ScopeDeleter1<DistanceComputer> del(dis);
 
-#pragma omp for
         for(storage_idx_t i = 0; i < ntotal; i++) {
 
             size_t begin, end;
@@ -1485,10 +1467,8 @@ void ReconstructFromNeighbors::reconstruct_n(storage_idx_t n0,
                                              storage_idx_t ni,
                                              float *x) const
 {
-#pragma omp parallel
     {
         std::vector<float> tmp(index.d);
-#pragma omp for
         for (storage_idx_t i = 0; i < ni; i++) {
             reconstruct(n0 + i, x + i * index.d, tmp.data());
         }
@@ -1576,7 +1556,6 @@ void ReconstructFromNeighbors::add_codes(size_t n, const float *x)
         return;
     }
     codes.resize(codes.size() + code_size * n);
-#pragma omp parallel for
     for (int i = 0; i < n; i++) {
         estimate_code(x + i * index.d, ntotal + i,
                       codes.data() + (ntotal + i) * code_size);
@@ -1623,7 +1602,6 @@ struct FlatL2Dis: HNSW::DistanceComputer {
     }
 
     virtual ~FlatL2Dis () {
-#pragma omp critical
         {
             hnsw_stats.ndis += ndis;
         }
@@ -1714,7 +1692,6 @@ struct PQDis: HNSW::DistanceComputer {
     }
 
     virtual ~PQDis () {
-#pragma omp critical
         {
             hnsw_stats.ndis += ndis;
         }
@@ -2053,7 +2030,6 @@ int search_from_candidates_2(const HNSW & hnsw,
     }
 
     if (level == 0) {
-#pragma omp critical
         {
             hnsw_stats.n1 ++;
             if (candidates.size() == 0)
@@ -2091,7 +2067,6 @@ void IndexHNSW2Level::search (idx_t n, const float *x, idx_t k,
         index_ivfpq->search_preassigned (
             n, x, k, coarse_assign, coarse_dis, distances, labels, false);
 
-#pragma omp parallel
         {
             VisitedTable vt (ntotal);
             DistanceComputer *dis = get_distance_computer();
@@ -2100,7 +2075,6 @@ void IndexHNSW2Level::search (idx_t n, const float *x, idx_t k,
             int candidates_size = hnsw.upper_beam;
             MinimaxHeap candidates(candidates_size);
 
-#pragma omp for
             for(int i = 0; i < n; i++) {
                 idx_t * idxi = labels + i * k;
                 float * simi = distances + i * k;
