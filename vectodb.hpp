@@ -47,15 +47,20 @@ public:
     void AddWithIds(long nb, const float* xb, const long* xids);
 
     /** 
-     * Update given vectors.
-     * Assuming this operation is very rare, i.e. once a day.
-     * This causes disagreement between database and index, so user shall invoke buildIndex and ActivateIndex later. 
+     * Record update requests to a backlog.
      * The upper layer does memory management for xb, xids.
      *
      * @param xb        input matrix, size n * d
      * @param xids      if non-null, ids to store for the vectors (size n)
      */
     void UpdateWithIds(long nb, const float* xb, const long* xids);
+
+    /** 
+     * Play update backlog and return the number of played updates.
+     * Assuming this operation is rare, i.e. once every 15 minutes.
+     * This causes disagreement between database and index, so user shall invoke BuildIndex and ActivateIndex later. 
+     */
+    long UpdateBase();
 
     /** 
      * Get total number of vectors.
@@ -68,6 +73,12 @@ public:
      *
      */
     long GetFlatSize();
+
+    /** 
+     * Get update size.
+     *
+     */
+    long GetUpdateSize();
 
     /**
      * Methods assuming Go write-lock already held. There could be multiple writers.
@@ -114,12 +125,23 @@ public:
      * @param work_dir      input working direcotry
      */
     static void ClearWorkDir(const char* work_dir);
+
+    /** 
+     * Compare distance. Return 0 if dis1 is the closer one, otherwise 1.
+     *
+     */
+    static int CompareDistance(int metric_type, float dis1, float dis2)
+    {
+        return (metric_type == 0) == (dis1 < dis2);
+    }
+    static void Normalize(std::vector<float>& vec);
     static void mmapFile(const std::string& fp, uint8_t*& data, long& len_data);
     static void munmapFile(const std::string& fp, uint8_t*& data, long& len_data);
 
 private:
     std::string getBaseFp() const;
     std::string getIndexFp(long ntrain) const;
+    std::string getUpdateFp() const;
     long getIndexFpNtrain() const;
     void readBase(const uint8_t* data, long len_data, long start_num, std::vector<float>& base) const;
     void readXids(const uint8_t* data, long len_data, long start_num, std::vector<long>& xids) const;
@@ -129,7 +151,9 @@ private:
 private:
     std::string work_dir;
     long dim;
-    long len_line;
+    long len_vec;
+    long len_base_line;
+    long len_upd_line;
     int metric_type;
     std::string index_key;
     std::string query_params;

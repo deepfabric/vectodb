@@ -28,6 +28,8 @@ const (
 	siftQueryParams string = "nprobe=256,ht=256"
 	//siftIndexKey    string = "IVF16384_HNSW32,Flat"
 	//siftQueryParams string = "nprobe=384"
+
+	workDir string = "/tmp/demo_sift1M_vectodb_go"
 )
 
 //FileMmap mmaps the given file.
@@ -179,7 +181,6 @@ func benchmarkAdd() {
 	var err error
 	var vdb *vectodb.VectoDB
 
-	workDir := "/tmp"
 	if err = vectodb.VectodbClearWorkDir(workDir); err != nil {
 		log.Fatalf("%+v", err)
 	}
@@ -245,10 +246,9 @@ func main() {
 	var err error
 	var vdb *vectodb.VectoDB
 
-	workDir := "/tmp"
-	/*if err = vectodb.VectodbClearWorkDir(workDir); err != nil {
-		log.Fatalf("%+v", err)
-	}*/
+	//if err = vectodb.VectodbClearWorkDir(workDir); err != nil {
+	//	log.Fatalf("%+v", err)
+	//}
 	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, siftMetric, siftIndexKey, siftQueryParams); err != nil {
 		log.Fatalf("%+v", err)
 	}

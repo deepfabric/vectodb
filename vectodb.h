@@ -16,8 +16,10 @@ void VectodbDelete(void* vdb);
 void* VectodbBuildIndex(void* vdb, long cur_ntrain, long cur_ntotal, long* ntrain);
 void VectodbAddWithIds(void* vdb, long nb, float* xb, long* xids);
 void VectodbUpdateWithIds(void* vdb, long nb, float* xb, long* xids);
+long VectodbUpdateBase(void* vdb);
 long VectodbGetTotal(void* vdb);
 long VectodbGetFlatSize(void* vdb);
+int VectodbCompareDistance(int metric_type, float dis1, float dis2);
 
 /**
  * Methods assuming Go write-lock already held. There could be multiple writers.

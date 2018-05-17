@@ -18,7 +18,7 @@ const (
 	//indexkey    string = "IVF4096,PQ32"
 	//queryParams string = "nprobe=256,ht=256"
 
-	workDir string = "/tmp"
+	workDir string = "/tmp/vectodb_test_go"
 )
 
 func TestVectodbNew(t *testing.T) {
@@ -105,54 +105,43 @@ func TestVectodbUpdate(t *testing.T) {
 	diff(dim, xb, xids, I, D)
 	require.Equal(t, xids, I)
 
-	// modify every component of even line
-	nb2 := nb / 2
-	xb2 := make([]float32, nb2*dim)
-	xids2 := make([]int64, nb2)
-	for i := 0; i < nb2; i++ {
-		for j := 0; j < dim; j++ {
-			xb2[i*dim+j] = rand.Float32()
-		}
-		normalizeInplace(dim, xb2[i*dim:(i+1)*dim])
-		xids2[i] = int64(2 * i)
-	}
-
-	err = vdb.UpdateWithIds(nb2, xb2, xids2)
+	// update with the same vector
+	err = vdb.UpdateWithIds(nb, xb, xids)
 	require.NoError(t, err)
 
-	var curNtrain, curNsize int
-	curNtrain, curNsize, err = vdb.GetIndexSize()
+	played, err := vdb.UpdateBase()
 	require.NoError(t, err)
+	require.Equal(t, played, nb)
 
-	index, ntrain, err := vdb.BuildIndex(curNtrain, curNsize)
+	index, ntrain, err := vdb.BuildIndex(0, 0)
 	require.NoError(t, err)
 
 	err = vdb.ActivateIndex(index, ntrain)
 	require.NoError(t, err)
 
-	D2 := make([]float32, nb2)
-	I2 := make([]int64, nb2)
+	D2 := make([]float32, nb)
+	I2 := make([]int64, nb)
 
-	total2, err := vdb.Search(nb2, xb2, D2, I2)
+	total2, err := vdb.Search(nb, xb, D2, I2)
 	require.NoError(t, err)
 	require.Equal(t, nb, total2)
 	fmt.Printf("D2: %+v\n", D2)
 	fmt.Printf("I2: %+v\n", I2)
-	diff(dim, xb, xids2, I2, D2)
-	require.Equal(t, xids2, I2)
+	diff(dim, xb, xids, I2, D2)
+	require.Equal(t, xids, I2)
 
 	err = vdb.Destroy()
 	require.NoError(t, err)
 
 	vdb2, err := NewVectoDB(workDir, dim, metric, indexkey, queryParams)
 	require.NoError(t, err)
-	total3, err := vdb2.Search(nb2, xb2, D2, I2)
+	total3, err := vdb2.Search(nb, xb, D2, I2)
 	require.NoError(t, err)
 	require.Equal(t, nb, total3)
 	fmt.Printf("D2: %+v\n", D2)
 	fmt.Printf("I2: %+v\n", I2)
-	diff(dim, xb, xids2, I2, D2)
-	require.Equal(t, xids2, I2)
+	diff(dim, xb, xids, I2, D2)
+	require.Equal(t, xids, I2)
 
 	err = vdb2.Destroy()
 	require.NoError(t, err)

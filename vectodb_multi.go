@@ -51,15 +51,6 @@ func MaxInt(x, y int) int {
 	return y
 }
 
-//CompareDistance returns true if dis1 is bigger than dis2 per metricType (0 - IP, 1 - L2).
-func CompareDistance(metricType int, dis1, dis2 float32) (le bool) {
-	if metricType == 1 {
-		return dis1 > dis2
-	} else {
-		return dis1 < dis2
-	}
-}
-
 func getWorkDir(seq int) string {
 	return fmt.Sprintf("vdb-%d", seq)
 }
@@ -163,7 +154,7 @@ func (vm *VectodbMulti) Search(disThr float32, nq int, xq []float32) (xids []int
 			continue
 		}
 		for i := 0; i < nq; i++ {
-			if CompareDistance(vm.metricType, dis[i], dis2[i]) {
+			if xids[i] == int64(-1) || 0 == VectodbCompareDistance(vm.metricType, dis2[i], dis[i]) {
 				dis[i] = dis2[i]
 				xids[i] = xids2[i]
 			}
@@ -230,7 +221,7 @@ func (vm *VectodbMulti) StartBuilderLoop() {
 		ticker := time.Tick(2 * time.Second)
 		threshold := vm.sizeLimit / 200
 		var index unsafe.Pointer
-		var cur_ntrain, cur_nsize, ntrain, nflat int
+		var curNtrain, curNsize, ntrain, nflat, played int
 		var err error
 		for {
 			select {
@@ -239,22 +230,37 @@ func (vm *VectodbMulti) StartBuilderLoop() {
 			case <-ticker:
 				log.Printf("build iteration begin")
 				vdbs := vm.vdbs
-				for _, vdb := range vdbs {
-					if nflat, err = vdb.GetFlatSize(); err != nil {
+				for i, vdb := range vdbs {
+					var needBuild bool
+					if played, err = vdb.UpdateBase(); err != nil {
 						log.Fatalf("%+v", err)
 						continue
 					}
-					if nflat >= threshold {
-						if cur_ntrain, cur_nsize, err = vdb.GetIndexSize(); err != nil {
+					if played != 0 {
+						needBuild = true
+						curNtrain = 0
+						curNsize = 0
+						log.Printf("vdb[%d]: played %d updates, need build index", i, played)
+					} else {
+						if nflat, err = vdb.GetFlatSize(); err != nil {
 							log.Fatalf("%+v", err)
 							continue
 						}
-						log.Printf("cur_ntrain %d, cur_nsize %d", cur_ntrain, cur_nsize)
-						if index, ntrain, err = vdb.BuildIndex(cur_ntrain, cur_nsize); err != nil {
+						if nflat >= threshold {
+							needBuild = true
+							if curNtrain, curNsize, err = vdb.GetIndexSize(); err != nil {
+								log.Fatalf("%+v", err)
+								continue
+							}
+							log.Printf("vdb[%d]: nflat %d goes above threshold, need build idnex. curNtrain %d, curNsize %d", i, nflat, curNtrain, curNsize)
+						}
+					}
+					if needBuild {
+						if index, ntrain, err = vdb.BuildIndex(curNtrain, curNsize); err != nil {
 							log.Fatalf("%+v", err)
 							continue
 						}
-						log.Printf("BuildIndex done")
+						log.Printf("vdb[%d]: BuildIndex done", i)
 						if ntrain != 0 {
 							if err = vdb.ActivateIndex(index, ntrain); err != nil {
 								log.Fatalf("%+v", err)

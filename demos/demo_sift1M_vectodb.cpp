@@ -77,7 +77,7 @@ int main(int argc, char* argv[])
 
     LOG(INFO) << "Loading database";
     const long sift_dim = 128L;
-    const char* work_dir = "/tmp";
+    const char* work_dir = "/tmp/demo_sift1M_vectodb_cpp";
 
     //VectoDB::ClearWorkDir(work_dir);
     //VectoDB vdb(work_dir, sift_dim, 1);
@@ -113,6 +113,20 @@ int main(int argc, char* argv[])
         vdb.BuildIndex(cur_ntrain, cur_nsize, index, ntrain);
         vdb.ActivateIndex(index, ntrain);
     }
+
+    const bool update = true;
+    if (update) {
+        LOG(INFO) << "Updating vectors";
+        vdb.UpdateWithIds(nb, xb, xids);
+        LOG(INFO) << "Playing updates";
+        long played = vdb.UpdateBase();
+        LOG(INFO) << "Played " << played << " updates";
+        faiss::Index* index;
+        long ntrain;
+        vdb.BuildIndex(0, 0, index, ntrain);
+        vdb.ActivateIndex(index, ntrain);
+    }
+
     delete[] xb;
     delete[] xids;
 

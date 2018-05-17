@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -60,6 +61,8 @@ func TestVectodbMulti(t *testing.T) {
 
 	err = vm.UpdateWithIds(nb2, xb2, xids2)
 	require.NoError(t, err)
+
+	time.Sleep(5 * time.Second)
 
 	vm.StopBuilderLoop()
 }
