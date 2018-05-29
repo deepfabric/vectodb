@@ -383,7 +383,7 @@ long VectoDB::UpdateBase()
             long curCnt = *(long*)(data + pos);
             update->count += curCnt;
             pos += sizeof(long);
-            LOG(INFO) << "Playing update, line_num " << line_num << " updates";
+            //LOG(INFO) << "Playing update, line_num " << line_num << " updates";
             for (long d = 0; d < dim; pos += sizeof(float), d++) {
                 float curVec = *(float*)(data + pos);
                 update->vec[d] += curCnt * curVec;

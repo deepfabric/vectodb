@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/pkg/errors"
 )
@@ -220,8 +219,6 @@ func (vm *VectodbMulti) StartBuilderLoop() {
 	go func() {
 		ticker := time.Tick(2 * time.Second)
 		threshold := vm.sizeLimit / 200
-		var index unsafe.Pointer
-		var curNtrain, curNsize, ntrain, nflat, played int
 		var err error
 		for {
 			select {
@@ -230,45 +227,10 @@ func (vm *VectodbMulti) StartBuilderLoop() {
 			case <-ticker:
 				log.Printf("build iteration begin")
 				vdbs := vm.vdbs
-				for i, vdb := range vdbs {
-					var needBuild bool
-					if played, err = vdb.UpdateBase(); err != nil {
+				for _, vdb := range vdbs {
+					if err = vdb.UpdateIndex(threshold); err != nil {
 						log.Fatalf("%+v", err)
-						continue
 					}
-					if played != 0 {
-						needBuild = true
-						curNtrain = 0
-						curNsize = 0
-						log.Printf("vdb[%d]: played %d updates, need build index", i, played)
-					} else {
-						if nflat, err = vdb.GetFlatSize(); err != nil {
-							log.Fatalf("%+v", err)
-							continue
-						}
-						if nflat >= threshold {
-							needBuild = true
-							if curNtrain, curNsize, err = vdb.GetIndexSize(); err != nil {
-								log.Fatalf("%+v", err)
-								continue
-							}
-							log.Printf("vdb[%d]: nflat %d goes above threshold, need build idnex. curNtrain %d, curNsize %d", i, nflat, curNtrain, curNsize)
-						}
-					}
-					if needBuild {
-						if index, ntrain, err = vdb.BuildIndex(curNtrain, curNsize); err != nil {
-							log.Fatalf("%+v", err)
-							continue
-						}
-						log.Printf("vdb[%d]: BuildIndex done", i)
-						if ntrain != 0 {
-							if err = vdb.ActivateIndex(index, ntrain); err != nil {
-								log.Fatalf("%+v", err)
-								continue
-							}
-						}
-					}
-
 					// sleep a while to avoid busy loop
 					select {
 					case <-ctx.Done():

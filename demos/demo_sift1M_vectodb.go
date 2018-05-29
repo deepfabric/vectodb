@@ -110,8 +110,6 @@ func ivecs_read(fname string) (x []int32, d, n int, err error) {
 func builderLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 	ticker := time.Tick(5 * time.Second)
 	threshold := 1000
-	var index unsafe.Pointer
-	var cur_ntrain, cur_nsize, ntrain, nflat int
 	var err error
 	for {
 		select {
@@ -119,24 +117,8 @@ func builderLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 			return
 		case <-ticker:
 			log.Printf("build iteration begin")
-			if nflat, err = vdb.GetFlatSize(); err != nil {
+			if err = vdb.UpdateIndex(threshold); err != nil {
 				log.Fatalf("%+v", err)
-			}
-			log.Printf("nflat %d", nflat)
-			if nflat >= threshold {
-				if cur_ntrain, cur_nsize, err = vdb.GetIndexSize(); err != nil {
-					log.Fatalf("%+v", err)
-				}
-				log.Printf("cur_ntrain %d, cur_nsize %d", cur_ntrain, cur_nsize)
-				if index, ntrain, err = vdb.BuildIndex(cur_ntrain, cur_nsize); err != nil {
-					log.Fatalf("%+v", err)
-				}
-				log.Printf("BuildIndex done")
-				if ntrain != 0 {
-					if err = vdb.ActivateIndex(index, ntrain); err != nil {
-						log.Fatalf("%+v", err)
-					}
-				}
 			}
 			log.Printf("build iteration done")
 		}
@@ -273,16 +255,7 @@ func main() {
 		log.Fatalf("%+v", err)
 	}
 
-	var index unsafe.Pointer
-	var cur_ntrain, cur_nsize, ntrain int
-	if cur_ntrain, cur_nsize, err = vdb.GetIndexSize(); err != nil {
-		log.Fatalf("%+v", err)
-	}
-	log.Printf("cur_ntrain %d, cur_nsize %d", cur_ntrain, cur_nsize)
-	if index, ntrain, err = vdb.BuildIndex(cur_ntrain, cur_nsize); err != nil {
-		log.Fatalf("%+v", err)
-	}
-	if err = vdb.ActivateIndex(index, ntrain); err != nil {
+	if err = vdb.UpdateIndex(0); err != nil {
 		log.Fatalf("%+v", err)
 	}
 

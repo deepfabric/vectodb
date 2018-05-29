@@ -9,11 +9,14 @@ import "C"
 import (
 	"sync"
 	"unsafe"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type VectoDB struct {
-	rwlock sync.RWMutex
-	vdbC   unsafe.Pointer
+	rwlock  sync.RWMutex
+	vdbC    unsafe.Pointer
+	workDir string
 }
 
 func NewVectoDB(workDir string, dim int, metricType int, indexKey string, queryParams string) (vdb *VectoDB, err error) {
@@ -22,7 +25,8 @@ func NewVectoDB(workDir string, dim int, metricType int, indexKey string, queryP
 	queryParamsC := C.CString(queryParams)
 	vdbC := C.VectodbNew(wordDirC, C.long(dim), C.int(metricType), indexKeyC, queryParamsC)
 	vdb = &VectoDB{
-		vdbC: vdbC,
+		vdbC:    vdbC,
+		workDir: workDir,
 	}
 	C.free(unsafe.Pointer(wordDirC))
 	C.free(unsafe.Pointer(indexKeyC))
@@ -32,13 +36,6 @@ func NewVectoDB(workDir string, dim int, metricType int, indexKey string, queryP
 
 func (vdb *VectoDB) Destroy() (err error) {
 	C.VectodbDelete(vdb.vdbC)
-	return
-}
-
-func (vdb *VectoDB) BuildIndex(cur_ntrain, cur_ntotal int) (index unsafe.Pointer, ntrain int, err error) {
-	var ntrainC C.long
-	index = C.VectodbBuildIndex(vdb.vdbC, C.long(cur_ntrain), C.long(cur_ntotal), &ntrainC)
-	ntrain = int(ntrainC)
 	return
 }
 
@@ -52,7 +49,52 @@ func (vdb *VectoDB) UpdateWithIds(nb int, xb []float32, xids []int64) (err error
 	return
 }
 
-func (vdb *VectoDB) UpdateBase() (played int, err error) {
+func (vdb *VectoDB) UpdateIndex(threshold int) (err error) {
+	var needBuild bool
+	var index unsafe.Pointer
+	var curNtrain, curNsize, ntrain, nflat, played int
+	if played, err = vdb.updateBase(); err != nil {
+		return
+	}
+	if played != 0 {
+		needBuild = true
+		curNtrain = 0
+		curNsize = 0
+		log.Infof("%s: played %d updates, need build index", vdb.workDir, played)
+	} else {
+		if nflat, err = vdb.GetFlatSize(); err != nil {
+			return
+		}
+		if nflat >= threshold {
+			needBuild = true
+			if curNtrain, curNsize, err = vdb.getIndexSize(); err != nil {
+				return
+			}
+			log.Infof("%s: nflat %d goes above threshold, need build idnex. curNtrain %d, curNsize %d", vdb.workDir, nflat, curNtrain, curNsize)
+		}
+	}
+	if needBuild {
+		if index, ntrain, err = vdb.buildIndex(curNtrain, curNsize); err != nil {
+			return
+		}
+		log.Infof("%s: BuildIndex done", vdb.workDir)
+		if ntrain != 0 {
+			if err = vdb.activateIndex(index, ntrain); err != nil {
+				return
+			}
+		}
+	}
+	return
+}
+
+func (vdb *VectoDB) buildIndex(cur_ntrain, cur_ntotal int) (index unsafe.Pointer, ntrain int, err error) {
+	var ntrainC C.long
+	index = C.VectodbBuildIndex(vdb.vdbC, C.long(cur_ntrain), C.long(cur_ntotal), &ntrainC)
+	ntrain = int(ntrainC)
+	return
+}
+
+func (vdb *VectoDB) updateBase() (played int, err error) {
 	playedC := C.VectodbUpdateBase(vdb.vdbC)
 	played = int(playedC)
 	return
@@ -74,7 +116,7 @@ func (vdb *VectoDB) GetFlatSize() (nsize int, err error) {
  * Writer methods. There could be multiple writers.
  */
 
-func (vdb *VectoDB) ActivateIndex(index unsafe.Pointer, ntrain int) (err error) {
+func (vdb *VectoDB) activateIndex(index unsafe.Pointer, ntrain int) (err error) {
 	vdb.rwlock.Lock()
 	defer vdb.rwlock.Unlock()
 	C.VectodbActivateIndex(vdb.vdbC, index, C.long(ntrain))
@@ -84,7 +126,7 @@ func (vdb *VectoDB) ActivateIndex(index unsafe.Pointer, ntrain int) (err error) 
 /**
  * Reader methods. There could be multiple readers.
  */
-func (vdb *VectoDB) GetIndexSize() (ntrain, nsize int, err error) {
+func (vdb *VectoDB) getIndexSize() (ntrain, nsize int, err error) {
 	vdb.rwlock.RLock()
 	defer vdb.rwlock.RUnlock()
 	var ntrainC, nsizeC C.long

@@ -109,14 +109,7 @@ func TestVectodbUpdate(t *testing.T) {
 	err = vdb.UpdateWithIds(nb, xb, xids)
 	require.NoError(t, err)
 
-	played, err := vdb.UpdateBase()
-	require.NoError(t, err)
-	require.Equal(t, played, nb)
-
-	index, ntrain, err := vdb.BuildIndex(0, 0)
-	require.NoError(t, err)
-
-	err = vdb.ActivateIndex(index, ntrain)
+	err = vdb.UpdateIndex(0)
 	require.NoError(t, err)
 
 	D2 := make([]float32, nb)
