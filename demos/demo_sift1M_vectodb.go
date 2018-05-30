@@ -29,7 +29,8 @@ const (
 	//siftIndexKey    string = "IVF16384_HNSW32,Flat"
 	//siftQueryParams string = "nprobe=384"
 
-	workDir string = "/tmp/demo_sift1M_vectodb_go"
+	workDir       string = "/tmp/demo_sift1M_vectodb_go"
+	flatThreshold int    = 1000
 )
 
 //FileMmap mmaps the given file.
@@ -109,7 +110,6 @@ func ivecs_read(fname string) (x []int32, d, n int, err error) {
 
 func builderLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 	ticker := time.Tick(5 * time.Second)
-	threshold := 1000
 	var err error
 	for {
 		select {
@@ -117,7 +117,7 @@ func builderLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 			return
 		case <-ticker:
 			log.Printf("build iteration begin")
-			if err = vdb.UpdateIndex(threshold); err != nil {
+			if err = vdb.UpdateIndex(); err != nil {
 				log.Fatalf("%+v", err)
 			}
 			log.Printf("build iteration done")
@@ -166,7 +166,7 @@ func benchmarkAdd() {
 	if err = vectodb.VectodbClearWorkDir(workDir); err != nil {
 		log.Fatalf("%+v", err)
 	}
-	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, siftMetric, siftIndexKey, siftQueryParams); err != nil {
+	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, siftMetric, siftIndexKey, siftQueryParams, flatThreshold); err != nil {
 		log.Fatalf("%+v", err)
 	}
 
@@ -231,7 +231,7 @@ func main() {
 	//if err = vectodb.VectodbClearWorkDir(workDir); err != nil {
 	//	log.Fatalf("%+v", err)
 	//}
-	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, siftMetric, siftIndexKey, siftQueryParams); err != nil {
+	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, siftMetric, siftIndexKey, siftQueryParams, flatThreshold); err != nil {
 		log.Fatalf("%+v", err)
 	}
 
@@ -255,7 +255,7 @@ func main() {
 		log.Fatalf("%+v", err)
 	}
 
-	if err = vdb.UpdateIndex(0); err != nil {
+	if err = vdb.UpdateIndex(); err != nil {
 		log.Fatalf("%+v", err)
 	}
 

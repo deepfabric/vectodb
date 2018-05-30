@@ -14,19 +14,21 @@ import (
 )
 
 type VectoDB struct {
-	rwlock  sync.RWMutex
-	vdbC    unsafe.Pointer
-	workDir string
+	rwlock        sync.RWMutex
+	vdbC          unsafe.Pointer
+	workDir       string
+	flatThreshold int
 }
 
-func NewVectoDB(workDir string, dim int, metricType int, indexKey string, queryParams string) (vdb *VectoDB, err error) {
+func NewVectoDB(workDir string, dim int, metricType int, indexKey string, queryParams string, flatThreshold int) (vdb *VectoDB, err error) {
 	wordDirC := C.CString(workDir)
 	indexKeyC := C.CString(indexKey)
 	queryParamsC := C.CString(queryParams)
 	vdbC := C.VectodbNew(wordDirC, C.long(dim), C.int(metricType), indexKeyC, queryParamsC)
 	vdb = &VectoDB{
-		vdbC:    vdbC,
-		workDir: workDir,
+		vdbC:          vdbC,
+		workDir:       workDir,
+		flatThreshold: flatThreshold,
 	}
 	C.free(unsafe.Pointer(wordDirC))
 	C.free(unsafe.Pointer(indexKeyC))
@@ -49,7 +51,7 @@ func (vdb *VectoDB) UpdateWithIds(nb int, xb []float32, xids []int64) (err error
 	return
 }
 
-func (vdb *VectoDB) UpdateIndex(threshold int) (err error) {
+func (vdb *VectoDB) UpdateIndex() (err error) {
 	var needBuild bool
 	var index unsafe.Pointer
 	var curNtrain, curNsize, ntrain, nflat, played int
@@ -65,7 +67,7 @@ func (vdb *VectoDB) UpdateIndex(threshold int) (err error) {
 		if nflat, err = vdb.GetFlatSize(); err != nil {
 			return
 		}
-		if nflat >= threshold {
+		if nflat >= vdb.flatThreshold {
 			needBuild = true
 			if curNtrain, curNsize, err = vdb.getIndexSize(); err != nil {
 				return
@@ -77,12 +79,12 @@ func (vdb *VectoDB) UpdateIndex(threshold int) (err error) {
 		if index, ntrain, err = vdb.buildIndex(curNtrain, curNsize); err != nil {
 			return
 		}
-		log.Infof("%s: BuildIndex done", vdb.workDir)
 		if ntrain != 0 {
 			if err = vdb.activateIndex(index, ntrain); err != nil {
 				return
 			}
 		}
+		log.Infof("%s: UpdateIndex done", vdb.workDir)
 	}
 	return
 }

@@ -66,7 +66,7 @@ func diff(d int, xb []float32, xids, I []int64, D []float32) {
 func TestVectodbUpdate(t *testing.T) {
 	var err error
 	VectodbClearWorkDir(workDir)
-	vdb, err := NewVectoDB(workDir, dim, metric, indexkey, queryParams)
+	vdb, err := NewVectoDB(workDir, dim, metric, indexkey, queryParams, 0)
 	require.NoError(t, err)
 
 	const nb int = 100
@@ -109,7 +109,7 @@ func TestVectodbUpdate(t *testing.T) {
 	err = vdb.UpdateWithIds(nb, xb, xids)
 	require.NoError(t, err)
 
-	err = vdb.UpdateIndex(0)
+	err = vdb.UpdateIndex()
 	require.NoError(t, err)
 
 	D2 := make([]float32, nb)

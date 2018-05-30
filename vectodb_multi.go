@@ -118,7 +118,7 @@ func NewVectodbMulti(workDir string, dim int, metricType int, indexKey string, q
 	sort.Ints(seqs)
 	for _, seq := range seqs {
 		dp := filepath.Join(workDir, getWorkDir(seq))
-		vdb, err = NewVectoDB(dp, dim, metricType, indexKey, queryParams)
+		vdb, err = NewVectoDB(dp, dim, metricType, indexKey, queryParams, vm.sizeLimit/200)
 		vm.vdbs = append(vm.vdbs, vdb)
 	}
 	vm.maxSeq = seqs[len(seqs)-1]
@@ -185,7 +185,7 @@ func (vm *VectodbMulti) AddWithIds(nb int, xb []float32, xids []int64) (err erro
 		} else {
 			vm.maxSeq++
 			dp := filepath.Join(vm.workDir, getWorkDir(vm.maxSeq))
-			if vdb, err = NewVectoDB(dp, vm.dim, vm.metricType, vm.indexKey, vm.queryParams); err != nil {
+			if vdb, err = NewVectoDB(dp, vm.dim, vm.metricType, vm.indexKey, vm.queryParams, vm.sizeLimit/200); err != nil {
 				return
 			}
 			vm.vdbs = append(vm.vdbs, vdb)
@@ -218,7 +218,6 @@ func (vm *VectodbMulti) StartBuilderLoop() {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		ticker := time.Tick(2 * time.Second)
-		threshold := vm.sizeLimit / 200
 		var err error
 		for {
 			select {
@@ -228,7 +227,7 @@ func (vm *VectodbMulti) StartBuilderLoop() {
 				log.Printf("build iteration begin")
 				vdbs := vm.vdbs
 				for _, vdb := range vdbs {
-					if err = vdb.UpdateIndex(threshold); err != nil {
+					if err = vdb.UpdateIndex(); err != nil {
 						log.Fatalf("%+v", err)
 					}
 					// sleep a while to avoid busy loop
