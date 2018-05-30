@@ -14,6 +14,7 @@ import subprocess
 # $ make demos/demo_sift1M
 
 env = Environment()
+'''
 conf = Configure(env)
 for header in 'omp.h openblas/openblas_config.h'.split():
     if not conf.CheckCHeader(header):
@@ -24,6 +25,7 @@ for header in 'boost/filesystem.hpp boost/system/system_error.hpp boost/thread/s
         print header, ' must be installed!'
         Exit(1)
 env = conf.Finish()
+'''
 
 env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && cp example_makefiles/makefile.inc.Linux makefile.inc && make demos/demo_sift1M py && popd')
 if env.GetOption('clean'):
