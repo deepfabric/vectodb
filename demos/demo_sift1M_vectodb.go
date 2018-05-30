@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	siftDim    int = 128
-	siftMetric int = 1 //0 - IP, 1 - L2
+	siftDim    int     = 128
+	siftMetric int     = 1        //0 - IP, 1 - L2
+	distThr    float32 = 260000.0 //sift1M is not normalized
 
 	siftBase   string = "sift1M/sift_base.fvecs"
 	siftQuery  string = "sift1M/sift_query.fvecs"
@@ -166,7 +167,7 @@ func benchmarkAdd() {
 	if err = vectodb.VectodbClearWorkDir(workDir); err != nil {
 		log.Fatalf("%+v", err)
 	}
-	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, siftMetric, siftIndexKey, siftQueryParams, flatThreshold); err != nil {
+	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, siftMetric, siftIndexKey, siftQueryParams, distThr, flatThreshold); err != nil {
 		log.Fatalf("%+v", err)
 	}
 
@@ -231,7 +232,7 @@ func main() {
 	//if err = vectodb.VectodbClearWorkDir(workDir); err != nil {
 	//	log.Fatalf("%+v", err)
 	//}
-	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, siftMetric, siftIndexKey, siftQueryParams, flatThreshold); err != nil {
+	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, siftMetric, siftIndexKey, siftQueryParams, distThr, flatThreshold); err != nil {
 		log.Fatalf("%+v", err)
 	}
 

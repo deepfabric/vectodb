@@ -81,8 +81,8 @@ int main(int argc, char* argv[])
 
     //VectoDB::ClearWorkDir(work_dir);
     //VectoDB vdb(work_dir, sift_dim, 1);
-    VectoDB vdb(work_dir, sift_dim, 1, "IVF4096,PQ32", "nprobe=256,ht=256");
-    //VectoDB vdb(work_dir, sift_dim, 1, "IVF16384_HNSW32,Flat", "nprobe=384");
+    VectoDB vdb(work_dir, sift_dim, 1, "IVF4096,PQ32", "nprobe=256,ht=256", 260000.0f);
+    //VectoDB vdb(work_dir, sift_dim, 1, "IVF16384_HNSW32,Flat", "nprobe=384", 260000.0f);
     size_t nb, d;
     float* xb = fvecs_read("sift1M/sift_base.fvecs", &d, &nb);
     long* xids = new long[nb];
@@ -114,7 +114,7 @@ int main(int argc, char* argv[])
         vdb.ActivateIndex(index, ntrain);
     }
 
-    const bool update = true;
+    const bool update = false;
     if (update) {
         LOG(INFO) << "Updating vectors";
         vdb.UpdateWithIds(nb, xb, xids);

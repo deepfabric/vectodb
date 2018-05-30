@@ -13,8 +13,10 @@ const (
 	dim    int = 2
 	metric int = 1 //0 - IP, 1 - L2
 
-	indexkey    string = "Flat"
-	queryParams string = ""
+	indexkey    string  = "Flat"
+	queryParams string  = ""
+	distThr     float32 = 0.8
+	flatThr     int     = 0
 	//indexkey    string = "IVF4096,PQ32"
 	//queryParams string = "nprobe=256,ht=256"
 
@@ -24,7 +26,7 @@ const (
 func TestVectodbNew(t *testing.T) {
 	var err error
 	VectodbClearWorkDir(workDir)
-	vdb, err := NewVectoDB(workDir, dim, metric, indexkey, queryParams)
+	vdb, err := NewVectoDB(workDir, dim, metric, indexkey, queryParams, distThr, flatThr)
 	require.NoError(t, err)
 	err = vdb.Destroy()
 	require.NoError(t, err)
@@ -66,7 +68,7 @@ func diff(d int, xb []float32, xids, I []int64, D []float32) {
 func TestVectodbUpdate(t *testing.T) {
 	var err error
 	VectodbClearWorkDir(workDir)
-	vdb, err := NewVectoDB(workDir, dim, metric, indexkey, queryParams, 0)
+	vdb, err := NewVectoDB(workDir, dim, metric, indexkey, queryParams, distThr, flatThr)
 	require.NoError(t, err)
 
 	const nb int = 100
@@ -126,7 +128,7 @@ func TestVectodbUpdate(t *testing.T) {
 	err = vdb.Destroy()
 	require.NoError(t, err)
 
-	vdb2, err := NewVectoDB(workDir, dim, metric, indexkey, queryParams)
+	vdb2, err := NewVectoDB(workDir, dim, metric, indexkey, queryParams, distThr, flatThr)
 	require.NoError(t, err)
 	total3, err := vdb2.Search(nb, xb, D2, I2)
 	require.NoError(t, err)

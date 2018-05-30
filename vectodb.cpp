@@ -93,7 +93,7 @@ struct VecExt {
     vector<float> vec;
 };
 
-VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const char* index_key_in, const char* query_params_in)
+VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const char* index_key_in, const char* query_params_in, float dist_threshold_in)
     : work_dir(work_dir_in)
     , dim(dim_in)
     , len_vec(dim * sizeof(float))
@@ -102,6 +102,7 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
     , metric_type(metric_type_in)
     , index_key(index_key_in)
     , query_params(query_params_in)
+    , dist_threshold(dist_threshold_in)
 {
     static_assert(sizeof(float) == 4, "sizeof(float) must be 4");
     static_assert(sizeof(long) > 4, "sizeof(long) must be larger than 4");
@@ -468,8 +469,14 @@ long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
     {
         rlock r{ state->rw_xids };
         for (int i = 0; i < nq; i++) {
-            xids[i] = state->xids[xids[i]];
+            if (1 == CompareDistance(metric_type, dist_threshold, distances[i])) {
+                xids[i] = state->xids[xids[i]];
+            } else {
+                xids[i] = long(-1);
+                //printf("%f ", distances[i]);
+            }
         }
+        //printf("\nmetric_type=%d, dist_threshold=%f\n", metric_type, dist_threshold);
     }
     return total;
 }
@@ -618,9 +625,9 @@ void VectoDB::munmapFile(const string& fp, uint8_t*& data, long& len_data)
  * C wrappers.
  */
 
-void* VectodbNew(char* work_dir, long dim, int metric_type, char* index_key, char* query_params)
+void* VectodbNew(char* work_dir, long dim, int metric_type, char* index_key, char* query_params, float dist_threshold)
 {
-    VectoDB* vdb = new VectoDB(work_dir, dim, metric_type, index_key, query_params);
+    VectoDB* vdb = new VectoDB(work_dir, dim, metric_type, index_key, query_params, dist_threshold);
     return vdb;
 }
 

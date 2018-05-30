@@ -20,11 +20,11 @@ type VectoDB struct {
 	flatThreshold int
 }
 
-func NewVectoDB(workDir string, dim int, metricType int, indexKey string, queryParams string, flatThreshold int) (vdb *VectoDB, err error) {
+func NewVectoDB(workDir string, dim int, metricType int, indexKey string, queryParams string, distThreshold float32, flatThreshold int) (vdb *VectoDB, err error) {
 	wordDirC := C.CString(workDir)
 	indexKeyC := C.CString(indexKey)
 	queryParamsC := C.CString(queryParams)
-	vdbC := C.VectodbNew(wordDirC, C.long(dim), C.int(metricType), indexKeyC, queryParamsC)
+	vdbC := C.VectodbNew(wordDirC, C.long(dim), C.int(metricType), indexKeyC, queryParamsC, C.float(distThreshold))
 	vdb = &VectoDB{
 		vdbC:          vdbC,
 		workDir:       workDir,

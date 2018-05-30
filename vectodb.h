@@ -7,7 +7,7 @@ extern "C" {
 /**
  * Constructor and destructor methods.
  */
-void* VectodbNew(char* work_dir, long dim, int metric_type, char* index_key, char* query_params);
+void* VectodbNew(char* work_dir, long dim, int metric_type, char* index_key, char* query_params, float dist_threshold);
 void VectodbDelete(void* vdb);
 
 /**

@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	disThr    float32 = 1e-5
-	sizeLimit int     = 1000
+	sizeLimit int = 1000
 )
 
 func TestVectodbMulti(t *testing.T) {
@@ -19,7 +18,7 @@ func TestVectodbMulti(t *testing.T) {
 	err = VectodbMultiClearWorkDir(workDir)
 	require.NoError(t, err)
 
-	vm, err := NewVectodbMulti(workDir, dim, metric, indexkey, queryParams, sizeLimit)
+	vm, err := NewVectodbMulti(workDir, dim, metric, indexkey, queryParams, distThr, sizeLimit)
 	require.NoError(t, err)
 
 	vm.StartBuilderLoop()
@@ -43,7 +42,7 @@ func TestVectodbMulti(t *testing.T) {
 	require.NoError(t, err)
 
 	var I []int64
-	I, err = vm.Search(disThr, nb/10, xb)
+	I, err = vm.Search(nb/10, xb)
 	require.NoError(t, err)
 	fmt.Printf("I: %+v\n", I)
 

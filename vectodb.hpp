@@ -17,11 +17,12 @@ public:
      *
      * @param work_dir      input working direcotry
      * @param dim           input dimension of vector
+     * @param metric_type   input faiss metric, 0 - METRIC_INNER_PRODUCT, 1 - METRIC_L2
      * @param index_key     input faiss index_key
      * @param query_params  input faiss selected params of auto-tuning
-     * @param metric_type   input faiss metric, 0 - METRIC_INNER_PRODUCT, 1 - METRIC_L2
+     * @param dist_threshold   input distance threshold
      */
-    VectoDB(const char* work_dir, long dim, int metric_type = 0, const char* index_key = "IVF4096,PQ32", const char* query_params = "nprobe=256,ht=256");
+    VectoDB(const char* work_dir, long dim, int metric_type = 0, const char* index_key = "IVF4096,PQ32", const char* query_params = "nprobe=256,ht=256", float dist_threshold = 0.6f);
 
     /** 
      * Deconstruct a VectoDB.
@@ -155,6 +156,7 @@ private:
     long len_base_line;
     long len_upd_line;
     int metric_type;
+    float dist_threshold;
     std::string index_key;
     std::string query_params;
     std::unique_ptr<DbState> state;
