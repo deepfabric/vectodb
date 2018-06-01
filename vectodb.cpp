@@ -418,6 +418,9 @@ void VectoDB::mergeToFlat()
 // Needs Go read-lock
 long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
 {
+    for (int i = 0; i < nq; i++) {
+        xids[i] = long(-1);
+    }
     long total = state->total;
     if (total <= 0)
         return total;
@@ -471,9 +474,6 @@ long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
         for (int i = 0; i < nq; i++) {
             if (1 == CompareDistance(metric_type, dist_threshold, distances[i])) {
                 xids[i] = state->xids[xids[i]];
-            } else {
-                xids[i] = long(-1);
-                //printf("%f ", distances[i]);
             }
         }
         //printf("\nmetric_type=%d, dist_threshold=%f\n", metric_type, dist_threshold);
