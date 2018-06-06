@@ -474,6 +474,8 @@ long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
         for (int i = 0; i < nq; i++) {
             if (1 == CompareDistance(metric_type, dist_threshold, distances[i])) {
                 xids[i] = state->xids[xids[i]];
+            } else {
+                xids[i] = long(-1);
             }
         }
         //printf("\nmetric_type=%d, dist_threshold=%f\n", metric_type, dist_threshold);
