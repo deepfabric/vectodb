@@ -11,7 +11,7 @@ import subprocess
 # 4. Build all
 # $ scons
 
-env = Environment()
+env = Environment(ENV=os.environ)
 
 env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && cp example_makefiles/makefile.inc.Linux makefile.inc && make demos/demo_sift1M py && popd')
 if env.GetOption('clean'):
