@@ -151,7 +151,7 @@ func (vm *VectodbMulti) Search(nq int, xq []float32) (xids []int64, err error) {
 			continue
 		}
 		for i := 0; i < nq; i++ {
-			if xids[i] == int64(-1) || 0 == VectodbCompareDistance(vm.metricType, dis2[i], dis[i]) {
+			if xids[i] == int64(-1) || VectodbCompareDistance(vm.metricType, dis2[i], dis[i]) {
 				dis[i] = dis2[i]
 				xids[i] = xids2[i]
 			}

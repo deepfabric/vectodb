@@ -157,8 +157,7 @@ func VectodbClearWorkDir(workDir string) (err error) {
 	return
 }
 
-func VectodbCompareDistance(metricType int, dis1, dis2 float32) (which int) {
-	whichC := C.VectodbCompareDistance(C.int(metricType), C.float(dis1), C.float(dis2))
-	which = int(whichC)
-	return
+// VectodbCompareDistance returns true if dis1 is closer then dis2.
+func VectodbCompareDistance(metricType int, dis1, dis2 float32) bool {
+	return (metricType == 0) == (dis1 > dis2)
 }

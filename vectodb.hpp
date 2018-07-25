@@ -128,12 +128,12 @@ public:
     static void ClearWorkDir(const char* work_dir);
 
     /** 
-     * Compare distance. Return 0 if dis1 is the closer one, otherwise 1.
+     * Compare distance. Return true if dis1 is closer then dis2.
      *
      */
-    static int CompareDistance(int metric_type, float dis1, float dis2)
+    static bool CompareDistance(int metric_type, float dis1, float dis2)
     {
-        return (metric_type == 0) == (dis1 < dis2);
+        return (metric_type == 0) == (dis1 > dis2);
     }
     static void Normalize(std::vector<float>& vec);
     static void mmapFile(const std::string& fp, uint8_t*& data, long& len_data);

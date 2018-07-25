@@ -461,7 +461,7 @@ long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
         if (state->flat->ntotal != 0) {
             state->flat->search(nq, xq, k, &D[0], &I[0]);
             for (int i = 0; i < nq; i++) {
-                if (0 == index_size || 0 == CompareDistance(metric_type, D[i * k], distances[i])) {
+                if (0 == index_size || CompareDistance(metric_type, D[i * k], distances[i])) {
                     distances[i] = D[i * k];
                     xids[i] = I[i * k];
                 }
@@ -472,7 +472,7 @@ long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
     {
         rlock r{ state->rw_xids };
         for (int i = 0; i < nq; i++) {
-            if (1 == CompareDistance(metric_type, dist_threshold, distances[i])) {
+            if (CompareDistance(metric_type, distances[i], dist_threshold)) {
                 xids[i] = state->xids[xids[i]];
             } else {
                 xids[i] = long(-1);
@@ -688,9 +688,4 @@ long VectodbSearch(void* vdb, long nq, float* xq, float* distances, long* xids)
 void VectodbClearWorkDir(char* work_dir)
 {
     VectoDB::ClearWorkDir(work_dir);
-}
-
-int VectodbCompareDistance(int metric_type, float dis1, float dis2)
-{
-    return VectoDB::CompareDistance(metric_type, dis1, dis2);
 }
