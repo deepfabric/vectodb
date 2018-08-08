@@ -12,6 +12,8 @@ import subprocess
 # $ scons
 
 env = Environment(ENV=os.environ)
+env.Replace(CXX = "/usr/local/opt/gcc/bin/g++-7")
+env.Replace(CC = "/usr/local/opt/gcc/bin/gcc-7")
 
 env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && cp example_makefiles/makefile.inc.Linux makefile.inc && make demos/demo_sift1M py && popd')
 if env.GetOption('clean'):
