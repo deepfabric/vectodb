@@ -6,7 +6,6 @@
 
 .SUFFIXES: .c .cpp .o
 
-
 MAKEFILE_INC=makefile.inc
 
 -include $(MAKEFILE_INC)
@@ -15,7 +14,7 @@ PREFIX ?= /usr/local/
 
 all: .env_ok libfaiss.a demos/demo_ivfpq_indexing
 
-py: _swigfaiss.so
+#py: _swigfaiss.so
 
 
 
@@ -78,17 +77,17 @@ HFILES = IndexFlat.h Index.h IndexLSH.h IndexPQ.h IndexIVF.h \
     Clustering.h hamming.h AutoTune.h IndexScalarQuantizer.h FaissException.h
 
 # also silently generates python/swigfaiss.py
-python/swigfaiss_wrap.cxx: swigfaiss.swig $(HFILES)
-	$(SWIGEXEC) -python -c++ -Doverride= -o $@ $<
+#python/swigfaiss_wrap.cxx: swigfaiss.swig $(HFILES)
+#	$(SWIGEXEC) -python -c++ -Doverride= -o $@ $<
 
 
 # extension is .so even on the mac
-python/_swigfaiss.so: python/swigfaiss_wrap.cxx libfaiss.a
-	$(CXX) -I. $(CXXFLAGS) $(LDFLAGS) $(PYTHONCFLAGS) $(SHAREDFLAGS) \
-	-o $@ $^ $(BLASLDFLAGSSO)
+#python/_swigfaiss.so: python/swigfaiss_wrap.cxx libfaiss.a
+#	$(CXX) -I. $(CXXFLAGS) $(LDFLAGS) $(PYTHONCFLAGS) $(SHAREDFLAGS) \
+#	-o $@ $^ $(BLASLDFLAGSSO)
 
-_swigfaiss.so: python/_swigfaiss.so
-	cp python/_swigfaiss.so python/swigfaiss.py .
+#_swigfaiss.so: python/_swigfaiss.so
+#	cp python/_swigfaiss.so python/swigfaiss.py .
 
 #############################
 # Dependencies.
@@ -181,7 +180,7 @@ ifeq ($(shell command -v $(CXX) 2>/dev/null),)
 	$(error Cannot find $(CXX), please refer to $(CURDIR)/makefile.inc to set up your environment)
 endif
 
-.swig_ok: .env_ok
-ifeq ($(shell command -v $(SWIGEXEC) 2>/dev/null),)
-	$(error Cannot find $(SWIGEXEC), please refer to $(CURDIR)/makefile.inc to set up your environment)
-endif
+#.swig_ok: .env_ok
+#ifeq ($(shell command -v $(SWIGEXEC) 2>/dev/null),)
+#	$(error Cannot find $(SWIGEXEC), please refer to $(CURDIR)/makefile.inc to set up your environment)
+#endif

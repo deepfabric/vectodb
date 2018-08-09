@@ -12,9 +12,9 @@
 CC=gcc
 CXX=g++
 
-CFLAGS=-fPIC -m64 -Wall -g -O3 -mavx -msse4 -mpopcnt -fopenmp -Wno-sign-compare -fopenmp
+CFLAGS=-fPIC -m64 -Wall -g -O3 -mavx -msse4 -mpopcnt -Wno-sign-compare -Xpreprocessor -fopenmp -I/usr/local/opt/libomp/include
 CXXFLAGS=$(CFLAGS) -std=c++11
-LDFLAGS=-g -fPIC  -fopenmp
+LDFLAGS=-g -fPIC  -Xpreprocessor -fopenmp -L/usr/local/opt/libomp/lib -lomp
 
 # common linux flags
 SHAREDEXT=so
@@ -68,8 +68,9 @@ FAISSSHAREDFLAGS=-shared
 BLASCFLAGS=-DFINTEGER=int
 
 # This is for Centos:
-BLASLDFLAGS?=/usr/lib64/libopenblas.so.0
-
+#BLASLDFLAGS?=/usr/lib64/libopenblas.so.0
+#BLASLDFLAGS?=-L/usr/local/opt/openblas/lib/ -lopenblas
+BLASLDFLAGS=-L/usr/local/opt/openblas/lib/ -lopenblas
 # for Ubuntu 16:
 # sudo apt-get install libopenblas-dev python-numpy python-dev
 # BLASLDFLAGS?=/usr/lib/libopenblas.so.0
@@ -103,7 +104,7 @@ BLASLDFLAGS?=/usr/lib64/libopenblas.so.0
 ##########################################################################
 
 # SWIG executable. This should be at least version 3.x
-SWIGEXEC=swig
+#SWIGEXEC=swig
 
 # The Python include directories for a given python executable can
 # typically be found with
@@ -117,7 +118,7 @@ SWIGEXEC=swig
 # python3 -c "import numpy ; print(numpy.get_include())"
 #
 
-PYTHONCFLAGS=-I/usr/include/python2.7/ -I/usr/lib64/python2.7/site-packages/numpy/core/include/
+#PYTHONCFLAGS=-I/usr/include/python2.7/ -I/usr/lib64/python2.7/site-packages/numpy/core/include/
 
 
 ###########################################################################

@@ -12,10 +12,9 @@ import subprocess
 # $ scons
 
 env = Environment(ENV=os.environ)
-env.Replace(CXX = "/usr/local/opt/gcc/bin/g++-7")
-env.Replace(CC = "/usr/local/opt/gcc/bin/gcc-7")
 
-env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && cp example_makefiles/makefile.inc.Linux makefile.inc && make demos/demo_sift1M py && popd')
+env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && cp example_makefiles/makefile.inc.Linux makefile.inc && make demos/demo_sift1M && popd')
+
 if env.GetOption('clean'):
     subprocess.call('pushd faiss && make clean && popd', shell=True)
 
@@ -23,15 +22,17 @@ selfPath = os.path.abspath(inspect.getfile(inspect.currentframe()))
 mainDir, _ = os.path.split(selfPath)
 faissDir = os.path.join(mainDir, 'faiss')
 cpp_path = [mainDir]
-libs_path = [mainDir, faissDir]
+libs_path = [mainDir, faissDir,'/usr/local/opt/libomp/lib']
 
 env = Environment(ENV=os.environ, CPPPATH=cpp_path, LIBPATH=libs_path, PRJNAME="vectodb")
-env.MergeFlags(env.ParseFlags('-Wall -Wextra -g -O2 -fopenmp -std=c++17'))
+env.Append(CXXFLAGS='-Wall -Wextra -g -O2 -Xpreprocessor -fopenmp -I/usr/local/opt/libomp/include -std=c++17')
+env.Append(LINKFLAGS='-Xpreprocessor -fopenmp -L/usr/local/opt/libomp/lib -lomp')
+#env.MergeFlags(env.ParseFlags('-Wall -Wextra -g -O2 -Xpreprocessor -fopenmp -std=c++17'))
 Export("env")
 
 SConscript(["demos/SConscript"])
 
-env.StaticLibrary('vectodb', ['vectodb.cpp'], LIBS=['boost_thread', 'boost_filesystem', 'boost_system'])
+env.StaticLibrary('vectodb', ['vectodb.cpp'], LIBS=['boost_thread-mt', 'boost_filesystem', 'boost_system'])
+env.Append(LIBPATH='/usr/local/opt/boost/lib')
 
-
-env.Command('demos/demo_sift1M_vectodb_go', ['demos/demo_sift1M_vectodb.go', 'vectodb.go', 'demos/demo_sift1M_vectodb'], 'go install -x . && pushd demos && go build -o demo_sift1M_vectodb_go demo_sift1M_vectodb.go && popd')
+#env.Command('demos/demo_sift1M_vectodb_go', ['demos/demo_sift1M_vectodb.go', 'vectodb.go', 'demos/demo_sift1M_vectodb'], 'go install -x . && pushd demos && go build -o demo_sift1M_vectodb_go demo_sift1M_vectodb.go && popd')
