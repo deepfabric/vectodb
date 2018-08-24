@@ -6,7 +6,7 @@ import subprocess
 # Build vectodb on CentOS 7 x86_64:
 # 1. Enable EPEL, refers to https://fedoraproject.org/wiki/EPEL.
 # 2. Install dependencies.
-# $ sudo yum -y install gcc-g++ openblas-devel swig python-devel numpy glog-devel gflags-devel boost-devel
+# $ sudo yum -y install gcc-c++ openblas-devel swig python-devel numpy glog-devel gflags-devel boost-devel
 # 3. Install and enable devtoolset-7, refers to https://www.softwarecollections.org/en/scls/rhscl/devtoolset-7/, https://access.redhat.com/solutions/527703
 # 4. Build all
 # $ scons
