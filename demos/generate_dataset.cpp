@@ -190,7 +190,7 @@ void generate_groundtruth(string fp_base, string fp_query, string outdir, int se
     faiss::Index* flat = new faiss::IndexFlat(d, faiss::METRIC_INNER_PRODUCT);
     flat->add(nb, xb);
 
-    int k = 5;
+    long k = 5;
     faiss::Index::idx_t* I = new faiss::Index::idx_t[nq * k];
     float* D = new float[nq * k];
     flat->search(nq, xq, k, &D[0], &I[0]);
@@ -202,7 +202,7 @@ void generate_groundtruth(string fp_base, string fp_query, string outdir, int se
     fs_ground.exceptions(std::ios::failbit | std::ios::badbit);
     fs_ground.open(fp_ground, std::fstream::out | std::fstream::binary | std::fstream::trunc);
 
-    //fs_ground format: int nq, int k, float D[nq*k], long I[nq*k]
+    //fs_ground format: long nq, long k, float D[nq*k], long I[nq*k]
     fs_ground.write((const char*)&nq, sizeof(nq));
     fs_ground.write((const char*)&k, sizeof(k));
     fs_ground.write((const char*)D, sizeof(float) * nq * k);
