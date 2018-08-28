@@ -218,9 +218,14 @@ void generate_groundtruth(string fp_base, string fp_query, string outdir, int se
     printf("[%.3f s] done %s\n", elapsed() - t0, fp_ground.c_str());
 }
 
-main()
+int main(int argc, char** argv)
 {
-    int repeats = 2;
+    const string usage("generate_dataset repeats");
+    if (argc != 2) {
+        cerr << usage << endl;
+        exit(-1);
+    }
+    int repeats = atoi(argv[1]);
     string outdir("sift100M");
 
     t0 = elapsed();
