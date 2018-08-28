@@ -4,9 +4,9 @@ import os
 Import("env")
 
 # Every .cpp is a standalone program.
-for filename in ['demo_sift1M.cpp', 'faiss_train.cpp', 'faiss_search.cpp']:
+for filename in ['demo_sift1M.cpp', 'faiss_train.cpp', 'faiss_search.cpp', 'generate_dataset.cpp']:
 	exename = os.path.splitext(filename)[0] 
-	env.Program(exename, filename, LIBS=['faiss', 'openblas'], )
+	env.Program(exename, filename, LIBS=['faiss', 'openblas', 'boost_filesystem', 'boost_system'], )
 
 for filename in ['demo_sift1M_vectodb.cpp']:
 	exename = os.path.splitext(filename)[0] 
