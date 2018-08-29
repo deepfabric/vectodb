@@ -220,28 +220,32 @@ void generate_groundtruth(string fp_base, string fp_query, string outdir, int se
 
 int main(int argc, char** argv)
 {
-    const string usage("generate_dataset repeats");
-    if (argc != 2) {
+    const string usage("generate_dataset [base|query|ground] [repeats]");
+    if (argc < 2 || argc > 3) {
         cerr << usage << endl;
         exit(-1);
     }
-    int repeats = atoi(argv[1]);
     string outdir("sift100M");
-
     t0 = elapsed();
 
-    expand_fvecs("sift1M/sift_base.fvecs", outdir, repeats);
-    expand_fvecs("sift1M/sift_query.fvecs", outdir, 1);
-    for (int i = 0; i < repeats; i++) {
-        std::ostringstream oss;
-        oss << outdir << "/sift_base.fvecs." << i;
-        string fp_base = oss.str();
+    if (strcmp(argv[1], "base") == 0) {
+        int repeats = atoi(argv[2]);
+        expand_fvecs("sift1M/sift_base.fvecs", outdir, repeats);
+    } else if (strcmp(argv[1], "query") == 0) {
+        expand_fvecs("sift1M/sift_query.fvecs", outdir, 1);
+    } else {
+        int repeats = atoi(argv[2]);
+        for (int i = 0; i < repeats; i++) {
+            std::ostringstream oss;
+            oss << outdir << "/sift_base.fvecs." << i;
+            string fp_base = oss.str();
 
-        std::ostringstream oss2;
-        oss2 << outdir << "/sift_query.fvecs";
-        string fp_query = oss2.str();
+            std::ostringstream oss2;
+            oss2 << outdir << "/sift_query.fvecs";
+            string fp_query = oss2.str();
 
-        generate_groundtruth(fp_base, fp_query, outdir, i);
+            generate_groundtruth(fp_base, fp_query, outdir, i);
+        }
     }
 
     return 0;
