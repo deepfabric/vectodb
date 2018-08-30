@@ -16,17 +16,19 @@ import (
 type VectoDB struct {
 	rwlock        sync.RWMutex
 	vdbC          unsafe.Pointer
+	dim           int
 	workDir       string
 	flatThreshold int
 }
 
-func NewVectoDB(workDir string, dim int, metricType int, indexKey string, queryParams string, distThreshold float32, flatThreshold int) (vdb *VectoDB, err error) {
+func NewVectoDB(workDir string, dimIn int, metricType int, indexKey string, queryParams string, distThreshold float32, flatThreshold int) (vdb *VectoDB, err error) {
 	wordDirC := C.CString(workDir)
 	indexKeyC := C.CString(indexKey)
 	queryParamsC := C.CString(queryParams)
-	vdbC := C.VectodbNew(wordDirC, C.long(dim), C.int(metricType), indexKeyC, queryParamsC, C.float(distThreshold))
+	vdbC := C.VectodbNew(wordDirC, C.long(dimIn), C.int(metricType), indexKeyC, queryParamsC, C.float(distThreshold))
 	vdb = &VectoDB{
 		vdbC:          vdbC,
+		dim:           dimIn,
 		workDir:       workDir,
 		flatThreshold: flatThreshold,
 	}
@@ -41,12 +43,20 @@ func (vdb *VectoDB) Destroy() (err error) {
 	return
 }
 
-func (vdb *VectoDB) AddWithIds(nb int, xb []float32, xids []int64) (err error) {
+func (vdb *VectoDB) AddWithIds(xb []float32, xids []int64) (err error) {
+	nb := len(xids)
+	if len(xb) != nb*vdb.dim {
+		log.Fatal("invalid length of xb, want %v, have %v", nb*vdb.dim, len(xb))
+	}
 	C.VectodbAddWithIds(vdb.vdbC, C.long(nb), (*C.float)(&xb[0]), (*C.long)(&xids[0]))
 	return
 }
 
-func (vdb *VectoDB) UpdateWithIds(nb int, xb []float32, xids []int64) (err error) {
+func (vdb *VectoDB) UpdateWithIds(xb []float32, xids []int64) (err error) {
+	nb := len(xids)
+	if len(xb) != nb*vdb.dim {
+		log.Fatal("invalid length of xb, want %v, have %v", nb*vdb.dim, len(xb))
+	}
 	C.VectodbUpdateWithIds(vdb.vdbC, C.long(nb), (*C.float)(&xb[0]), (*C.long)(&xids[0]))
 	return
 }
@@ -138,7 +148,14 @@ func (vdb *VectoDB) getIndexSize() (ntrain, nsize int, err error) {
 	return
 }
 
-func (vdb *VectoDB) Search(nq int, xq []float32, distances []float32, xids []int64) (ntotal int, err error) {
+func (vdb *VectoDB) Search(xq []float32, distances []float32, xids []int64) (ntotal int, err error) {
+	nq := len(xids)
+	if len(xq) != nq*vdb.dim {
+		log.Fatal("invalid length of xq, want %v, have %v", nq*vdb.dim, len(xq))
+	}
+	if len(distances) != nq {
+		log.Fatal("invalid length of distances, want %v, have %v", nq, len(distances))
+	}
 	vdb.rwlock.RLock()
 	ntotalC := C.VectodbSearch(vdb.vdbC, C.long(nq), (*C.float)(&xq[0]), (*C.float)(&distances[0]), (*C.long)(&xids[0]))
 	vdb.rwlock.RUnlock()

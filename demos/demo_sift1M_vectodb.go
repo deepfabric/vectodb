@@ -152,7 +152,7 @@ func searcherLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 				log.Fatalf("%+v", err)
 			}
 			log.Printf("nflat %d", nflat)
-			if ntotal, err = vdb.Search(nq, xq, D, I); err != nil {
+			if ntotal, err = vdb.Search(xq, D, I); err != nil {
 				log.Fatalf("%+v", err)
 			}
 			log.Printf("search iteration done, ntotal=%d", ntotal)
@@ -194,7 +194,7 @@ func benchmarkAdd() {
 	begin := time.Now()
 	batchSize := 2
 	for i := 0; i < nb/batchSize; i++ {
-		vdb.AddWithIds(batchSize, xb[i*batchSize:(i+1)*batchSize], xids[i*batchSize:(i+1)*batchSize])
+		vdb.AddWithIds(xb[i*batchSize*siftDim:(i+1)*batchSize*siftDim], xids[i*batchSize:(i+1)*batchSize])
 	}
 	log.Printf("added %d vectors in %v\n", nb, time.Since(begin))
 	cancel()
@@ -252,7 +252,7 @@ func main() {
 		xids[i] = int64(i)
 	}
 
-	if err = vdb.AddWithIds(nb, xb, xids); err != nil {
+	if err = vdb.AddWithIds(xb, xids); err != nil {
 		log.Fatalf("%+v", err)
 	}
 
@@ -273,7 +273,7 @@ func main() {
 	D := make([]float32, nq)
 	I := make([]int64, nq)
 	var ntotal int
-	if ntotal, err = vdb.Search(nq, xq, D, I); err != nil {
+	if ntotal, err = vdb.Search(xq, D, I); err != nil {
 		log.Fatalf("%+v", err)
 	}
 	log.Printf("Search done on %d vectors", ntotal)

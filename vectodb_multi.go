@@ -144,7 +144,7 @@ func (vm *VectodbMulti) Search(nq int, xq []float32) (xids []int64, err error) {
 	xids2 := make([]int64, nq)
 	var total int
 	for _, vdb := range vm.vdbs {
-		if total, err = vdb.Search(nq, xq, dis2, xids2); err != nil {
+		if total, err = vdb.Search(xq, dis2, xids2); err != nil {
 			return
 		}
 		if total == 0 {
@@ -166,8 +166,9 @@ func (vm *VectodbMulti) Search(nq int, xq []float32) (xids []int64, err error) {
  * xb       vectors
  * xids     vector identifiers
  */
-func (vm *VectodbMulti) AddWithIds(nb int, xb []float32, xids []int64) (err error) {
+func (vm *VectodbMulti) AddWithIds(xb []float32, xids []int64) (err error) {
 	var quota, total, added int
+	nb := len(xids)
 	vdb := vm.vdbs[len(vm.vdbs)-1]
 	for added < nb {
 		if total, err = vdb.GetTotal(); err != nil {
@@ -176,7 +177,7 @@ func (vm *VectodbMulti) AddWithIds(nb int, xb []float32, xids []int64) (err erro
 		quota = vm.sizeLimit - total
 		if quota > 0 {
 			batch := MinInt(quota, nb-added)
-			if err = vdb.AddWithIds(batch, xb[added*vm.dim:], xids[added:]); err != nil {
+			if err = vdb.AddWithIds(xb[added*vm.dim:(added+batch)*vm.dim], xids[added:added+batch]); err != nil {
 				return
 			}
 			added += batch
@@ -199,9 +200,9 @@ func (vm *VectodbMulti) AddWithIds(nb int, xb []float32, xids []int64) (err erro
  * xb       vectors
  * xids     vector identifiers
  */
-func (vm *VectodbMulti) UpdateWithIds(nb int, xb []float32, xids []int64) (err error) {
+func (vm *VectodbMulti) UpdateWithIds(xb []float32, xids []int64) (err error) {
 	for _, vdb := range vm.vdbs {
-		if err = vdb.UpdateWithIds(nb, xb, xids); err != nil {
+		if err = vdb.UpdateWithIds(xb, xids); err != nil {
 			return
 		}
 	}
