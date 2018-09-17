@@ -39,6 +39,7 @@ func NewVectoDB(workDir string, dimIn int, metricType int, indexKey string, quer
 }
 
 func (vdb *VectoDB) Destroy() (err error) {
+	log.Infof("destroying VectoDB %+v", vdb)
 	C.VectodbDelete(vdb.vdbC)
 	return
 }
