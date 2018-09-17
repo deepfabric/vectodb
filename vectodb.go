@@ -47,7 +47,7 @@ func (vdb *VectoDB) Destroy() (err error) {
 func (vdb *VectoDB) AddWithIds(xb []float32, xids []int64) (err error) {
 	nb := len(xids)
 	if len(xb) != nb*vdb.dim {
-		log.Fatal("invalid length of xb, want %v, have %v", nb*vdb.dim, len(xb))
+		log.Fatalf("invalid length of xb, want %v, have %v", nb*vdb.dim, len(xb))
 	}
 	C.VectodbAddWithIds(vdb.vdbC, C.long(nb), (*C.float)(&xb[0]), (*C.long)(&xids[0]))
 	return
@@ -56,7 +56,7 @@ func (vdb *VectoDB) AddWithIds(xb []float32, xids []int64) (err error) {
 func (vdb *VectoDB) UpdateWithIds(xb []float32, xids []int64) (err error) {
 	nb := len(xids)
 	if len(xb) != nb*vdb.dim {
-		log.Fatal("invalid length of xb, want %v, have %v", nb*vdb.dim, len(xb))
+		log.Fatalf("invalid length of xb, want %v, have %v", nb*vdb.dim, len(xb))
 	}
 	C.VectodbUpdateWithIds(vdb.vdbC, C.long(nb), (*C.float)(&xb[0]), (*C.long)(&xids[0]))
 	return
@@ -152,10 +152,10 @@ func (vdb *VectoDB) getIndexSize() (ntrain, nsize int, err error) {
 func (vdb *VectoDB) Search(xq []float32, distances []float32, xids []int64) (ntotal int, err error) {
 	nq := len(xids)
 	if len(xq) != nq*vdb.dim {
-		log.Fatal("invalid length of xq, want %v, have %v", nq*vdb.dim, len(xq))
+		log.Fatalf("invalid length of xq, want %v, have %v", nq*vdb.dim, len(xq))
 	}
 	if len(distances) != nq {
-		log.Fatal("invalid length of distances, want %v, have %v", nq, len(distances))
+		log.Fatalf("invalid length of distances, want %v, have %v", nq, len(distances))
 	}
 	vdb.rwlock.RLock()
 	ntotalC := C.VectodbSearch(vdb.vdbC, C.long(nq), (*C.float)(&xq[0]), (*C.float)(&distances[0]), (*C.long)(&xids[0]))
