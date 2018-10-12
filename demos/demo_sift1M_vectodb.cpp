@@ -69,7 +69,7 @@ int* ivecs_read(const char* fname, size_t* d_out, size_t* n_out)
 }
 
 // train phase, input: index_key database train_set, output: index
-int main(int argc, char* argv[])
+int main(int argc, char** argv)
 {
     FLAGS_stderrthreshold = 0;
     FLAGS_log_dir = ".";

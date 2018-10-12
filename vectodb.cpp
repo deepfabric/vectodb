@@ -52,8 +52,6 @@ struct DbState {
     }
     ~DbState()
     {
-        delete index;
-        fs_base.close();
     }
 
     // Main activities in decreasing priority: insert, search, build and activate index.
@@ -100,9 +98,9 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
     , len_base_line(2 * sizeof(long) + len_vec)
     , len_upd_line(sizeof(long) + len_vec)
     , metric_type(metric_type_in)
+    , dist_threshold(dist_threshold_in)
     , index_key(index_key_in)
     , query_params(query_params_in)
-    , dist_threshold(dist_threshold_in)
 {
     static_assert(sizeof(float) == 4, "sizeof(float) must be 4");
     static_assert(sizeof(long) > 4, "sizeof(long) must be larger than 4");
@@ -160,7 +158,10 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
 
 VectoDB::~VectoDB()
 {
-    munmapFile(getBaseFp(), state->data, state->len_data);
+    if (state.get() != nullptr) {
+        munmapFile(getBaseFp(), state->data, state->len_data);
+        delete state->index;
+    }
 }
 
 void VectoDB::BuildIndex(long cur_ntrain, long cur_nsize, faiss::Index*& index_out, long& ntrain) const

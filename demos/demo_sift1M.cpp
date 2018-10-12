@@ -156,7 +156,7 @@ int main()
         assert(nq2 == nq || !"incorrect nb of ground truth entries");
 
         gt = new faiss::Index::idx_t[k * nq];
-        for (int i = 0; i < k * nq; i++) {
+        for (size_t i = 0; i < k * nq; i++) {
             gt[i] = gt_int[i];
         }
         delete[] gt_int;
@@ -194,13 +194,12 @@ int main()
 
         // keep the parameter that obtains max recall@1
         double max_recall = 0;
-        for (int i = 0; i < ops.optimal_pts.size(); i++) {
+        for (size_t i = 0; i < ops.optimal_pts.size(); i++) {
             if (ops.optimal_pts[i].perf > max_recall) {
                 max_recall = ops.optimal_pts[i].perf;
                 selected_params = ops.optimal_pts[i].key;
             }
         }
-        assert(selected_params.size() >= 0 || !"could not find good enough op point");
     }
 
     { // Use the found configuration to perform a search
@@ -225,9 +224,9 @@ int main()
 
         // evaluate result by hand.
         int n_1 = 0, n_10 = 0, n_100 = 0;
-        for (int i = 0; i < nq; i++) {
+        for (size_t i = 0; i < nq; i++) {
             int gt_nn = gt[i * k];
-            for (int j = 0; j < k; j++) {
+            for (size_t j = 0; j < k; j++) {
                 if (I[i * k + j] == gt_nn) {
                     if (j < 1)
                         n_1++;

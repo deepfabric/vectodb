@@ -1,7 +1,7 @@
 package vectodb
 
 // #cgo CXXFLAGS: -I${SRCDIR}
-// #cgo LDFLAGS: -L${SRCDIR}/faiss -lboost_thread -lboost_filesystem -lboost_system -lglog -lgflags -lfaiss -lopenblas -lgomp -lstdc++ -ljemalloc
+// #cgo LDFLAGS: -L${SRCDIR}/faiss -lboost_thread -lboost_filesystem -lboost_system -lglog -lgflags -lfaiss -lopenblas -lgomp -ljemalloc -lstdc++
 // #include "vectodb.h"
 // #include <stdlib.h>
 import "C"
@@ -41,6 +41,7 @@ func NewVectoDB(workDir string, dimIn int, metricType int, indexKey string, quer
 func (vdb *VectoDB) Destroy() (err error) {
 	log.Infof("destroying VectoDB %+v", vdb)
 	C.VectodbDelete(vdb.vdbC)
+	vdb.vdbC = nil
 	return
 }
 

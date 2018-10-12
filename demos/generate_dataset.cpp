@@ -36,7 +36,7 @@ double t0;
  *   http://corpus-texmex.irisa.fr/
  * .bvecs, .fvecs and .ivecs vector file formats:
 
-/*****************************************************
+ *****************************************************
  * I/O functions for fvecs and ivecs
  *****************************************************/
 
@@ -89,11 +89,11 @@ double elapsed()
 void normalize(size_t dim, float* vec)
 {
     double l = 0;
-    for (int i = 0; i < dim; i++) {
+    for (size_t i = 0; i < dim; i++) {
         l += double(vec[i]) * double(vec[i]);
     }
     l = sqrt(l);
-    for (int i = 0; i < dim; i++) {
+    for (size_t i = 0; i < dim; i++) {
         vec[i] = (float)(((double)vec[i]) / l);
     }
     return;
@@ -132,7 +132,7 @@ void expand(size_t dim, float* vec, int ratio, Random& randGen, std::vector<char
     *(int*)(&outbuf[0]) = dim * ratio;
     for (int i = 0; i < ratio; i++) {
         int offset = 4 + 4 * dim * i;
-        for (int j = 0; j < dim; j++) {
+        for (size_t j = 0; j < dim; j++) {
             int offset2 = offset + 4 * j;
             float var = vec[j];
             double rand = randGen.get();
@@ -170,7 +170,7 @@ void expand_fvecs(string fp, string outdir, int repeats)
 
         fs_base.open(fp_base, std::fstream::out | std::fstream::binary | std::fstream::trunc);
 
-        for (int i = 0; i < nb; i++) {
+        for (size_t i = 0; i < nb; i++) {
             expand(d, &xb[d * i], 4, randGen, outbuf, outlen);
             fs_base.write(&outbuf[0], outlen);
         }

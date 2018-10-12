@@ -114,7 +114,7 @@ int main(int argc, char** argv)
     if (index_ivf != nullptr) {
         auto quantizer = dynamic_cast<faiss::IndexHNSWFlat*>(index_ivf->quantizer);
         if (quantizer != nullptr) {
-            printf("[%.3f s] index_ivf->nprobe = %d, quantizer->hnsw.efSearch = %d\n", elapsed() - t0, index_ivf->nprobe, quantizer->hnsw.efSearch);
+            printf("[%.3f s] index_ivf->nprobe = %lu, quantizer->hnsw.efSearch = %d\n", elapsed() - t0, index_ivf->nprobe, quantizer->hnsw.efSearch);
         }
     }
 
@@ -141,7 +141,7 @@ int main(int argc, char** argv)
         int* gt_int = ivecs_read(groundtruth, &k, &nq2);
         assert(nq2 == nq || !"incorrect nb of ground truth entries");
         gt = new faiss::Index::idx_t[k * nq];
-        for (int i = 0; i < k * nq; i++) {
+        for (size_t i = 0; i < k * nq; i++) {
             gt[i] = gt_int[i];
         }
         delete[] gt_int;
@@ -161,9 +161,9 @@ int main(int argc, char** argv)
 
         // evaluate result by hand.
         int n_1 = 0, n_10 = 0, n_100 = 0;
-        for (int i = 0; i < nq; i++) {
+        for (size_t i = 0; i < nq; i++) {
             int gt_nn = gt[i * k];
-            for (int j = 0; j < k; j++) {
+            for (size_t j = 0; j < k; j++) {
                 if (I[i * k + j] == gt_nn) {
                     if (j < 1)
                         n_1++;
@@ -184,16 +184,16 @@ int main(int argc, char** argv)
             n_10 = 0;
             n_100 = 0;
             faiss::Index* index2 = new faiss::IndexFlat(d2, index->metric_type);
-            for (int i = 0; i < nq; i++) {
+            for (size_t i = 0; i < nq; i++) {
                 int gt_nn = gt[i * k];
                 float* xb2 = new float[d2 * k];
                 float* D2 = new float[k];
                 faiss::Index::idx_t* I2 = new faiss::Index::idx_t[k];
-                for (int j = 0; j < k; j++)
+                for (size_t j = 0; j < k; j++)
                     memcpy(xb2 + j * d, xb + I[i * k + j] * d, sizeof(float) * d);
                 index2->add(k, xb2);
                 index2->search(1, xq + i * d, k, D2, I2);
-                for (int j = 0; j < k; j++) {
+                for (size_t j = 0; j < k; j++) {
                     if (I[i * k + I2[j]] == gt_nn) {
                         if (j < 1 || D2[j] == D2[0])
                             n_1++;

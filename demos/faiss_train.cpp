@@ -130,7 +130,7 @@ int main(int argc, char** argv)
 
     const char* selected_params = nullptr;
     bool supported = false;
-    for (int i = 0; i < sizeof(supported_index_keys) / sizeof(const char*); i++) {
+    for (size_t i = 0; i < sizeof(supported_index_keys) / sizeof(const char*); i++) {
         if (0 == strcmp(index_key, supported_index_keys[i])) {
             supported = true;
             selected_params = selected_paramss[i];
@@ -140,7 +140,7 @@ int main(int argc, char** argv)
     if (!supported) {
         cerr << "index_key " << index_key << " is not supported!" << endl;
         cerr << "supported index_key are:";
-        for (int i = 0; i < sizeof(supported_index_keys) / sizeof(const char*); i++) {
+        for (size_t i = 0; i < sizeof(supported_index_keys) / sizeof(const char*); i++) {
             cerr << "/" << supported_index_keys[i];
         }
         cerr << endl;
