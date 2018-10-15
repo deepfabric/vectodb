@@ -22,6 +22,7 @@ type VectoDB struct {
 }
 
 func NewVectoDB(workDir string, dimIn int, metricType int, indexKey string, queryParams string, distThreshold float32, flatThreshold int) (vdb *VectoDB, err error) {
+	log.Infof("creating VectoDB %v", workDir)
 	wordDirC := C.CString(workDir)
 	indexKeyC := C.CString(indexKey)
 	queryParamsC := C.CString(queryParams)
@@ -170,6 +171,7 @@ func (vdb *VectoDB) Search(xq []float32, distances []float32, xids []int64) (nto
  */
 
 func VectodbClearWorkDir(workDir string) (err error) {
+	log.Infof("clearing VectoDB %v", workDir)
 	wordDirC := C.CString(workDir)
 	C.VectodbClearWorkDir(wordDirC)
 	C.free(unsafe.Pointer(wordDirC))
