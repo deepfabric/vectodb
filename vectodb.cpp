@@ -430,9 +430,15 @@ long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
     vector<float> D(nq * k);
     vector<faiss::Index::idx_t> I(nq * k);
 
+    std::vector<float> xb2(dim * k);
+    std::vector<float> D2(k);
+    vector<faiss::Index::idx_t> I2(k);
+    /*
+    // refers to https://blog.csdn.net/quyuan2009/article/details/50001679
     float xb2[dim * k];
     float D2[k];
     faiss::Index::idx_t I2[k];
+    */
 
     if (state->index) {
         // Perform a search
@@ -443,10 +449,10 @@ long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
         for (int i = 0; i < nq; i++) {
             for (int j = 0; j < k; j++) {
                 long line_num = I[i * k + j];
-                memcpy(xb2 + j * dim, &state->data[len_base_line * line_num + 2 * sizeof(long)], len_vec);
+                memcpy(&xb2[j * dim], &state->data[len_base_line * line_num + 2 * sizeof(long)], len_vec);
             }
-            index2->add(k, xb2);
-            index2->search(1, xq + i * dim, k, D2, I2);
+            index2->add(k, &xb2[0]);
+            index2->search(1, xq + i * dim, k, &D2[0], &I2[0]);
             index2->reset();
             distances[i] = D2[0];
             xids[i] = I[i * k + I2[0]];
