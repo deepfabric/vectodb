@@ -93,7 +93,7 @@ int main(int argc, char** argv)
     const bool incremental = true;
     long cur_ntrain, cur_nsize;
     if (incremental) {
-        const long batch_size = 200000L;
+        const long batch_size = std::min(10000L, (long)nb);
         const long batch_num = nb / batch_size;
         assert(nb % batch_size == 0);
         for (long i = 0; i < batch_num; i++) {
@@ -184,6 +184,8 @@ int main(int argc, char** argv)
     }
     LOG(INFO) << "R@1 = " << n_1 / float(nq);
 
+    delete[] gt;
     delete[] D;
     delete[] I;
+    delete[] xq;
 }
