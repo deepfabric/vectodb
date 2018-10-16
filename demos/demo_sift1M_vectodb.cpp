@@ -71,12 +71,6 @@ int* ivecs_read(const char* fname, size_t* d_out, size_t* n_out)
 // train phase, input: index_key database train_set, output: index
 int main(int argc, char** argv)
 {
-    int* p = new int[0];
-    for (int i = 0; i < 10; ++i)
-        p[i] = 0;
-    delete[] p;
-    *p = 3;
-
     FLAGS_stderrthreshold = 0;
     FLAGS_log_dir = ".";
     google::InitGoogleLogging(argv[0]);
