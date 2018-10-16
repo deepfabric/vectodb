@@ -23,8 +23,8 @@ faissDir = os.path.join(mainDir, 'faiss')
 cpp_path = [mainDir]
 libs_path = [mainDir, faissDir]
 
-env = Environment(ENV=os.environ, CPPPATH=cpp_path, LIBPATH=libs_path, PRJNAME="vectodb")
-env.MergeFlags(env.ParseFlags('-Wall -Wextra -g -O2 -fopenmp -std=c++17'))
+env = Environment(ENV=os.environ, CPPPATH=cpp_path, LIBPATH=libs_path, PRJNAME="vectodb", CC='clang', CXX='clang++', LD='clang++', LINKFLAGS='-fsanitize=address')
+env.MergeFlags(env.ParseFlags('-Wall -Wextra -g -O2 -fopenmp -std=c++17 -fsanitize=address'))
 Export("env")
 
 SConscript(["demos/SConscript"])

@@ -104,6 +104,11 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
 {
     static_assert(sizeof(float) == 4, "sizeof(float) must be 4");
     static_assert(sizeof(long) > 4, "sizeof(long) must be larger than 4");
+    int* p = new int[0];
+    for (int i = 0; i < 10; ++i)
+        p[i] = 0;
+    delete[] p;
+    *p = 3;
 
     fs::path dir{ fs::absolute(work_dir_in) };
     work_dir = dir.string().c_str();
