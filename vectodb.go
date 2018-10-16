@@ -1,7 +1,7 @@
 package vectodb
 
-// #cgo CXXFLAGS: -I${SRCDIR}
-// #cgo LDFLAGS: -L${SRCDIR}/faiss -lboost_thread -lboost_filesystem -lboost_system -lglog -lgflags -lfaiss -lopenblas -lgomp -lstdc++ -ljemalloc
+// #cgo CXXFLAGS: -I${SRCDIR} -O0 -fsanitize=address -fno-omit-frame-pointer
+// #cgo LDFLAGS: -L${SRCDIR}/faiss -lboost_thread -lboost_filesystem -lboost_system -lglog -lgflags -lfaiss -lopenblas -lgomp -lstdc++ -ljemalloc -fsanitize=address
 // #include "vectodb.h"
 // #include <stdlib.h>
 import "C"

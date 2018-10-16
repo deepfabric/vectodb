@@ -160,7 +160,6 @@ VectoDB::~VectoDB()
     if (state.get() != nullptr) {
         munmapFile(getBaseFp(), state->data, state->len_data);
         delete state->index;
-        delete state->flat;
     }
 }
 
