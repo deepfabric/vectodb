@@ -1,20 +1,18 @@
 package vectodb
 
 // #cgo CXXFLAGS: -I${SRCDIR}
-// #cgo LDFLAGS: -L${SRCDIR}/faiss -lboost_thread -lboost_filesystem -lboost_system -lglog -lgflags -lfaiss -lopenblas -lgomp -ljemalloc -lstdc++
+// #cgo LDFLAGS: -L${SRCDIR}/faiss -lboost_thread -lboost_filesystem -lboost_system -lglog -lgflags -lfaiss -lopenblas -lgomp -lstdc++ -ljemalloc
 // #include "vectodb.h"
 // #include <stdlib.h>
 import "C"
 
 import (
-	"sync"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
 )
 
 type VectoDB struct {
-	rwlock        sync.RWMutex
 	vdbC          unsafe.Pointer
 	dim           int
 	workDir       string
@@ -127,23 +125,12 @@ func (vdb *VectoDB) GetFlatSize() (nsize int, err error) {
 	return
 }
 
-/**
- * Writer methods. There could be multiple writers.
- */
-
 func (vdb *VectoDB) activateIndex(index unsafe.Pointer, ntrain int) (err error) {
-	vdb.rwlock.Lock()
-	defer vdb.rwlock.Unlock()
 	C.VectodbActivateIndex(vdb.vdbC, index, C.long(ntrain))
 	return
 }
 
-/**
- * Reader methods. There could be multiple readers.
- */
 func (vdb *VectoDB) getIndexSize() (ntrain, nsize int, err error) {
-	vdb.rwlock.RLock()
-	defer vdb.rwlock.RUnlock()
 	var ntrainC, nsizeC C.long
 	C.VectodbGetIndexSize(vdb.vdbC, &ntrainC, &nsizeC)
 	ntrain = int(ntrainC)
@@ -159,9 +146,7 @@ func (vdb *VectoDB) Search(xq []float32, distances []float32, xids []int64) (nto
 	if len(distances) != nq {
 		log.Fatalf("invalid length of distances, want %v, have %v", nq, len(distances))
 	}
-	vdb.rwlock.RLock()
 	ntotalC := C.VectodbSearch(vdb.vdbC, C.long(nq), (*C.float)(&xq[0]), (*C.float)(&distances[0]), (*C.long)(&xids[0]))
-	vdb.rwlock.RUnlock()
 	ntotal = int(ntotalC)
 	return
 }

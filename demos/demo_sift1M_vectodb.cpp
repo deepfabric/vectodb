@@ -93,11 +93,14 @@ int main(int argc, char** argv)
     const bool incremental = true;
     long cur_ntrain, cur_nsize;
     if (incremental) {
-        const long batch_size = std::min(10000L, (long)nb);
+        const long batch_size = std::min(100000L, (long)nb);
         const long batch_num = nb / batch_size;
         assert(nb % batch_size == 0);
         for (long i = 0; i < batch_num; i++) {
             vdb.AddWithIds(batch_size, xb + i * batch_size * sift_dim, xids + i * batch_size);
+            //To test if searching on state->flat work, don't build PQ for the last batch.
+            if (i == batch_num - 1)
+                break;
             vdb.GetIndexSize(cur_ntrain, cur_nsize);
             LOG(INFO) << "cur_ntrain " << cur_ntrain << ", cur_nsize " << cur_nsize;
             faiss::Index* index;

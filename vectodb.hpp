@@ -81,11 +81,6 @@ public:
      */
     long GetUpdateSize();
 
-    /**
-     * Methods assuming Go write-lock already held. There could be multiple writers.
-     * Avoid rwlock intentionally since C++ locks interfere with goroutines scheduling.
-     */
-
     /**  
      * Activate index built with TryBuildIndex or BuildIndex.
      * If upper layer decide not to activate an index, it shall delete the index to reclaim resource.
@@ -94,11 +89,6 @@ public:
      * @param ntrain    input the number of training points of the index
      */
     void ActivateIndex(faiss::Index* index, long ntrain);
-
-    /**
-     * Methods assuming Go read-lock already held. There could be multiple readers.
-     * Avoid rwlock intentionally since C++ locks interfere with goroutines scheduling.
-     */
 
     /** 
      * Get index size.
@@ -143,11 +133,11 @@ private:
     std::string getBaseFp() const;
     std::string getIndexFp(long ntrain) const;
     std::string getUpdateFp() const;
+    long getNumLines(long len_data, long len_base_line) const;
     long getIndexFpNtrain() const;
+    void clearIndexFiles();
     void readBase(const uint8_t* data, long len_data, long start_num, std::vector<float>& base) const;
     void readXids(const uint8_t* data, long len_data, long start_num, std::vector<long>& xids) const;
-    void buildFlat();
-    void mergeToFlat();
 
 private:
     std::string work_dir;

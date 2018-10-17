@@ -44,22 +44,27 @@ struct DbState {
     DbState()
         : data(nullptr)
         , len_data(0)
+        , total(0)
         , ntrain(0L)
         , index(nullptr)
         , flat(nullptr)
-        , total(0)
+        , flat_start_num(0)
     {
     }
     ~DbState()
     {
     }
 
-    // Main activities in decreasing priority: insert, search, build and activate index.
-    // Normally index is large, the read-lock time is long(~26s for 1M sift vectors),
-    // the write-lock just protects a pointer assignment.
-    // So it's better to use an Go rwlock as an coarse method-level lock.
+    mutex m_base;
+    std::fstream fs_base; //for append of base.fvecs
     uint8_t* data; //mapped (readonly) base file. remap after activating an index
     long len_data; //length of mapped file, be equivlant to index.ntotal*len_base_line
+    atomic<long> total;
+
+    // Main activities in decreasing priority: insert, search, build and activate index.
+    // Normally index is large, the read-lock (search) time is long(~26s for 10K searchs of sift),
+    // the write-lock (activate index) just protects a pointer assignment.
+    boost::shared_mutex rw_index;
     long ntrain; // the number of training points of the index
     faiss::Index* index;
 
@@ -68,22 +73,17 @@ struct DbState {
     // So it's better to use C++ rwlock.
     boost::shared_mutex rw_flat;
     faiss::Index* flat;
-
-    mutex m_base;
-    std::fstream fs_base; //for append of base.fvecs
-    vector<float> base; //vectors not in index + flat
+    long flat_start_num; //the line num of the first vecrot of flat. It's index->ntotal normally.
 
     boost::shared_mutex rw_xids;
     unordered_map<long, long> xid2num;
-    vector<long> xids;
+    vector<long> xids; //vector of xid of all vectors
 
     mutex m_update;
     std::fstream fs_update; //for append, sequential read and truncate of update.fvecs
 
     mutex m_base2;
     std::fstream fs_base2; //for random write of base.fvecs
-
-    atomic<long> total;
 };
 
 struct VecExt {
@@ -124,24 +124,21 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
     state->fs_base.seekp(0, ios_base::end); //a particular libstdc++ implementation may use a single pointer for both seekg and seekp.
 
     long ntrain = getIndexFpNtrain();
+    faiss::Index* index = nullptr;
     if (ntrain > 0) {
         //Loading index
         const string& fp_index = getIndexFp(ntrain);
         LOG(INFO) << "Loading index " << fp_index;
-        state->index = faiss::read_index(fp_index.c_str());
-        state->ntrain = ntrain;
+        index = faiss::read_index(fp_index.c_str());
     }
-    mmapFile(fp_base, state->data, state->len_data);
-    buildFlat();
+    ActivateIndex(index, ntrain);
 
     vector<long> xids;
-    readXids(state->data, state->len_data, 0, xids);
+    readXids(state->data, state->total, 0, xids);
     for (long i = 0; i < (long)xids.size(); i++) {
         state->xid2num[xids[i]] = i;
     }
     state->xids = std::move(xids);
-
-    state->total = state->len_data / len_base_line;
 
     const string& fp_update = getUpdateFp();
     state->fs_update.exceptions(std::ios::failbit | std::ios::badbit);
@@ -158,6 +155,8 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
 
 VectoDB::~VectoDB()
 {
+    // There's no lock protection since I assume the object is idle.
+    // Up layer could protect it with rwlock.
     if (state.get() != nullptr) {
         munmapFile(getBaseFp(), state->data, state->len_data);
         delete state->index;
@@ -176,8 +175,8 @@ void VectoDB::BuildIndex(long cur_ntrain, long cur_nsize, faiss::Index*& index_o
     const string& fp_base = getBaseFp();
     uint8_t* data = nullptr;
     long len_data = 0;
-    mmapFile(fp_base, data, len_data);
-    long nb = len_data / len_base_line;
+    mmapFile(fp_base, data, len_data); // this may occur in the middle of wirting to fp_base.
+    long nb = getNumLines(len_data, len_base_line);
     faiss::Index* index = nullptr;
     long nt = 0;
 
@@ -196,7 +195,7 @@ void VectoDB::BuildIndex(long cur_ntrain, long cur_nsize, faiss::Index*& index_o
             LOG(INFO) << "Reuse current index since ntrain " << nt << " is unchanged. index_size will increase from " << index_size << " to " << nb;
             index = faiss::read_index(getIndexFp(nt).c_str());
             vector<float> base2;
-            readBase(data, len_data, index_size, base2);
+            readBase(data, nb, index_size, base2);
             index->add(nb - index_size, &base2[0]);
             index_out = index;
         }
@@ -211,7 +210,7 @@ void VectoDB::BuildIndex(long cur_ntrain, long cur_nsize, faiss::Index*& index_o
         }
         // Training
         vector<float> base;
-        readBase(data, len_data, 0, base);
+        readBase(data, nb, 0, base);
         assert((long)base.size() >= nt * dim);
         index->train(nt, &base[0]);
 
@@ -232,51 +231,61 @@ quit:
     google::FlushLogFiles(google::INFO);
 }
 
-// Needs Go write-lock
 void VectoDB::ActivateIndex(faiss::Index* index, long ntrain)
 {
+    const string& fp_base = getBaseFp();
+    mtxlock m{ state->m_base };
+    state->fs_base.flush();
+    mmapFile(fp_base, state->data, state->len_data);
+    long nb = getNumLines(state->len_data, len_base_line);
+    state->total = nb;
+
+    long index_size = 0;
     if (index != nullptr) {
-        if (state->ntrain != 0)
-            fs::remove(getIndexFp(state->ntrain));
+        clearIndexFiles();
         // Output index
         faiss::write_index(index, getIndexFp(ntrain).c_str());
+        index_size = index->ntotal;
+    }
+
+    {
+        wlock w{ state->rw_index };
         delete state->index;
         state->ntrain = ntrain;
         state->index = index;
     }
-    mmapFile(getBaseFp(), state->data, state->len_data);
-    buildFlat();
-}
 
-// Needs Go write-lock
-void VectoDB::buildFlat()
-{
     faiss::Index* flat = new faiss::IndexFlat(dim, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
     vector<float> base;
-    long index_size = (state->index == nullptr) ? 0 : state->index->ntotal;
-    readBase(state->data, state->len_data, index_size, base);
+    readBase(state->data, nb, index_size, base);
     flat->add(base.size() / dim, &base[0]);
 
     wlock l{ state->rw_flat };
     delete state->flat;
     state->flat = flat;
+    state->flat_start_num = index_size;
 }
 
-// Needs Go read-lock
 void VectoDB::GetIndexSize(long& ntrain, long& nsize) const
 {
-    ntrain = state->ntrain;
-    nsize = (state->index == nullptr) ? 0 : state->index->ntotal;
+    rlock r{ state->rw_index };
+    if (state->index == nullptr) {
+        ntrain = 0;
+        nsize = 0;
+    } else {
+        ntrain = state->ntrain;
+        nsize = state->index->ntotal;
+    }
 }
 
 long VectoDB::GetTotal()
 {
+    rlock l{ state->rw_flat };
     return state->total;
 }
 
 long VectoDB::GetFlatSize()
 {
-    mergeToFlat();
     rlock l{ state->rw_flat };
     long nflat = state->flat->ntotal;
     return nflat;
@@ -291,22 +300,23 @@ void VectoDB::AddWithIds(long nb, const float* xb, const long* xids)
         *(long*)&buf[i * len_base_line + sizeof(long)] = 1;
         memcpy(&buf[i * len_base_line + 2 * sizeof(long)], &xb[i * dim], len_vec);
     }
-    mtxlock m{ state->m_base };
     // deduplicate xids
     {
         rlock r{ state->rw_xids };
         if (state->xid2num.count(xids[0]) > 0)
             return;
     }
-    long ntotal = state->total.fetch_add(nb);
+    mtxlock m{ state->m_base };
     state->fs_base.write(&buf[0], len_buf);
-    for (long i = 0; i < nb * dim; i++) {
-        state->base.push_back(xb[i]);
-    }
-    wlock w{ state->rw_xids };
-    for (long i = 0; i < nb; i++) {
-        state->xids.push_back(xids[i]);
-        state->xid2num[xids[i]] = ntotal + i;
+    long ntotal = state->total.fetch_add(nb);
+    {
+        wlock w1{ state->rw_flat };
+        wlock w2{ state->rw_xids };
+        state->flat->add(nb, xb);
+        for (long i = 0; i < nb; i++) {
+            state->xids.push_back(xids[i]);
+            state->xid2num[xids[i]] = ntotal + i;
+        }
     }
 }
 
@@ -376,6 +386,7 @@ long VectoDB::UpdateBase()
         uint8_t* data = nullptr;
         long len_data = 0;
         mmapFile(fp_base, data, len_data);
+        getNumLines(len_data, len_base_line);
         mtxlock m{ state->m_base2 };
 
         for (auto& elem : updates) {
@@ -406,18 +417,6 @@ long VectoDB::UpdateBase()
     return played;
 }
 
-void VectoDB::mergeToFlat()
-{
-    mtxlock m{ state->m_base };
-    long memSize = state->base.size() / dim;
-    if (memSize != 0) {
-        wlock l{ state->rw_flat };
-        state->flat->add(memSize, &state->base[0]);
-        state->base.clear();
-    }
-}
-
-// Needs Go read-lock
 long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
 {
     for (int i = 0; i < nq; i++) {
@@ -441,28 +440,30 @@ long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
     faiss::Index::idx_t I2[k];
     */
 
-    if (state->index) {
-        // Perform a search
-        state->index->search(nq, xq, k, &D[0], &I[0]);
+    long index_size = 0;
+    {
+        rlock r{ state->rw_index };
+        if (state->index != nullptr) {
+            index_size = state->index->ntotal;
+            // Perform a search
+            state->index->search(nq, xq, k, &D[0], &I[0]);
 
-        // Refine result
-        faiss::Index* index2 = new faiss::IndexFlat(dim, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
-        for (int i = 0; i < nq; i++) {
-            for (int j = 0; j < k; j++) {
-                long line_num = I[i * k + j];
-                memcpy(&xb2[j * dim], &state->data[len_base_line * line_num + 2 * sizeof(long)], len_vec);
+            // Refine result
+            faiss::Index* index2 = new faiss::IndexFlat(dim, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
+            for (int i = 0; i < nq; i++) {
+                for (int j = 0; j < k; j++) {
+                    long line_num = I[i * k + j];
+                    memcpy(&xb2[j * dim], &state->data[len_base_line * line_num + 2 * sizeof(long)], len_vec);
+                }
+                index2->add(k, &xb2[0]);
+                index2->search(1, xq + i * dim, k, &D2[0], &I2[0]);
+                index2->reset();
+                distances[i] = D2[0];
+                xids[i] = I[i * k + I2[0]];
             }
-            index2->add(k, &xb2[0]);
-            index2->search(1, xq + i * dim, k, &D2[0], &I2[0]);
-            index2->reset();
-            distances[i] = D2[0];
-            xids[i] = I[i * k + I2[0]];
+            delete index2;
         }
-        delete index2;
     }
-    long index_size = (state->index == nullptr) ? 0 : state->index->ntotal;
-
-    mergeToFlat();
 
     {
         rlock r{ state->rw_flat };
@@ -471,7 +472,7 @@ long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
             for (int i = 0; i < nq; i++) {
                 if (0 == index_size || CompareDistance(metric_type, D[i * k], distances[i])) {
                     distances[i] = D[i * k];
-                    xids[i] = I[i * k];
+                    xids[i] = I[i * k] + state->flat_start_num;
                 }
             }
         }
@@ -537,13 +538,25 @@ long VectoDB::getIndexFpNtrain() const
     return max_ntrain;
 }
 
-void VectoDB::readBase(const uint8_t* data, long len_data, long start_num, vector<float>& base) const
+void VectoDB::clearIndexFiles()
 {
-    if (data == nullptr)
-        return;
-    assert(len_data % len_base_line == 0);
-    long num_line = len_data / len_base_line;
-    if (num_line <= start_num)
+    fs::path fp_index;
+    const string suffix(".index");
+    for (auto ent = fs::directory_iterator(work_dir); ent != fs::directory_iterator(); ent++) {
+        const fs::path& p = ent->path();
+        if (fs::is_regular_file(p)) {
+            const string fn = p.filename().string();
+            if (fn.length() >= suffix.length()
+                && 0 == fn.compare(fn.length() - suffix.length(), suffix.length(), suffix)) {
+                fs::remove(p);
+            }
+        }
+    }
+}
+
+void VectoDB::readBase(const uint8_t* data, long num_line, long start_num, vector<float>& base) const
+{
+    if (data == nullptr || num_line <= start_num)
         return;
     long nb = num_line - start_num;
     base.resize(nb * dim);
@@ -553,13 +566,9 @@ void VectoDB::readBase(const uint8_t* data, long len_data, long start_num, vecto
     }
 }
 
-void VectoDB::readXids(const uint8_t* data, long len_data, long start_num, vector<long>& xids) const
+void VectoDB::readXids(const uint8_t* data, long num_line, long start_num, vector<long>& xids) const
 {
-    if (data == nullptr)
-        return;
-    assert(len_data % len_base_line == 0);
-    long num_line = len_data / len_base_line;
-    if (num_line <= start_num)
+    if (data == nullptr || num_line <= start_num)
         return;
     long nb = num_line - start_num;
     xids.resize(nb);
@@ -603,6 +612,16 @@ void VectoDB::Normalize(std::vector<float>& vec)
     for (int i = 0; i < dim; i++) {
         vec[i] = (float)(((double)vec[i]) / l);
     }
+}
+
+long VectoDB::getNumLines(long len_data, long len_base_line) const
+{
+    long nb = len_data / len_base_line;
+    long remained = len_data - len_base_line * nb;
+    if (remained != 0) {
+        LOG(ERROR) << "file fize could end with partial line. file size " << len_data << ", len_base_line " << len_base_line << ", nb " << nb << ", remained " << remained << ".";
+    }
+    return nb;
 }
 
 void VectoDB::mmapFile(const string& fp, uint8_t*& data, long& len_data)
