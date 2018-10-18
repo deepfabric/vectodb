@@ -57,6 +57,8 @@ struct DbState {
 
     mutex m_base;
     std::fstream fs_base; //for append of base.fvecs
+
+    boost::shared_mutex rw_data;
     uint8_t* data; //mapped (readonly) base file. remap after activating an index
     long len_data; //length of mapped file, be equivlant to index.ntotal*len_base_line
     atomic<long> total;
@@ -236,7 +238,10 @@ void VectoDB::ActivateIndex(faiss::Index* index, long ntrain)
     const string& fp_base = getBaseFp();
     mtxlock m{ state->m_base };
     state->fs_base.flush();
-    mmapFile(fp_base, state->data, state->len_data);
+    {
+        wlock w{ state->rw_data };
+        mmapFile(fp_base, state->data, state->len_data);
+    }
     long nb = getNumLines(state->len_data, len_base_line);
     state->total = nb;
 
@@ -451,9 +456,12 @@ long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
             // Refine result
             faiss::Index* index2 = new faiss::IndexFlat(dim, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
             for (int i = 0; i < nq; i++) {
-                for (int j = 0; j < k; j++) {
-                    long line_num = I[i * k + j];
-                    memcpy(&xb2[j * dim], &state->data[len_base_line * line_num + 2 * sizeof(long)], len_vec);
+                {
+                    rlock r{ state->rw_data };
+                    for (int j = 0; j < k; j++) {
+                        long line_num = I[i * k + j];
+                        memcpy(&xb2[j * dim], &state->data[len_base_line * line_num + 2 * sizeof(long)], len_vec);
+                    }
                 }
                 index2->add(k, &xb2[0]);
                 index2->search(1, xq + i * dim, k, &D2[0], &I2[0]);
