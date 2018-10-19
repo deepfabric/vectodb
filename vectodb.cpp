@@ -643,6 +643,9 @@ void VectoDB::mmapFile(const string& fp, uint8_t*& data, long& len_data)
     if (tmpd == MAP_FAILED)
         throw fs::filesystem_error(fp, boost::system::error_code(errno, boost::system::generic_category()));
     close(f);
+    int rc = madvise(tmpd, len_f, MADV_RANDOM | MADV_DONTDUMP);
+    if (rc < 0)
+        LOG(ERROR) << "madvise failed with " << strerror(errno);
     data = (uint8_t*)tmpd;
     len_data = len_f;
 }
