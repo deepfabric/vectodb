@@ -150,6 +150,9 @@ void expand_fvecs(string fp, string outdir, int repeats)
     size_t d, nb;
     float* xb = fvecs_read(fp.c_str(), &d, &nb);
 
+    //sometimes we need tiny dataset
+    //nb = std::min(100000UL, nb);
+
     //https://stackoverflow.com/questions/31483349/how-can-i-open-a-file-for-reading-writing-creating-it-if-it-does-not-exist-w
     string fp_base;
     std::fstream fs_base;
