@@ -20,13 +20,13 @@ const (
 	//indexkey    string = "IVF4096,PQ32"
 	//queryParams string = "nprobe=256,ht=256"
 
-	workDir string = "/tmp/vectodb_test_go"
+	vdbWorkDir string = "/tmp/vectodb_test_go"
 )
 
 func TestVectodbNew(t *testing.T) {
 	var err error
-	VectodbClearWorkDir(workDir)
-	vdb, err := NewVectoDB(workDir, dim, metric, indexkey, queryParams, distThr, flatThr)
+	VectodbClearWorkDir(vdbWorkDir)
+	vdb, err := NewVectoDB(vdbWorkDir, dim, metric, indexkey, queryParams, distThr, flatThr)
 	require.NoError(t, err)
 	err = vdb.Destroy()
 	require.NoError(t, err)
@@ -67,8 +67,8 @@ func diff(d int, xb []float32, xids, I []int64, D []float32) {
 
 func TestVectodbUpdate(t *testing.T) {
 	var err error
-	VectodbClearWorkDir(workDir)
-	vdb, err := NewVectoDB(workDir, dim, metric, indexkey, queryParams, distThr, flatThr)
+	VectodbClearWorkDir(vdbWorkDir)
+	vdb, err := NewVectoDB(vdbWorkDir, dim, metric, indexkey, queryParams, distThr, flatThr)
 	require.NoError(t, err)
 
 	const nb int = 100
@@ -80,7 +80,6 @@ func TestVectodbUpdate(t *testing.T) {
 			xb[i*dim+j] = rand.Float32()
 		}
 		normalizeInplace(dim, xb[i*dim:(i+1)*dim])
-		xids[i] = int64(i)
 	}
 
 	for i := 0; i < nb; i++ {
@@ -89,8 +88,13 @@ func TestVectodbUpdate(t *testing.T) {
 		require.Equal(t, dis, float32(0))
 	}
 
-	err = vdb.AddWithIds(nb, xb, xids)
+	err = vdb.AddWithIds(xb, xids)
 	require.NoError(t, err)
+	expXids := make([]int64, nb)
+	for i := 0; i < nb; i++ {
+		expXids[i] = int64(i)
+	}
+	require.Equal(t, expXids, xids)
 
 	total, err := vdb.GetTotal()
 	require.NoError(t, err)
@@ -99,7 +103,7 @@ func TestVectodbUpdate(t *testing.T) {
 	D := make([]float32, nb)
 	I := make([]int64, nb)
 
-	total, err = vdb.Search(nb, xb, D, I)
+	total, err = vdb.Search(xb, D, I)
 	require.NoError(t, err)
 	require.Equal(t, nb, total)
 	fmt.Printf("D: %+v\n", D)
@@ -108,7 +112,7 @@ func TestVectodbUpdate(t *testing.T) {
 	require.Equal(t, xids, I)
 
 	// update with the same vector
-	err = vdb.UpdateWithIds(nb, xb, xids)
+	err = vdb.UpdateWithIds(xb, xids)
 	require.NoError(t, err)
 
 	err = vdb.UpdateIndex()
@@ -117,7 +121,7 @@ func TestVectodbUpdate(t *testing.T) {
 	D2 := make([]float32, nb)
 	I2 := make([]int64, nb)
 
-	total2, err := vdb.Search(nb, xb, D2, I2)
+	total2, err := vdb.Search(xb, D2, I2)
 	require.NoError(t, err)
 	require.Equal(t, nb, total2)
 	fmt.Printf("D2: %+v\n", D2)
@@ -128,9 +132,9 @@ func TestVectodbUpdate(t *testing.T) {
 	err = vdb.Destroy()
 	require.NoError(t, err)
 
-	vdb2, err := NewVectoDB(workDir, dim, metric, indexkey, queryParams, distThr, flatThr)
+	vdb2, err := NewVectoDB(vdbWorkDir, dim, metric, indexkey, queryParams, distThr, flatThr)
 	require.NoError(t, err)
-	total3, err := vdb2.Search(nb, xb, D2, I2)
+	total3, err := vdb2.Search(xb, D2, I2)
 	require.NoError(t, err)
 	require.Equal(t, nb, total3)
 	fmt.Printf("D2: %+v\n", D2)

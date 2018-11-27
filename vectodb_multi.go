@@ -63,6 +63,7 @@ func VectodbMultiClearWorkDir(workDir string) (err error) {
 		err = errors.Wrap(err, "")
 		return
 	}
+	err = nil
 
 	for _, entry := range entries {
 		subs := re.FindStringSubmatch(entry.Name())
@@ -133,7 +134,8 @@ func NewVectodbMulti(workDir string, dim int, metricType int, indexKey string, q
  * xq       query points
  * xids     vector identifiers
  */
-func (vm *VectodbMulti) Search(nq int, xq []float32) (xids []int64, err error) {
+func (vm *VectodbMulti) Search(xq []float32) (xids []int64, err error) {
+	nq := len(xq) / vm.dim
 	dis := make([]float32, nq)
 	xids = make([]int64, nq)
 	for i := 0; i < nq; i++ {
@@ -187,6 +189,8 @@ func (vm *VectodbMulti) AddWithIds(xb []float32, xids []int64) (err error) {
 			if vdb, err = NewVectoDB(dp, vm.dim, vm.metricType, vm.indexKey, vm.queryParams, vm.distThr, vm.sizeLimit/200); err != nil {
 				return
 			}
+			nextXid := vm.maxSeq * vm.sizeLimit
+			vdb.SetNextXid(nextXid)
 			vm.vdbs = append(vm.vdbs, vdb)
 		}
 

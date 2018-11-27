@@ -9,7 +9,6 @@ import "C"
 import (
 	"unsafe"
 
-	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -20,7 +19,7 @@ type VectoDB struct {
 	flatThreshold int
 }
 
-func NewVectoDB(workDir string, dimIn int, metricType int, indexKey string, queryParams string, distThreshold float32, flatThreshold, nextXid int) (vdb *VectoDB, err error) {
+func NewVectoDB(workDir string, dimIn int, metricType int, indexKey string, queryParams string, distThreshold float32, flatThreshold int) (vdb *VectoDB, err error) {
 	log.Infof("creating VectoDB %v", workDir)
 	wordDirC := C.CString(workDir)
 	indexKeyC := C.CString(indexKey)
@@ -35,14 +34,18 @@ func NewVectoDB(workDir string, dimIn int, metricType int, indexKey string, quer
 	C.free(unsafe.Pointer(wordDirC))
 	C.free(unsafe.Pointer(indexKeyC))
 	C.free(unsafe.Pointer(queryParamsC))
+	return
+}
 
-	nextXidC := C.VectodbSetNextXid(vdb.vdbC, C.long(nextXid))
-	if nextXid != int(nextXidC) {
-		vdb = nil
-		err = errors.Errorf("incorrect nextXid passed in, want >= %v, have %v", int(nextXidC), nextXid)
-		return
-	}
+func (vdb *VectoDB) GetNextXid() (nextXid int) {
+	nextXidC := C.VectodbGetNextXid(vdb.vdbC)
+	nextXid = int(nextXidC)
+	return
+}
 
+func (vdb *VectoDB) SetNextXid(nextXid int) (effNextXid int) {
+	effNextXidC := C.VectodbSetNextXid(vdb.vdbC, C.long(nextXid))
+	effNextXid = int(effNextXidC)
 	return
 }
 
