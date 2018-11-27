@@ -56,7 +56,7 @@ public:
      * @param xb    input matrix, size n * d
      * @param xids  output, ids to store for the vectors (size n)
      */
-    void AddWithIds(long nb, const float* xb, const long* xids);
+    void AddWithIds(long nb, const float* xb, long* xids);
 
     /** 
      * Record update requests to a backlog.

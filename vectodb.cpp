@@ -313,27 +313,28 @@ long VectoDB::GetFlatSize()
     return nflat;
 }
 
-void VectoDB::AddWithIds(long nb, const float* xb, const long* xids)
+void VectoDB::AddWithIds(long nb, const float* xb, long* xids)
 {
     long len_buf = nb * len_base_line;
     std::vector<char> buf(len_buf);
     for (long i = 0; i < nb; i++) {
-        *(long*)&buf[i * len_base_line] = xids[i];
         *(long*)&buf[i * len_base_line + sizeof(long)] = 1;
         memcpy(&buf[i * len_base_line + 2 * sizeof(long)], &xb[i * dim], len_vec);
     }
+    wlock w2{ state->rw_xids };
     // deduplicate xids
-    {
-        rlock r{ state->rw_xids };
-        if (state->xid2num.count(xids[0]) > 0)
-            return;
+    if (state->xid2num.count(xids[0]) > 0)
+        return;
+    for (long i = 0; i < nb; i++) {
+        xids[i] = state->next_xid + i;
+        *(long*)&buf[i * len_base_line] = xids[i];
     }
+    state->next_xid += nb;
     mtxlock m{ state->m_base };
     state->fs_base.write(&buf[0], len_buf);
     long ntotal = state->total.fetch_add(nb);
     {
         wlock w1{ state->rw_flat };
-        wlock w2{ state->rw_xids };
         state->flat->add(nb, xb);
         for (long i = 0; i < nb; i++) {
             state->xids.push_back(xids[i]);

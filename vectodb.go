@@ -9,6 +9,7 @@ import "C"
 import (
 	"unsafe"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,7 +20,7 @@ type VectoDB struct {
 	flatThreshold int
 }
 
-func NewVectoDB(workDir string, dimIn int, metricType int, indexKey string, queryParams string, distThreshold float32, flatThreshold int) (vdb *VectoDB, err error) {
+func NewVectoDB(workDir string, dimIn int, metricType int, indexKey string, queryParams string, distThreshold float32, flatThreshold, nextXid int) (vdb *VectoDB, err error) {
 	log.Infof("creating VectoDB %v", workDir)
 	wordDirC := C.CString(workDir)
 	indexKeyC := C.CString(indexKey)
@@ -34,6 +35,14 @@ func NewVectoDB(workDir string, dimIn int, metricType int, indexKey string, quer
 	C.free(unsafe.Pointer(wordDirC))
 	C.free(unsafe.Pointer(indexKeyC))
 	C.free(unsafe.Pointer(queryParamsC))
+
+	nextXidC := C.VectodbSetNextXid(vdb.vdbC, C.long(nextXid))
+	if nextXid != int(nextXidC) {
+		vdb = nil
+		err = errors.Errorf("incorrect nextXid passed in, want >= %v, have %v", int(nextXidC), nextXid)
+		return
+	}
+
 	return
 }
 
