@@ -29,6 +29,17 @@ public:
      */
     virtual ~VectoDB();
 
+    /**
+     * Return nextXid.
+     */
+    long GetNextXid() const;
+
+    /**
+     * Set nextXid. Return the effect nextXid.
+     * It indicates failure if the return value is different with the one passed in.
+     */
+    long SetNextXid(long nextXid);
+
     /** 
      * Build index.
      * @param cur_ntrain    input the number of train vectors of current index
@@ -42,8 +53,8 @@ public:
      * Add n vectors of dimension d to the index.
      * The upper layer does memory management for xb, xids.
      *
-     * @param xb     input matrix, size n * d
-     * @param xids if non-null, ids to store for the vectors (size n)
+     * @param xb    input matrix, size n * d
+     * @param xids  output, ids to store for the vectors (size n)
      */
     void AddWithIds(long nb, const float* xb, const long* xids);
 

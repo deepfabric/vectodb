@@ -49,6 +49,7 @@ struct DbState {
         , index(nullptr)
         , flat(nullptr)
         , flat_start_num(0)
+        , next_xid(0)
     {
     }
     ~DbState()
@@ -80,6 +81,7 @@ struct DbState {
     boost::shared_mutex rw_xids;
     unordered_map<long, long> xid2num;
     vector<long> xids; //vector of xid of all vectors
+    long next_xid;
 
     mutex m_update;
     std::fstream fs_update; //for append, sequential read and truncate of update.fvecs
@@ -139,6 +141,7 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
     readXids(state->data, state->total, 0, xids);
     for (long i = 0; i < (long)xids.size(); i++) {
         state->xid2num[xids[i]] = i;
+        state->next_xid = max(state->next_xid, xids[i] + 1);
     }
     state->xids = std::move(xids);
 
@@ -164,6 +167,20 @@ VectoDB::~VectoDB()
         delete state->index;
         delete state->flat;
     }
+}
+
+long VectoDB::GetNextXid() const
+{
+    rlock r{ state->rw_xids };
+    return state->next_xid;
+}
+
+long VectoDB::SetNextXid(long nextXid)
+{
+    wlock w{ state->rw_xids };
+    if (nextXid > state->next_xid)
+        state->next_xid = nextXid;
+    return state->next_xid;
 }
 
 void VectoDB::BuildIndex(long cur_ntrain, long cur_nsize, faiss::Index*& index_out, long& ntrain) const
@@ -674,6 +691,16 @@ void* VectodbNew(char* work_dir, long dim, int metric_type, char* index_key, cha
 void VectodbDelete(void* vdb)
 {
     delete static_cast<VectoDB*>(vdb);
+}
+
+long VectodbGetNextXid(void* vdb)
+{
+    return static_cast<VectoDB*>(vdb)->GetNextXid();
+}
+
+long VectodbSetNextXid(void* vdb, long nextXid)
+{
+    return static_cast<VectoDB*>(vdb)->SetNextXid(nextXid);
 }
 
 void* VectodbBuildIndex(void* vdb, long cur_ntrain, long cur_nsize, long* ntrain)

@@ -10,6 +10,8 @@ extern "C" {
 void* VectodbNew(char* work_dir, long dim, int metric_type, char* index_key, char* query_params, float dist_threshold);
 void VectodbDelete(void* vdb);
 
+long VectodbGetNextXid(void* vdb);
+long VectodbSetNextXid(void* vdb, long nextXid);
 void* VectodbBuildIndex(void* vdb, long cur_ntrain, long cur_ntotal, long* ntrain);
 void VectodbAddWithIds(void* vdb, long nb, float* xb, long* xids);
 void VectodbUpdateWithIds(void* vdb, long nb, float* xb, long* xids);
