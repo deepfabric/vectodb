@@ -13,15 +13,17 @@ import subprocess
 
 env = Environment(ENV=os.environ)
 
+env.Command('xxHash/libxxhash.a', 'xxHash/Makefile', 'pushd xxHash && make libxxhash.a && popd')
 env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && cp example_makefiles/makefile.inc.Linux makefile.inc && make demos/demo_sift1M py && popd')
 if env.GetOption('clean'):
-    subprocess.call('pushd faiss && make clean && popd', shell=True)
+    subprocess.call('pushd xxHash && make clean && popd && pushd faiss && make clean && popd', shell=True)
 
 selfPath = os.path.abspath(inspect.getfile(inspect.currentframe()))
 mainDir, _ = os.path.split(selfPath)
+xxhashDir = os.path.join(mainDir, 'xxHash')
 faissDir = os.path.join(mainDir, 'faiss')
 cpp_path = [mainDir]
-libs_path = [mainDir, faissDir]
+libs_path = [mainDir, xxhashDir, faissDir]
 
 env = Environment(ENV=os.environ, CPPPATH=cpp_path, LIBPATH=libs_path, PRJNAME="vectodb")
 env.MergeFlags(env.ParseFlags('-Wall -Wextra -g -O2 -fopenmp -std=c++17'))

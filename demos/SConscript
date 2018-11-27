@@ -10,4 +10,4 @@ for filename in ['demo_sift1M.cpp', 'faiss_train.cpp', 'faiss_search.cpp', 'gene
 
 for filename in ['demo_sift1M_vectodb.cpp', 'demo_sift100M_vectodb.cpp']:
 	exename = os.path.splitext(filename)[0] 
-	env.Program(exename, filename, LIBS=['vectodb', 'faiss', 'openblas', 'boost_thread', 'boost_filesystem', 'boost_system', 'glog', 'gflags'], )
+	env.Program(exename, filename, LIBS=['vectodb', 'xxhash', 'faiss', 'openblas', 'boost_thread', 'boost_filesystem', 'boost_system', 'glog', 'gflags'], )
