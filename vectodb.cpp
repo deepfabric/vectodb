@@ -6,6 +6,7 @@
 #include "faiss/IndexHNSW.h"
 #include "faiss/IndexIVFFlat.h"
 #include "faiss/index_io.h"
+#include "xxHash/xxhash.h"
 
 #include <boost/filesystem.hpp>
 #include <boost/system/system_error.hpp>
@@ -17,6 +18,7 @@
 #include <cassert>
 #include <fcntl.h>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <math.h>
 #include <mutex>
@@ -28,7 +30,9 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <system_error>
+#include <time.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 using namespace std;
@@ -58,6 +62,8 @@ struct DbState {
 
     mutex m_base;
     std::fstream fs_base; //for append of base.fvecs
+    std::fstream fs_add_log; //for append of add.log
+    std::unordered_set<uint64_t> add_log; //digest of AddWithIds body, for idempotent AddWithIds.
 
     boost::shared_mutex rw_data;
     uint8_t* data; //mapped (readonly) base file. remap after activating an index
@@ -93,6 +99,13 @@ struct DbState {
 struct VecExt {
     long count;
     vector<float> vec;
+};
+
+struct AddRecord {
+    uint64_t digest;
+    timespec ts;
+    int64_t start_xid;
+    int64_t num;
 };
 
 VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const char* index_key_in, const char* query_params_in, float dist_threshold_in)
@@ -137,6 +150,7 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
     }
     ActivateIndex(index, ntrain);
 
+    readAddLog();
     vector<long> xids;
     readXids(state->data, state->total, 0, xids);
     for (long i = 0; i < (long)xids.size(); i++) {
@@ -255,6 +269,7 @@ void VectoDB::ActivateIndex(faiss::Index* index, long ntrain)
     const string& fp_base = getBaseFp();
     mtxlock m{ state->m_base };
     state->fs_base.flush();
+    state->fs_add_log.flush();
     {
         wlock w{ state->rw_data };
         mmapFile(fp_base, state->data, state->len_data);
@@ -321,10 +336,16 @@ void VectoDB::AddWithIds(long nb, const float* xb, long* xids)
         *(long*)&buf[i * len_base_line + sizeof(long)] = 1;
         memcpy(&buf[i * len_base_line + 2 * sizeof(long)], &xb[i * dim], len_vec);
     }
+    // make AddWithIds idempotent
+    const uint64_t seed = 0x0123456789abcdef;
+    uint64_t digest = XXH64(xb, sizeof(float) * dim * nb, seed);
     wlock w2{ state->rw_xids };
-    // deduplicate xids
-    if (state->xid2num.count(xids[0]) > 0)
+    if (state->add_log.find(digest) != state->add_log.end()) {
+        LOG(INFO) << "ignored duplicated AddWithIds, digest "
+                  << "0x" << std::setfill('0') << std::setw(16) << digest;
         return;
+    }
+    appendAddLog(digest, state->next_xid, nb);
     for (long i = 0; i < nb; i++) {
         xids[i] = state->next_xid + i;
         *(long*)&buf[i * len_base_line] = xids[i];
@@ -525,6 +546,13 @@ std::string VectoDB::getBaseFp() const
     return oss.str();
 }
 
+std::string VectoDB::getAddLogFp() const
+{
+    ostringstream oss;
+    oss << work_dir << "/add.log";
+    return oss.str();
+}
+
 std::string VectoDB::getIndexFp(long ntrain) const
 {
     ostringstream oss;
@@ -602,6 +630,47 @@ void VectoDB::readXids(const uint8_t* data, long num_line, long start_num, vecto
         const uint8_t* start_pos = data + (i + start_num) * len_base_line;
         xids[i] = *(long*)start_pos;
     }
+}
+
+void VectoDB::readAddLog()
+{
+    //filename spec: add.log
+    //line spec of add.log: <digest> <timespec> <start_xid> <num>
+    const string& fp_add_log = getAddLogFp();
+    std::ifstream::iostate old_state = state->fs_add_log.exceptions();
+    state->fs_add_log.exceptions(std::ios::failbit | std::ios::badbit);
+    //https://stackoverflow.com/questions/2409504/using-c-filestreams-fstream-how-can-you-determine-the-size-of-a-file
+    state->fs_add_log.open(fp_add_log, std::fstream::out | std::fstream::app | std::fstream::ate); //create file if not exist, otherwise do nothing
+    long fsize = state->fs_add_log.tellg();
+    long fsize_remaind = fsize % sizeof(AddRecord) != 0;
+    state->fs_add_log.close();
+
+    if (fsize_remaind != 0) {
+        LOG(ERROR) << fp_add_log << " size " << fsize << " is not multilple times of " << sizeof(AddRecord) << ".";
+        fsize -= fsize_remaind;
+        fs::resize_file(fp_add_log, fsize);
+    }
+    state->fs_add_log.open(fp_add_log, std::fstream::in | std::fstream::out | std::fstream::binary);
+    state->fs_add_log.exceptions(std::ios::badbit);
+    AddRecord ar;
+    state->add_log.clear();
+    for (;;) {
+        state->fs_add_log.read((char*)&ar, sizeof(AddRecord));
+        if (!state->fs_add_log.fail())
+            break;
+        state->add_log.insert(ar.digest);
+    }
+}
+
+void VectoDB::appendAddLog(uint64_t digest, int64_t start_xid, int64_t num)
+{
+    AddRecord ar;
+    ar.digest = digest;
+    clock_gettime(CLOCK_MONOTONIC, &ar.ts);
+    ar.start_xid = start_xid;
+    ar.num = num;
+    state->fs_add_log.write((const char*)&ar, sizeof(AddRecord));
+    state->add_log.insert(ar.digest);
 }
 
 void VectoDB::ClearWorkDir(const char* work_dir)

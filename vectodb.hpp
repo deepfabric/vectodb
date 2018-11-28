@@ -142,6 +142,7 @@ public:
 
 private:
     std::string getBaseFp() const;
+    std::string getAddLogFp() const;
     std::string getIndexFp(long ntrain) const;
     std::string getUpdateFp() const;
     long getNumLines(long len_data, long len_base_line) const;
@@ -149,6 +150,8 @@ private:
     void clearIndexFiles();
     void readBase(const uint8_t* data, long len_data, long start_num, std::vector<float>& base) const;
     void readXids(const uint8_t* data, long len_data, long start_num, std::vector<long>& xids) const;
+    void readAddLog();
+    void appendAddLog(uint64_t digest, int64_t start_xid, int64_t num);
 
 private:
     std::string work_dir;
