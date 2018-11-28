@@ -343,6 +343,9 @@ void VectoDB::AddWithIds(long nb, const float* xb, long* xids)
     if (state->add_log.find(digest) != state->add_log.end()) {
         LOG(INFO) << "ignored duplicated AddWithIds, digest "
                   << "0x" << std::setfill('0') << std::setw(16) << digest;
+        for (long i = 0; i < nb; i++) {
+            xids[i] = -1;
+        }
         return;
     }
     appendAddLog(digest, state->next_xid, nb);
