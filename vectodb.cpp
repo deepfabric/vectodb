@@ -656,7 +656,7 @@ void VectoDB::readAddLog()
     state->add_log.clear();
     for (;;) {
         state->fs_add_log.read((char*)&ar, sizeof(AddRecord));
-        if (!state->fs_add_log.fail())
+        if (!state->fs_add_log.good())
             break;
         state->add_log.insert(ar.digest);
     }
