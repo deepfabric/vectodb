@@ -32,4 +32,4 @@ SConscript(["demos/SConscript"])
 env.StaticLibrary('vectodb', ['vectodb.cpp'], LIBS=['boost_thread', 'boost_filesystem', 'boost_system'])
 
 
-env.Command('demos/demo_sift1M_vectodb_go', ['demos/demo_sift1M_vectodb.go', 'vectodb.go', 'demos/demo_sift1M_vectodb'], 'GO111MODULE=on go install -x . && pushd demos && GO111MODULE=on go build -o demo_sift1M_vectodb_go demo_sift1M_vectodb.go && GO111MODULE=on go build -o demo_sift100M_vectodb_go demo_sift100M_vectodb.go && popd')
+env.Command('demos/demo_sift1M_vectodb_go', ['vectodb.go', 'demos/demo_sift1M_vectodb.go', 'demos/demo_sift1M_vectodb', 'vectodblite.go'], 'GO111MODULE=on go install -x . && pushd demos && GO111MODULE=on go build -o demo_sift1M_vectodb_go demo_sift1M_vectodb.go && GO111MODULE=on go build -o demo_sift100M_vectodb_go demo_sift100M_vectodb.go && popd')

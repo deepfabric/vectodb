@@ -1,5 +1,8 @@
 package vectodb
 
+// https://golang.org/cmd/cgo/
+// When the Go tool sees that one or more Go files use the special import "C", it will look for other non-Go files in the directory and compile them as part of the Go package.
+
 // #cgo CXXFLAGS: -I${SRCDIR}
 // #cgo LDFLAGS: -L${SRCDIR}/faiss -lboost_thread -lboost_filesystem -lboost_system -lglog -lgflags -lfaiss -lopenblas -lgomp -lstdc++ -ljemalloc
 // #include "vectodb.h"
