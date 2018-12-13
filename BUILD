@@ -18,18 +18,18 @@ cc_library(
         "-std=c++17",
     ],
     includes = ["faiss"],
-    deps = [":lib_faiss"],
+    deps = [":build_faiss"],
 )
 
 genrule(
-    name = "lib_faiss",
+    name = "build_faiss",
     srcs = glob(include = [
         "faiss/Makefile",
         "faiss/**/*.cpp",
         "faiss/**/*.h",
         "faiss/**/*makefile*",
     ]),
-    outs = ["faiss/libfaiss.a"],
+    outs = ["faiss/libfaiss.a"] + glob(include=["faiss/**/*.h"]),
     binary = False,
     building_description = "build fiass static library",
     cmd = [
