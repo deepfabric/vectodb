@@ -1,6 +1,15 @@
 # package(default_visibility = ["//visibility:public"])
 
-for fp in glob(["demos/*.cpp"]):
+for fp in ['demos/demo_sift1M.cpp', 'demos/faiss_train.cpp', 'demos/faiss_search.cpp', 'demos/generate_dataset.cpp']:
+    cc_binary(
+        name = splitext(basename(fp))[0],
+        srcs = [fp],
+        compiler_flags = ["--std=c++17"],
+        linker_flags = ["-Lfaiss -lfaiss", "-lopenblas", "-lboost_filesystem", "-lboost_system", "-lgomp", "-lpthread"],
+        deps = [":build_faiss"],
+    )
+
+for fp in ['demos/demo_sift1M_vectodb.cpp', 'demos/demo_sift100M_vectodb.cpp']:
     cc_binary(
         name = splitext(basename(fp))[0],
         srcs = [fp],
@@ -9,17 +18,12 @@ for fp in glob(["demos/*.cpp"]):
         "vectodb.hpp",
         ],
         compiler_flags = ["--std=c++17"],
-        deps = [":lib_vectodb", ":openblas"],
+        linker_flags = ["-L. -lvectodb", "-Lfaiss -lfaiss", "-lopenblas", "-lboost_thread", "-lboost_filesystem", "-lboost_system", "-lglog", "-lgflags", "-lgomp", "-lpthread"],
+        deps = [":libvectodb", ":build_faiss"],
     )
 
-
 cc_library(
-    name = "openblas",
-    srcs = ["/usr/lib64/libopenblas.so.0"],
-)
-
-cc_library(
-    name = "lib_vectodb",
+    name = "libvectodb",
     srcs = [
         "vectodb.cpp",
     ],
