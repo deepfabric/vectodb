@@ -1,5 +1,23 @@
 # package(default_visibility = ["//visibility:public"])
 
+for fp in glob(["demos/*.cpp"]):
+    cc_binary(
+        name = splitext(basename(fp))[0],
+        srcs = [fp],
+        hdrs = [
+        "vectodb.h",
+        "vectodb.hpp",
+        ],
+        compiler_flags = ["--std=c++17"],
+        deps = [":lib_vectodb", ":openblas"],
+    )
+
+
+cc_library(
+    name = "openblas",
+    srcs = ["/usr/lib64/libopenblas.so.0"],
+)
+
 cc_library(
     name = "lib_vectodb",
     srcs = [
@@ -10,12 +28,8 @@ cc_library(
         "vectodb.hpp",
     ],
     compiler_flags = [
-        "-Wall",
-        "-Wextra",
-        "-g",
-        "-O2",
+        "--std=c++17",
         "-fopenmp",
-        "-std=c++17",
     ],
     includes = ["faiss"],
     deps = [":build_faiss"],
@@ -23,13 +37,13 @@ cc_library(
 
 genrule(
     name = "build_faiss",
-    srcs = glob(include = [
+    srcs = glob([
         "faiss/Makefile",
         "faiss/**/*.cpp",
         "faiss/**/*.h",
         "faiss/**/*makefile*",
     ]),
-    outs = ["faiss/libfaiss.a"] + glob(include=["faiss/**/*.h"]),
+    outs = ["faiss/libfaiss.a"] + glob(["faiss/**/*.h"]),
     binary = False,
     building_description = "build fiass static library",
     cmd = [

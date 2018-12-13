@@ -10,3 +10,5 @@
 [cpp]
 cctool = /opt/rh/devtoolset-7/root/usr/bin/gcc
 cpptool = /opt/rh/devtoolset-7/root/usr/bin/g++
+DefaultOptCppflags = "-Wall -Wextra -DNDEBUG -g -O2"
+DefaultDbgCppflags = "-Wall -Wextra -DDEBUG -g3"
