@@ -25,7 +25,6 @@ import (
 const (
 	SIZEOF_FLOAT32       = 4
 	ValidSeconds   int64 = 365 * 24 * 60 * 60 // 1 year
-	SizeLimit            = 10000
 )
 
 // VectoDBLite is tiny stateless non-updatable non-removable vector database. Only supports metric type 0 - METRIC_INNER_PRODUCT.
@@ -33,6 +32,7 @@ type VectoDBLite struct {
 	redisAddr     string
 	dim           int
 	distThreshold float32
+	sizeLimit     int
 	dbKey         string
 	rcli          *redis.Client
 	lru           *lru.Cache //The three shall keep sync: redis, lru, flatC
@@ -42,7 +42,7 @@ type VectoDBLite struct {
 	cancel        context.CancelFunc
 }
 
-func NewVectoDBLite(redisAddr string, dbID int, dimIn int, distThreshold float32) (vdbl *VectoDBLite, err error) {
+func NewVectoDBLite(redisAddr string, dbID int, dimIn int, distThreshold float32, sizeLimit int) (vdbl *VectoDBLite, err error) {
 	log.Infof("creating VectoDBLite %v %v", redisAddr, dbID)
 	dbKey := getDbKey(dbID)
 	rcli := redis.NewClient(&redis.Options{
@@ -54,23 +54,30 @@ func NewVectoDBLite(redisAddr string, dbID int, dimIn int, distThreshold float32
 		redisAddr:     redisAddr,
 		dim:           dimIn,
 		distThreshold: distThreshold,
+		sizeLimit:     sizeLimit,
 		dbKey:         dbKey,
 		rcli:          rcli,
 		h64:           xxhash.New(),
-		expiresCh:     make(chan string, SizeLimit),
+		expiresCh:     make(chan string, sizeLimit),
 	}
 	onEvicted := func(key, value interface{}) {
 		vdbl.expiresCh <- key.(string)
 	}
-	if vdbl.lru, err = lru.NewWithEvict(SizeLimit, onEvicted); err != nil {
+	if vdbl.lru, err = lru.NewWithEvict(sizeLimit, onEvicted); err != nil {
 		err = errors.Wrapf(err, "")
+		return
+	}
+	ctx, cancel := context.WithCancel(context.TODO())
+	vdbl.cancel = cancel
+	go vdbl.servExpire(ctx)
+	if err = vdbl.load(); err != nil {
 		return
 	}
 	return
 }
 
 // Init load data from redis
-func (vdbl *VectoDBLite) Init() (err error) {
+func (vdbl *VectoDBLite) load() (err error) {
 	var vecMapS map[string]string
 	if vecMapS, err = vdbl.rcli.HGetAll(vdbl.dbKey).Result(); err != nil {
 		err = errors.Wrap(err, "")
@@ -105,9 +112,6 @@ func (vdbl *VectoDBLite) Init() (err error) {
 	if err = vdbl.rebuildFlatC(); err != nil {
 		return
 	}
-	ctx, cancel := context.WithCancel(context.TODO())
-	vdbl.cancel = cancel
-	go vdbl.servExpire(ctx)
 
 	return
 }
@@ -117,9 +121,9 @@ func (vdbl *VectoDBLite) rebuildFlatC() (err error) {
 		C.IndexFlatDelete(vdbl.flatC)
 	}
 	vdbl.flatC = C.IndexFlatNew(C.long(vdbl.dim), C.float(vdbl.distThreshold))
-	var xid int64
+	var xid uint64
 	for _, xidInf := range vdbl.lru.Keys() {
-		if xid, err = strconv.ParseInt(xidInf.(string), 16, 64); err != nil {
+		if xid, err = strconv.ParseUint(xidInf.(string), 16, 64); err != nil {
 			err = errors.Wrapf(err, "")
 			return
 		}
@@ -130,14 +134,14 @@ func (vdbl *VectoDBLite) rebuildFlatC() (err error) {
 			return
 		}
 		vt := vtInf.(*VecTimestamp)
-		C.IndexFlatAddWithIds(vdbl.flatC, C.long(1), (*C.float)(&vt.Vec[0]), (*C.long)(&xid))
+		C.IndexFlatAddWithIds(vdbl.flatC, C.long(1), (*C.float)(&vt.Vec[0]), (*C.ulong)(&xid))
 	}
 	return
 }
 
 func (vdbl *VectoDBLite) servExpire(ctx context.Context) {
 	tickCh := time.Tick(10 * time.Second)
-	expiredXids := make([]string, SizeLimit/10)
+	expiredXids := make([]string, vdbl.sizeLimit/10)
 	for {
 		select {
 		case <-ctx.Done():
@@ -160,6 +164,7 @@ func (vdbl *VectoDBLite) servExpire(ctx context.Context) {
 
 func (vdbl *VectoDBLite) Destroy() (err error) {
 	log.Infof("destroying VectoDBLite %v %v", vdbl.redisAddr, vdbl.dbKey)
+	vdbl.cancel()
 	if vdbl.flatC != nil {
 		C.IndexFlatDelete(vdbl.flatC)
 		vdbl.flatC = nil
@@ -167,11 +172,11 @@ func (vdbl *VectoDBLite) Destroy() (err error) {
 	return
 }
 
-func (vdbl *VectoDBLite) Add(xb []float32) (err error) {
+func (vdbl *VectoDBLite) Add(xb []float32) (xid uint64, err error) {
 	if len(xb) != vdbl.dim {
 		log.Fatalf("invalid length of xb, want %v, have %v", vdbl.dim, len(xb))
 	}
-	xid := allocateXid(vdbl.h64, xb)
+	xid = allocateXid(vdbl.h64, xb)
 	xidS := getXidKey(xid)
 	vt := &VecTimestamp{
 		Vec:      xb,
@@ -188,22 +193,23 @@ func (vdbl *VectoDBLite) Add(xb []float32) (err error) {
 		return
 	}
 	vdbl.lru.Add(xidS, vt)
-	C.IndexFlatAddWithIds(vdbl.flatC, C.long(1), (*C.float)(&xb[0]), (*C.long)(&xid))
+	C.IndexFlatAddWithIds(vdbl.flatC, C.long(1), (*C.float)(&xb[0]), (*C.ulong)(&xid))
 	return
 }
 
-func (vdbl *VectoDBLite) Search(xq []float32) (xid int64, distance float32, err error) {
+func (vdbl *VectoDBLite) Search(xq []float32) (xid uint64, distance float32, err error) {
 	if len(xq) != vdbl.dim {
 		log.Fatalf("invalid length of xq, want %v, have %v", vdbl.dim, len(xq))
 	}
-	C.IndexFlatSearch(vdbl.flatC, C.long(1), (*C.float)(&xq[0]), (*C.float)(&distance), (*C.long)(&xid))
-	if xid != -1 {
+	C.IndexFlatSearch(vdbl.flatC, C.long(1), (*C.float)(&xq[0]), (*C.float)(&distance), (*C.ulong)(&xid))
+	if xid != ^uint64(0) {
 		//search ok, update expireAt at lur, and redis.
 		xidS := getXidKey(xid)
 		var vtInf interface{}
 		var ok bool
 		if vtInf, ok = vdbl.lru.Get(xidS); !ok {
-			err = errors.Errorf("vdbl.lru is corrupted, want %v be present, have absent", xidS)
+			log.Infof("xid %v in IndexFlat is absent in LRU", xidS)
+			xid = ^uint64(0)
 			return
 		}
 		vt := vtInf.(*VecTimestamp)
@@ -221,7 +227,11 @@ func (vdbl *VectoDBLite) Search(xq []float32) (xid int64, distance float32, err 
 	return
 }
 
-func getXidKey(xid int64) string {
+func (vdbl *VectoDBLite) Size() int {
+	return vdbl.lru.Len()
+}
+
+func getXidKey(xid uint64) string {
 	return fmt.Sprintf("%016x", xid)
 }
 
@@ -230,7 +240,7 @@ func getDbKey(dbID int) string {
 }
 
 // allocateXid uses hash of vec as xid.
-func allocateXid(h64 hash.Hash64, vec []float32) (xid int64) {
+func allocateXid(h64 hash.Hash64, vec []float32) (xid uint64) {
 	// https://stackoverflow.com/questions/11924196/convert-between-slices-of-different-types
 	// Get the slice header
 	header := *(*reflect.SliceHeader)(unsafe.Pointer(&vec))
@@ -242,6 +252,6 @@ func allocateXid(h64 hash.Hash64, vec []float32) (xid int64) {
 
 	h64.Reset()
 	h64.Write(data)
-	xid = int64(h64.Sum64())
+	xid = h64.Sum64()
 	return
 }

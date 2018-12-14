@@ -17,8 +17,8 @@ struct IndexFlatWrapper {
     float dist_threshold;
     boost::shared_mutex rw_flat;
     faiss::IndexFlat* flat;
-    unordered_map<long, long> xid2num;
-    vector<long> xids; //vector of xid of all vectors
+    unordered_map<uint64_t, uint64_t> xid2num;
+    vector<uint64_t> xids; //vector of xid of all vectors
 };
 
 void* IndexFlatNew(long dim, float dist_threshold)
@@ -36,7 +36,7 @@ void IndexFlatDelete(void* ifwIn)
     delete ifw;
 }
 
-void IndexFlatAddWithIds(void* ifwIn, long nb, float* xb, long* xids)
+void IndexFlatAddWithIds(void* ifwIn, long nb, float* xb, unsigned long* xids)
 {
     IndexFlatWrapper* ifw = static_cast<IndexFlatWrapper*>(ifwIn);
     wlock w{ ifw->rw_flat };
@@ -48,17 +48,17 @@ void IndexFlatAddWithIds(void* ifwIn, long nb, float* xb, long* xids)
     }
 }
 
-void IndexFlatSearch(void* ifwIn, long nq, float* xq, float* distances, long* xids)
+void IndexFlatSearch(void* ifwIn, long nq, float* xq, float* distances, unsigned long* xids)
 {
     static const long k = 1;
     IndexFlatWrapper* ifw = static_cast<IndexFlatWrapper*>(ifwIn);
     {
         rlock r{ ifw->rw_flat };
-        ifw->flat->search(nq, xq, k, distances, xids);
+        ifw->flat->search(nq, xq, k, distances, (long*)xids);
     }
     for (int i = 0; i < nq; i++) {
         if (distances[i] < ifw->dist_threshold) {
-            xids[i] = long(-1);
+            xids[i] = uint64_t(-1);
         } else {
             xids[i] = ifw->xids[xids[i]];
         }
