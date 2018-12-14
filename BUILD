@@ -1,5 +1,22 @@
 # package(default_visibility = ["//visibility:public"])
 
+genrule(
+    name = "build_go",
+    srcs = glob([
+        "*.go",
+        "**/*.go",
+        "go.mod",
+        "go.sum",
+        "/usr/local/go/bin/go",
+    ]),
+    building_description = "build go modules and binaries",
+    cmd = [
+        "GO111MODULE=on go install -x .",
+    ],
+    deps = [":build_faiss"]
+)
+
+
 for fp in ['demos/demo_sift1M.cpp', 'demos/faiss_train.cpp', 'demos/faiss_search.cpp', 'demos/generate_dataset.cpp']:
     cc_binary(
         name = splitext(basename(fp))[0],
