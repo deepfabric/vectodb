@@ -171,7 +171,7 @@ func (vdbl *VectoDBLite) Add(xb []float32) (err error) {
 	if len(xb) != vdbl.dim {
 		log.Fatalf("invalid length of xb, want %v, have %v", vdbl.dim, len(xb))
 	}
-	xid := allocateXid(xb)
+	xid := allocateXid(vdbl.h64, xb)
 	xidS := getXidKey(xid)
 	vt := &VecTimestamp{
 		Vec:      xb,
@@ -196,7 +196,7 @@ func (vdbl *VectoDBLite) Search(xq []float32) (xid int64, distance float32, err 
 	if len(xq) != vdbl.dim {
 		log.Fatalf("invalid length of xq, want %v, have %v", vdbl.dim, len(xq))
 	}
-	C.IndexFlatSearch(vdbl.flatC, C.long(nq), (*C.float)(&xq[0]), (*C.float)(&distance), (*C.long)(&xid))
+	C.IndexFlatSearch(vdbl.flatC, C.long(1), (*C.float)(&xq[0]), (*C.float)(&distance), (*C.long)(&xid))
 	if xid != -1 {
 		//search ok, update expireAt at lur, and redis.
 		xidS := getXidKey(xid)
@@ -230,7 +230,7 @@ func getDbKey(dbID int) string {
 }
 
 // allocateXid uses hash of vec as xid.
-func allocateXid(h64 xxhash.Hash64, vec []float32) (xid int64) {
+func allocateXid(h64 hash.Hash64, vec []float32) (xid int64) {
 	// https://stackoverflow.com/questions/11924196/convert-between-slices-of-different-types
 	// Get the slice header
 	header := *(*reflect.SliceHeader)(unsafe.Pointer(&vec))
