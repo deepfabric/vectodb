@@ -173,10 +173,17 @@ func (vdbl *VectoDBLite) Destroy() (err error) {
 }
 
 func (vdbl *VectoDBLite) Add(xb []float32) (xid uint64, err error) {
+	xid = allocateXid(vdbl.h64, xb)
+	if err = vdbl.AddWithId(xb, xid); err != nil {
+		return
+	}
+	return
+}
+
+func (vdbl *VectoDBLite) AddWithId(xb []float32, xid uint64) (err error) {
 	if len(xb) != vdbl.dim {
 		log.Fatalf("invalid length of xb, want %v, have %v", vdbl.dim, len(xb))
 	}
-	xid = allocateXid(vdbl.h64, xb)
 	xidS := getXidKey(xid)
 	vt := &VecTimestamp{
 		Vec:      xb,
