@@ -25,7 +25,6 @@ genrule(
         "$TOOL build -o demos/demo_sift100M_vectodb_go demos/demo_sift100M_vectodb.go",
         "$TOOL build -o demos/demo_vectodblite_go demos/demo_vectodblite.go",
     ],
-    sandbox = False,
     tools = ["/usr/local/go/bin/go"],
     deps = [":build_faiss"]
 )
