@@ -4,15 +4,29 @@ genrule(
     name = "build_go",
     srcs = glob([
         "*.go",
-        "**/*.go",
+        "demos/*.go",
         "go.mod",
         "go.sum",
-        "/usr/local/go/bin/go",
+        "*.h",
+        "*.hpp",
+        "*.c",
+        "*.cpp",
     ]),
+    outs = ['demos/demo_sift1M_vectodb_go', 'demos/demo_sift100M_vectodb_go', 'demos/demo_vectodblite_go'],
     building_description = "build go modules and binaries",
     cmd = [
-        "GO111MODULE=on go install -x .",
+        "export CC=/opt/rh/devtoolset-7/root/usr/bin/gcc",
+        "export CXX=/opt/rh/devtoolset-7/root/usr/bin/g++",
+        "export GOCACHE=/home/zhichyu/.cache/go-build",
+        "export GOPATH=/home/zhichyu/go",
+        "export GO111MODULE=on",
+        "$TOOL install -x .",
+        "$TOOL build -o demos/demo_sift1M_vectodb_go demos/demo_sift1M_vectodb.go",
+        "$TOOL build -o demos/demo_sift100M_vectodb_go demos/demo_sift100M_vectodb.go",
+        "$TOOL build -o demos/demo_vectodblite_go demos/demo_vectodblite.go",
     ],
+    sandbox = False,
+    tools = ["/usr/local/go/bin/go"],
     deps = [":build_faiss"]
 )
 
