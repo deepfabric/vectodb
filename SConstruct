@@ -13,7 +13,7 @@ import subprocess
 
 env = Environment(ENV=os.environ)
 
-env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && cp example_makefiles/makefile.inc.Linux makefile.inc && make demos/demo_sift1M py && popd')
+env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && ((grep -i ubuntu /etc/os-release && cp example_makefiles/makefile.inc.Linux.Ubuntu makefile.inc) || cp example_makefiles/makefile.inc.Linux makefile.inc) && make demos/demo_sift1M && popd')
 if env.GetOption('clean'):
     subprocess.call('pushd faiss && make clean && popd', shell=True)
 

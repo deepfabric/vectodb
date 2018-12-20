@@ -12,11 +12,13 @@ genrule(
         "*.c",
         "*.cpp",
     ]),
-    outs = ['demos/demo_sift1M_vectodb_go', 'demos/demo_sift100M_vectodb_go', 'demos/demo_vectodblite_go'],
+    outs = [
+        "demos/demo_sift1M_vectodb_go",
+        "demos/demo_sift100M_vectodb_go",
+        "demos/demo_vectodblite_go",
+    ],
     building_description = "build go modules and binaries",
     cmd = [
-        "export CC=/opt/rh/devtoolset-7/root/usr/bin/gcc",
-        "export CXX=/opt/rh/devtoolset-7/root/usr/bin/g++",
         "export GOCACHE=/home/zhichyu/.cache/go-build",
         "export GOPATH=/home/zhichyu/go",
         "export GO111MODULE=on",
@@ -26,11 +28,15 @@ genrule(
         "$TOOL build -o demos/demo_vectodblite_go demos/demo_vectodblite.go",
     ],
     tools = ["/usr/local/go/bin/go"],
-    deps = [":build_faiss"]
+    deps = [":build_faiss"],
 )
 
-
-for fp in ['demos/demo_sift1M.cpp', 'demos/faiss_train.cpp', 'demos/faiss_search.cpp', 'demos/generate_dataset.cpp']:
+for fp in [
+    "demos/demo_sift1M.cpp",
+    "demos/faiss_train.cpp",
+    "demos/faiss_search.cpp",
+    "demos/generate_dataset.cpp",
+]:
     cc_binary(
         name = splitext(basename(fp))[0],
         srcs = [fp],
@@ -39,17 +45,20 @@ for fp in ['demos/demo_sift1M.cpp', 'demos/faiss_train.cpp', 'demos/faiss_search
         deps = [":build_faiss"],
     )
 
-for fp in ['demos/demo_sift1M_vectodb.cpp', 'demos/demo_sift100M_vectodb.cpp']:
+for fp in [
+    "demos/demo_sift1M_vectodb.cpp",
+    "demos/demo_sift100M_vectodb.cpp",
+]:
     cc_binary(
         name = splitext(basename(fp))[0],
         srcs = [fp],
         hdrs = [
-        "vectodb.h",
-        "vectodb.hpp",
+            "vectodb.h",
+            "vectodb.hpp",
         ],
         compiler_flags = ["--std=c++17"],
         linker_flags = ["-L. -lvectodb", "-Lfaiss -lfaiss", "-lopenblas", "-lboost_thread", "-lboost_filesystem", "-lboost_system", "-lglog", "-lgflags", "-lgomp", "-lpthread"],
-        deps = [":libvectodb", ":build_faiss"],
+        deps = [":build_faiss", ":libvectodb"],
     )
 
 cc_library(
@@ -81,7 +90,7 @@ genrule(
     binary = False,
     building_description = "build fiass static library",
     cmd = [
-        "cp faiss/example_makefiles/makefile.inc.Linux faiss/makefile.inc",
+        "(grep -i ubuntu /etc/os-release && cp faiss/example_makefiles/makefile.inc.Linux.Ubuntu faiss/makefile.inc) || cp faiss/example_makefiles/makefile.inc.Linux faiss/makefile.inc",
         "make -C faiss demos/demo_sift1M",
     ],
 )
