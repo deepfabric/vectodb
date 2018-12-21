@@ -6,9 +6,18 @@ import subprocess
 # Build vectodb on CentOS 7 x86_64:
 # 1. Enable EPEL, refers to https://fedoraproject.org/wiki/EPEL.
 # 2. Install dependencies.
-# $ sudo yum -y install gcc-c++ openblas-devel swig python-devel numpy glog-devel gflags-devel boost-devel
+# $ sudo yum -y install gcc-c++ openblas-devel swig python-devel numpy glog-devel gflags-devel boost-devel jemalloc-devel
 # 3. Install and enable devtoolset-7, refers to https://www.softwarecollections.org/en/scls/rhscl/devtoolset-7/, https://access.redhat.com/solutions/527703
 # 4. Build all
+# $ scons
+
+# Build vectodb on Linux Mint 19 x86_64:
+# 1. Change default shell from dash to bash.
+# $ sudo dpkg-reconfigure dash
+# select No.
+# 2. Install dependencies.
+# $ sudo apt install libboost-dev libboost-thread-dev libboost-system-dev libboost-filesystem-dev libopenblas-dev libgoogle-glog-dev libjemalloc-dev
+# 3. Build all
 # $ scons
 
 env = Environment(ENV=os.environ)
