@@ -19,8 +19,6 @@ genrule(
     ],
     building_description = "build go modules and binaries",
     cmd = [
-        "export GOCACHE=/home/zhichyu/.cache/go-build",
-        "export GOPATH=/home/zhichyu/go",
         "export GO111MODULE=on",
         "$TOOL install -x .",
         "$TOOL build -o demos/demo_sift1M_vectodb_go demos/demo_sift1M_vectodb.go",
@@ -90,7 +88,7 @@ genrule(
     binary = False,
     building_description = "build fiass static library",
     cmd = [
-        "(grep -i ubuntu /etc/os-release && cp faiss/example_makefiles/makefile.inc.Linux.Ubuntu faiss/makefile.inc) || cp faiss/example_makefiles/makefile.inc.Linux faiss/makefile.inc",
+        "((grep -i ubuntu /etc/os-release && cp faiss/example_makefiles/makefile.inc.Linux.Ubuntu faiss/makefile.inc) || cp faiss/example_makefiles/makefile.inc.Linux faiss/makefile.inc)",
         "make -C faiss demos/demo_sift1M",
     ],
 )

@@ -10,3 +10,6 @@
 [cpp]
 DefaultOptCppflags = "-Wall -Wextra -DNDEBUG -g -O2"
 DefaultDbgCppflags = "-Wall -Wextra -DDEBUG -g3"
+[build]
+passenv = GOCACHE
+passenv = GOPATH
