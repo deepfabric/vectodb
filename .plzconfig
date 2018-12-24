@@ -6,10 +6,11 @@
 ; Or you can uncomment the following to pin everyone to a particular version;
 ; when you change it all users will automatically get updated.
 ; [please]
-; version = 13.2.7
+; version = 13.3.2
 [cpp]
 DefaultOptCppflags = "-Wall -Wextra -DNDEBUG -g -O2"
 DefaultDbgCppflags = "-Wall -Wextra -DDEBUG -g3"
 [build]
+passenv = http_proxy
 passenv = GOCACHE
 passenv = GOPATH
