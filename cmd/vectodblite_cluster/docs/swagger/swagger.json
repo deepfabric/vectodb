@@ -1,13 +1,13 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "This is a sample server celler server.",
-        "title": "Swagger Example API",
+        "description": "This is a VectoDBLite cluster server.",
+        "title": "VectoDBLite Cluster API",
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "name": "API Support",
-            "url": "http://www.swagger.io/support",
-            "email": "support@swagger.io"
+            "url": "https://github.com/infinivision/vectodb/issues",
+            "email": "yuzhichang@gmail.com"
         },
         "license": {
             "name": "Apache 2.0",
@@ -15,53 +15,69 @@
         },
         "version": "1.0"
     },
-    "host": "localhost:8080",
+    "host": "{{.Host}}",
     "basePath": "/api/v1",
-    "paths": {},
-    "securityDefinitions": {
-        "ApiKeyAuth": {
-            "type": "apiKey",
-            "name": "Authorization",
-            "in": "header"
-        },
-        "BasicAuth": {
-            "type": "basic"
-        },
-        "OAuth2AccessCode": {
-            "type": "oauth2",
-            "flow": "accessCode",
-            "authorizationUrl": "https://example.com/oauth/authorize",
-            "tokenUrl": "https://example.com/oauth/token",
-            "scopes": {
-                "admin": " Grants read and write access to administrative information"
+    "paths": {
+        "/api/v1/add": {
+            "post": {
+                "description": "Add a vector to the given vectodblite",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "parameters": [
+                    {
+                        "description": "ReqAdd. If xid is not specified, the cluster will generate one.",
+                        "name": "add",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "$ref": "#/definitions/main.ReqAdd"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "int"
+                        }
+                    },
+                    "300": {
+                        "description": "redirect to another node!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
             }
-        },
-        "OAuth2Application": {
-            "type": "oauth2",
-            "flow": "application",
-            "tokenUrl": "https://example.com/oauth/token",
-            "scopes": {
-                "admin": " Grants read and write access to administrative information",
-                "write": " Grants write access"
-            }
-        },
-        "OAuth2Implicit": {
-            "type": "oauth2",
-            "flow": "implicit",
-            "authorizationUrl": "https://example.com/oauth/authorize",
-            "scopes": {
-                "admin": " Grants read and write access to administrative information",
-                "write": " Grants write access"
-            }
-        },
-        "OAuth2Password": {
-            "type": "oauth2",
-            "flow": "password",
-            "tokenUrl": "https://example.com/oauth/token",
-            "scopes": {
-                "admin": " Grants read and write access to administrative information",
-                "read": " Grants read access",
-                "write": " Grants write access"
+        }
+    },
+    "definitions": {
+        "main.ReqAdd": {
+            "type": "object",
+            "properties": {
+                "dbID": {
+                    "type": "integer"
+                },
+                "xb": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "xid": {
+                    "type": "integer"
+                }
             }
         }
     }

@@ -1,52 +1,56 @@
 basePath: /api/v1
-host: localhost:8080
+definitions:
+  main.ReqAdd:
+    properties:
+      dbID:
+        type: integer
+      xb:
+        items:
+          type: number
+        type: array
+      xid:
+        type: integer
+    type: object
+host: '{{.Host}}'
 info:
   contact:
-    email: support@swagger.io
+    email: yuzhichang@gmail.com
     name: API Support
-    url: http://www.swagger.io/support
-  description: This is a sample server celler server.
+    url: https://github.com/infinivision/vectodb/issues
+  description: This is a VectoDBLite cluster server.
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
   termsOfService: http://swagger.io/terms/
-  title: Swagger Example API
+  title: VectoDBLite Cluster API
   version: "1.0"
-paths: {}
-securityDefinitions:
-  ApiKeyAuth:
-    in: header
-    name: Authorization
-    type: apiKey
-  BasicAuth:
-    type: basic
-  OAuth2AccessCode:
-    authorizationUrl: https://example.com/oauth/authorize
-    flow: accessCode
-    scopes:
-      admin: ' Grants read and write access to administrative information'
-    tokenUrl: https://example.com/oauth/token
-    type: oauth2
-  OAuth2Application:
-    flow: application
-    scopes:
-      admin: ' Grants read and write access to administrative information'
-      write: ' Grants write access'
-    tokenUrl: https://example.com/oauth/token
-    type: oauth2
-  OAuth2Implicit:
-    authorizationUrl: https://example.com/oauth/authorize
-    flow: implicit
-    scopes:
-      admin: ' Grants read and write access to administrative information'
-      write: ' Grants write access'
-    type: oauth2
-  OAuth2Password:
-    flow: password
-    scopes:
-      admin: ' Grants read and write access to administrative information'
-      read: ' Grants read access'
-      write: ' Grants write access'
-    tokenUrl: https://example.com/oauth/token
-    type: oauth2
+paths:
+  /api/v1/add:
+    post:
+      consumes:
+      - application/json
+      description: Add a vector to the given vectodblite
+      parameters:
+      - description: ReqAdd. If xid is not specified, the cluster will generate one.
+        in: body
+        name: add
+        required: true
+        schema:
+          $ref: '#/definitions/main.ReqAdd'
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: int
+        "300":
+          description: redirect to another node!
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            type: string
 swagger: "2.0"
