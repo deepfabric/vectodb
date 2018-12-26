@@ -29,7 +29,7 @@
                 ],
                 "parameters": [
                     {
-                        "description": "ReqAdd. If xid is not specified, the cluster will generate one.",
+                        "description": "ReqAdd. If xid is 0 or ^uint64(0), the cluster will generate one.",
                         "name": "add",
                         "in": "body",
                         "required": true,
@@ -45,6 +45,42 @@
                         "schema": {
                             "type": "object",
                             "$ref": "#/definitions/main.RspAdd"
+                        }
+                    },
+                    "300": {
+                        "description": "redirection"
+                    },
+                    "400": {}
+                }
+            }
+        },
+        "/api/v1/search": {
+            "post": {
+                "description": "Search a vector in the given vectodblite",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "parameters": [
+                    {
+                        "description": "ReqSearch",
+                        "name": "search",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "$ref": "#/definitions/main.ReqSearch"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "RspSearch",
+                        "schema": {
+                            "type": "object",
+                            "$ref": "#/definitions/main.RspSearch"
                         }
                     },
                     "300": {
@@ -73,9 +109,37 @@
                 }
             }
         },
+        "main.ReqSearch": {
+            "type": "object",
+            "properties": {
+                "dbID": {
+                    "type": "integer"
+                },
+                "xq": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                }
+            }
+        },
         "main.RspAdd": {
             "type": "object",
             "properties": {
+                "err": {
+                    "type": "string"
+                },
+                "xid": {
+                    "type": "integer"
+                }
+            }
+        },
+        "main.RspSearch": {
+            "type": "object",
+            "properties": {
+                "distance": {
+                    "type": "number"
+                },
                 "err": {
                     "type": "string"
                 },

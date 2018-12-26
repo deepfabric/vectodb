@@ -11,8 +11,26 @@ definitions:
       xid:
         type: integer
     type: object
+  main.ReqSearch:
+    properties:
+      dbID:
+        type: integer
+      xq:
+        items:
+          type: number
+        type: array
+    type: object
   main.RspAdd:
     properties:
+      err:
+        type: string
+      xid:
+        type: integer
+    type: object
+  main.RspSearch:
+    properties:
+      distance:
+        type: number
       err:
         type: string
       xid:
@@ -38,7 +56,8 @@ paths:
       - application/json
       description: Add a vector to the given vectodblite
       parameters:
-      - description: ReqAdd. If xid is not specified, the cluster will generate one.
+      - description: ReqAdd. If xid is 0 or ^uint64(0), the cluster will generate
+          one.
         in: body
         name: add
         required: true
@@ -52,6 +71,30 @@ paths:
           description: RspAdd
           schema:
             $ref: '#/definitions/main.RspAdd'
+            type: object
+        "300":
+          description: redirection
+        "400": {}
+  /api/v1/search:
+    post:
+      consumes:
+      - application/json
+      description: Search a vector in the given vectodblite
+      parameters:
+      - description: ReqSearch
+        in: body
+        name: search
+        required: true
+        schema:
+          $ref: '#/definitions/main.ReqSearch'
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: RspSearch
+          schema:
+            $ref: '#/definitions/main.RspSearch'
             type: object
         "300":
           description: redirection

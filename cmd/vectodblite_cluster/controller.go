@@ -25,6 +25,12 @@ type ReqSearch struct {
 	Xq   []float32 `json:"xq"`
 }
 
+type RspSearch struct {
+	Xid      uint64  `json:"xid"`
+	Distance float32 `json:"distance"`
+	Err      string  `json:"err"`
+}
+
 type ControllerConf struct {
 	RedisAddr string
 	Dim       int
@@ -58,29 +64,65 @@ func NewController(conf *ControllerConf) (ctl *Controller) {
 	}
 }
 
-// refers to https://github.com/swaggo/swag#api-operation and github.com/swaggo/swag/operation.go
+// refers to https://github.com/swaggo/swag#api-operation
+// github.com/swaggo/swag/operation.go, (*Operation).ParseParamComment, (*Operation).ParseResponseComment
 // @Description Add a vector to the given vectodblite
 // @Accept  json
 // @Produce  json
-// @Param   add		body	main.ReqAdd	true 	"ReqAdd. If xid is not specified, the cluster will generate one."
+// @Param   add		body	main.ReqAdd	true 	"ReqAdd. If xid is 0 or ^uint64(0), the cluster will generate one."
 // @Success 200 {object} main.RspAdd "RspAdd"
 // @Failure 300 "redirection"
 // @Failure 400
 // @Router /api/v1/add [post]
 func (ctl *Controller) HandleAdd(c *gin.Context) {
 	var reqAdd ReqAdd
-	if err := c.ShouldBind(&reqAdd); err != nil {
+	var err error
+	if err = c.ShouldBind(&reqAdd); err != nil {
 		err = errors.Wrap(err, "")
 		log.Printf("got error %+v", err)
 		c.String(http.StatusBadRequest, err.Error())
 	} else {
-		log.Printf("HandleAdd %+v", reqAdd)
-		c.String(200, "Success")
+		var rspAdd RspAdd
+		if reqAdd.Xid == 0 || reqAdd.Xid == ^uint64(0) {
+			rspAdd.Xid, err = ctl.add(reqAdd.DbID, reqAdd.Xb)
+		} else {
+			rspAdd.Xid = reqAdd.Xid
+			err = ctl.addWithId(reqAdd.DbID, reqAdd.Xb, rspAdd.Xid)
+		}
+		if err != nil {
+			rspAdd.Err = err.Error()
+			err = errors.Wrap(err, "")
+			log.Printf("got error %+v", err)
+		}
+		c.JSON(200, rspAdd)
 	}
-
 }
 
+// @Description Search a vector in the given vectodblite
+// @Accept  json
+// @Produce  json
+// @Param   search		body	main.ReqSearch	true 	"ReqSearch"
+// @Success 200 {object} main.RspSearch "RspSearch"
+// @Failure 300 "redirection"
+// @Failure 400
+// @Router /api/v1/search [post]
 func (ctl *Controller) HandleSearch(c *gin.Context) {
+	var reqSearch ReqSearch
+	var err error
+	if err = c.ShouldBind(&reqSearch); err != nil {
+		err = errors.Wrap(err, "")
+		log.Printf("got error %+v", err)
+		c.String(http.StatusBadRequest, err.Error())
+	} else {
+		var rspSearch RspSearch
+		rspSearch.Xid, rspSearch.Distance, err = ctl.search(reqSearch.DbID, reqSearch.Xq)
+		if err != nil {
+			rspSearch.Err = err.Error()
+			err = errors.Wrap(err, "")
+			log.Printf("got error %+v", err)
+		}
+		c.JSON(200, rspSearch)
+	}
 }
 
 func (ctl *Controller) add(dbID int, xb []float32) (xid uint64, err error) {
@@ -91,6 +133,6 @@ func (ctl *Controller) addWithId(dbID int, xb []float32, xid uint64) (err error)
 	return
 }
 
-func (ctl *Controller) search(dbID, xq []float32) (xid uint64, distance float32, err error) {
+func (ctl *Controller) search(dbID int, xq []float32) (xid uint64, distance float32, err error) {
 	return
 }
