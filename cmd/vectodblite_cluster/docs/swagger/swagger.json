@@ -41,23 +41,16 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "RspAdd",
                         "schema": {
-                            "type": "int"
+                            "type": "object",
+                            "$ref": "#/definitions/main.RspAdd"
                         }
                     },
                     "300": {
-                        "description": "redirect to another node!",
-                        "schema": {
-                            "type": "string"
-                        }
+                        "description": "redirection"
                     },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
+                    "400": {}
                 }
             }
         }
@@ -74,6 +67,17 @@
                     "items": {
                         "type": "number"
                     }
+                },
+                "xid": {
+                    "type": "integer"
+                }
+            }
+        },
+        "main.RspAdd": {
+            "type": "object",
+            "properties": {
+                "err": {
+                    "type": "string"
                 },
                 "xid": {
                     "type": "integer"

@@ -11,6 +11,13 @@ definitions:
       xid:
         type: integer
     type: object
+  main.RspAdd:
+    properties:
+      err:
+        type: string
+      xid:
+        type: integer
+    type: object
 host: '{{.Host}}'
 info:
   contact:
@@ -42,15 +49,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: RspAdd
           schema:
-            type: int
+            $ref: '#/definitions/main.RspAdd'
+            type: object
         "300":
-          description: redirect to another node!
-          schema:
-            type: string
-        "400":
-          description: Bad Request
-          schema:
-            type: string
+          description: redirection
+        "400": {}
 swagger: "2.0"

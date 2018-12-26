@@ -15,6 +15,11 @@ type ReqAdd struct {
 	Xid  uint64    `json:"xid"`
 }
 
+type RspAdd struct {
+	Xid uint64 `json:"xid"`
+	Err string `json:"err"`
+}
+
 type ReqSearch struct {
 	DbID int       `json:"dbID"`
 	Xq   []float32 `json:"xq"`
@@ -58,9 +63,9 @@ func NewController(conf *ControllerConf) (ctl *Controller) {
 // @Accept  json
 // @Produce  json
 // @Param   add		body	main.ReqAdd	true 	"ReqAdd. If xid is not specified, the cluster will generate one."
-// @Success 200 {int} integer xid
-// @Failure 300 {string} string "redirect to another node!"
-// @Failure 400 {string} string request bind error
+// @Success 200 {object} main.RspAdd "RspAdd"
+// @Failure 300 "redirection"
+// @Failure 400
 // @Router /api/v1/add [post]
 func (ctl *Controller) HandleAdd(c *gin.Context) {
 	var reqAdd ReqAdd
