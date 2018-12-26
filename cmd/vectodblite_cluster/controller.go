@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/infinivision/vectodb"
@@ -126,13 +127,37 @@ func (ctl *Controller) HandleSearch(c *gin.Context) {
 }
 
 func (ctl *Controller) add(dbID int, xb []float32) (xid uint64, err error) {
+	var dbl *vectodb.VectoDBLite
+	var ok bool
+	if dbl, ok = ctl.dbls[strconv.Itoa(dbID)]; !ok {
+		if dbl, err = vectodb.NewVectoDBLite(ctl.conf.RedisAddr, dbID, ctl.conf.Dim, float32(ctl.conf.DisThr), ctl.conf.SizeLimit); err != nil {
+			return
+		}
+	}
+	xid, err = dbl.Add(xb)
 	return
 }
 
 func (ctl *Controller) addWithId(dbID int, xb []float32, xid uint64) (err error) {
+	var dbl *vectodb.VectoDBLite
+	var ok bool
+	if dbl, ok = ctl.dbls[strconv.Itoa(dbID)]; !ok {
+		if dbl, err = vectodb.NewVectoDBLite(ctl.conf.RedisAddr, dbID, ctl.conf.Dim, float32(ctl.conf.DisThr), ctl.conf.SizeLimit); err != nil {
+			return
+		}
+	}
+	err = dbl.AddWithId(xb, xid)
 	return
 }
 
 func (ctl *Controller) search(dbID int, xq []float32) (xid uint64, distance float32, err error) {
+	var dbl *vectodb.VectoDBLite
+	var ok bool
+	if dbl, ok = ctl.dbls[strconv.Itoa(dbID)]; !ok {
+		if dbl, err = vectodb.NewVectoDBLite(ctl.conf.RedisAddr, dbID, ctl.conf.Dim, float32(ctl.conf.DisThr), ctl.conf.SizeLimit); err != nil {
+			return
+		}
+	}
+	xid, distance, err = dbl.Search(xq)
 	return
 }
