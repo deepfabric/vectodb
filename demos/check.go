@@ -17,7 +17,7 @@ var (
 	source  = flag.String("source", "/data/", "VectorDB: source file")
 
 	siftDim int = 128
-	numVecs int = 100
+	numVecs int = 10000
 )
 
 func genVec() (vec []float32) {
