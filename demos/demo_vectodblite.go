@@ -9,10 +9,11 @@ import (
 	"syscall"
 	"time"
 
+	runPprof "runtime/pprof"
+
 	"github.com/infinivision/vectodb"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
-	runPprof "runtime/pprof"
 )
 
 const (
