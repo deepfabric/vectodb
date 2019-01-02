@@ -92,7 +92,6 @@ func (ctl *Controller) HandleAdd(c *gin.Context) {
 		}
 		if err != nil {
 			rspAdd.Err = err.Error()
-			err = errors.Wrap(err, "")
 			log.Printf("got error %+v", err)
 		}
 		c.JSON(200, rspAdd)
@@ -119,7 +118,6 @@ func (ctl *Controller) HandleSearch(c *gin.Context) {
 		rspSearch.Xid, rspSearch.Distance, err = ctl.search(reqSearch.DbID, reqSearch.Xq)
 		if err != nil {
 			rspSearch.Err = err.Error()
-			err = errors.Wrap(err, "")
 			log.Printf("got error %+v", err)
 		}
 		c.JSON(200, rspSearch)
