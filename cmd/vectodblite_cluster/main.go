@@ -36,6 +36,8 @@ var (
 
 func parseConfig() (conf *ControllerConf) {
 	conf = NewControllerConf()
+	flag.StringVar(&conf.ListenAddr, "listen-addr", conf.ListenAddr, "Addr: listen address")
+	flag.StringVar(&conf.EtcdAddr, "etcd-addr", conf.EtcdAddr, "Addr: etcd address")
 	flag.StringVar(&conf.RedisAddr, "redis-addr", conf.RedisAddr, "Addr: redis address")
 	flag.IntVar(&conf.Dim, "dim", conf.Dim, "VectoDBLite dimension")
 	flag.Float64Var(&conf.DisThr, "distance-threshold", conf.DisThr, "VectoDBLite distance threshold")
@@ -64,5 +66,5 @@ func main() {
 	r.POST("/api/v1/add", ctl.HandleAdd)
 	r.POST("/api/v1/search", ctl.HandleSearch)
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-	r.Run(":8080")
+	r.Run(*conf.ListenAddr)
 }
