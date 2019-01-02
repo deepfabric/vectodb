@@ -1,0 +1,12 @@
+# refers to https://docs.docker.com/compose/compose-file/
+version: '3.2'
+services:
+  redis:
+    image: "redis"
+    network_mode: "host"
+    restart: on-failure
+
+  etcd:
+    image: "quay.io/coreos/etcd"
+    network_mode: "host"
+    restart: on-failure
