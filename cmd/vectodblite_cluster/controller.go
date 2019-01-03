@@ -2,7 +2,6 @@ package main
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/gin-gonic/gin"
@@ -57,7 +56,7 @@ type ControllerConf struct {
 
 type Controller struct {
 	conf     *ControllerConf
-	dbls     map[string]*vectodb.VectoDBLite
+	dbls     map[int]*vectodb.VectoDBLite
 	etcdCli  *clientv3.Client
 	isLeader bool
 	ctx      context.Context
@@ -91,6 +90,7 @@ func NewController(conf *ControllerConf, ctx context.Context) (ctl *Controller) 
 	}
 	ctl.etcdCli = etcdCli
 	StartElection(ctx, etcdCli, conf.EurekaApp, conf.ListenAddr, ctl.leaderChangedCb)
+	go ctl.servHoldKeepalive(ctx)
 	return
 }
 
@@ -177,7 +177,7 @@ func (ctl *Controller) HandleSearch(c *gin.Context) {
 
 func (ctl *Controller) getVectoDBLite(c *gin.Context, dbID int) (dbl *vectodb.VectoDBLite, dstNode string, err error) {
 	// TODO: RWLock on ctl.dbls
-	if dbl, ok = ctl.dbls[strconv.Itoa(dbID)]; !ok {
+	if dbl, ok = ctl.dbls[dbID]; !ok {
 		var nodeAddr string
 		if nodeAddr, err = ctl.holdDb(dbID); err != nil {
 			return
@@ -191,7 +191,7 @@ func (ctl *Controller) getVectoDBLite(c *gin.Context, dbID int) (dbl *vectodb.Ve
 		if dbl, err = vectodb.NewVectoDBLite(ctl.conf.RedisAddr, dbID, ctl.conf.Dim, float32(ctl.conf.DisThr), ctl.conf.SizeLimit); err != nil {
 			return
 		}
-		ctl.dbls[strconv.Itoa(dbID)] = dbl
+		ctl.dbls[dbID] = dbl
 	}
 	return
 }
