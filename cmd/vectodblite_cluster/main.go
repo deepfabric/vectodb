@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -61,10 +62,14 @@ func parseConfig() (conf *ControllerConf) {
 
 func main() {
 	conf := parseConfig()
-	ctl := NewController(conf)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ctl := NewController(conf, ctx)
 	r := gin.Default()
 	r.POST("/api/v1/add", ctl.HandleAdd)
 	r.POST("/api/v1/search", ctl.HandleSearch)
+	r.POST("/api/v1/move", ctl.HandleMove)
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	r.Run(*conf.ListenAddr)
 }

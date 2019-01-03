@@ -3,12 +3,14 @@ module github.com/infinivision/vectodb
 require (
 	github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc
 	github.com/cespare/xxhash v1.1.0
+	github.com/coreos/etcd v3.3.10+incompatible
 	github.com/gin-contrib/sse v0.0.0-20170109093832-22d885f9ecc7 // indirect
 	github.com/gin-gonic/gin v1.3.0
 	github.com/go-openapi/jsonreference v0.17.2 // indirect
 	github.com/go-openapi/spec v0.17.2 // indirect
 	github.com/go-redis/redis v6.14.2+incompatible
 	github.com/gogo/protobuf v1.2.0
+	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/golang/protobuf v1.2.0
 	github.com/grpc-ecosystem/grpc-gateway v1.6.3
 	github.com/hashicorp/golang-lru v0.5.0

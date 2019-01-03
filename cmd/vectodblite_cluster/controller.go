@@ -4,11 +4,22 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/coreos/etcd/clientv3"
 	"github.com/gin-gonic/gin"
 	"github.com/infinivision/vectodb"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/net/context"
 )
+
+type ReqMove struct {
+	DbID    int    `json:"dbID"`
+	DstNode string `json:"dstNode"`
+}
+
+type RspMove struct {
+	Err string `json:"err"`
+}
 
 type ReqAdd struct {
 	DbID int       `json:"dbID"`
@@ -45,8 +56,13 @@ type ControllerConf struct {
 }
 
 type Controller struct {
-	conf *ControllerConf
-	dbls map[string]*vectodb.VectoDBLite
+	conf     *ControllerConf
+	dbls     map[string]*vectodb.VectoDBLite
+	etcdCli  *clientv3.Client
+	isLeader bool
+	ctx      context.Context
+	ctxL     context.Context
+	cancelL  context.CancelFunc
 }
 
 func NewControllerConf() (conf *ControllerConf) {
@@ -62,11 +78,20 @@ func NewControllerConf() (conf *ControllerConf) {
 	}
 }
 
-func NewController(conf *ControllerConf) (ctl *Controller) {
-	return &Controller{
+func NewController(conf *ControllerConf, ctx context.Context) (ctl *Controller) {
+	ctl = &Controller{
 		conf: conf,
 		dbls: make(map[string]*vectodb.VectoDBLite),
+		ctx:  ctx,
 	}
+	var etcdCli *clientv3.Client
+	var err error
+	if etcdCli, _, err = NewEtcdClient(conf.EtcdAddr); err != nil {
+		log.Fatalf("got error %+v", err)
+	}
+	ctl.etcdCli = etcdCli
+	StartElection(ctx, etcdCli, conf.EurekaApp, conf.ListenAddr, ctl.leaderChangedCb)
+	return
 }
 
 // refers to https://github.com/swaggo/swag#api-operation
@@ -88,15 +113,26 @@ func (ctl *Controller) HandleAdd(c *gin.Context) {
 		c.String(http.StatusBadRequest, err.Error())
 	} else {
 		var rspAdd RspAdd
+		var dbl *vectodb.VectoDBLite
+		var dstNode string
+		if dbl, err = ctl.getVectoDBLite(c, dbID); err != nil {
+			rspAdd.Err = err.Error()
+			log.Errorf("got error %+v", err)
+			c.JSON(200, rspAdd)
+			return
+		} else if dbl == nil {
+			//already return a response
+			return
+		}
 		if reqAdd.Xid == 0 || reqAdd.Xid == ^uint64(0) {
-			rspAdd.Xid, err = ctl.add(reqAdd.DbID, reqAdd.Xb)
+			rspAdd.Xid, err = dbl.Add(reqAdd.DbID, reqAdd.Xb)
 		} else {
 			rspAdd.Xid = reqAdd.Xid
-			err = ctl.addWithId(reqAdd.DbID, reqAdd.Xb, rspAdd.Xid)
+			err = dbl.AddWithId(reqAdd.DbID, reqAdd.Xb, rspAdd.Xid)
 		}
 		if err != nil {
 			rspAdd.Err = err.Error()
-			log.Printf("got error %+v", err)
+			log.Errorf("got error %+v", err)
 		}
 		c.JSON(200, rspAdd)
 	}
@@ -119,7 +155,18 @@ func (ctl *Controller) HandleSearch(c *gin.Context) {
 		c.String(http.StatusBadRequest, err.Error())
 	} else {
 		var rspSearch RspSearch
-		rspSearch.Xid, rspSearch.Distance, err = ctl.search(reqSearch.DbID, reqSearch.Xq)
+		var dbl *vectodb.VectoDBLite
+		var dstNode string
+		if dbl, err = ctl.getVectoDBLite(c, dbID); err != nil {
+			rspSearch.Err = err.Error()
+			log.Errorf("got error %+v", err)
+			c.JSON(200, rspAdd)
+			return
+		} else if dbl == nil {
+			//already return a response
+			return
+		}
+		rspSearch.Xid, rspSearch.Distance, err = dbl.Search(reqSearch.DbID, reqSearch.Xq)
 		if err != nil {
 			rspSearch.Err = err.Error()
 			log.Printf("got error %+v", err)
@@ -128,38 +175,23 @@ func (ctl *Controller) HandleSearch(c *gin.Context) {
 	}
 }
 
-func (ctl *Controller) add(dbID int, xb []float32) (xid uint64, err error) {
-	var dbl *vectodb.VectoDBLite
-	var ok bool
+func (ctl *Controller) getVectoDBLite(c *gin.Context, dbID int) (dbl *vectodb.VectoDBLite, dstNode string, err error) {
+	// TODO: RWLock on ctl.dbls
 	if dbl, ok = ctl.dbls[strconv.Itoa(dbID)]; !ok {
+		var nodeAddr string
+		if nodeAddr, err = ctl.holdDb(dbID); err != nil {
+			return
+		}
+		if ctl.conf.ListenAddr != nodeAddr {
+			dstURL := *c.Request.URL
+			dstURL.Host = nodeAddr
+			c.Redirect(http.StatusMovedPermanently, dstURL.String())
+			return
+		}
 		if dbl, err = vectodb.NewVectoDBLite(ctl.conf.RedisAddr, dbID, ctl.conf.Dim, float32(ctl.conf.DisThr), ctl.conf.SizeLimit); err != nil {
 			return
 		}
+		ctl.dbls[strconv.Itoa(dbID)] = dbl
 	}
-	xid, err = dbl.Add(xb)
-	return
-}
-
-func (ctl *Controller) addWithId(dbID int, xb []float32, xid uint64) (err error) {
-	var dbl *vectodb.VectoDBLite
-	var ok bool
-	if dbl, ok = ctl.dbls[strconv.Itoa(dbID)]; !ok {
-		if dbl, err = vectodb.NewVectoDBLite(ctl.conf.RedisAddr, dbID, ctl.conf.Dim, float32(ctl.conf.DisThr), ctl.conf.SizeLimit); err != nil {
-			return
-		}
-	}
-	err = dbl.AddWithId(xb, xid)
-	return
-}
-
-func (ctl *Controller) search(dbID int, xq []float32) (xid uint64, distance float32, err error) {
-	var dbl *vectodb.VectoDBLite
-	var ok bool
-	if dbl, ok = ctl.dbls[strconv.Itoa(dbID)]; !ok {
-		if dbl, err = vectodb.NewVectoDBLite(ctl.conf.RedisAddr, dbID, ctl.conf.Dim, float32(ctl.conf.DisThr), ctl.conf.SizeLimit); err != nil {
-			return
-		}
-	}
-	xid, distance, err = dbl.Search(xq)
 	return
 }
