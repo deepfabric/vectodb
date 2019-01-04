@@ -12,13 +12,27 @@ import (
 	"golang.org/x/net/context"
 )
 
+
+func (ctl *Controller) nodeKeepalive(ctx context.Context) (err error){
+	k := fmt.Sprintf("%s/node/%d", ctl.conf.EurekaApp, ctl.conf.ListenAddr)
+	val := "alive"
+	txn := ctl.etcdCli.Txn(ctx).If(v3.Compare(v3.CreateRevision(k), "=", 0))
+	txn = txn.Then(v3.OpPut(k, val, v3.WithLease(concurrency.WithTTL(60))))
+	_, err := txn.Commit()
+	if err != nil {
+		err = errors.Wrap(err, "")
+		return err
+	}
+	return
+}
+
 func (ctl *Controller) leaderChangedCb(prevLeader, curLeader string) {
 	ctl.curLeader = curLeader
 	if ctl.ListenAddr == curLeader && !isLeader {
 		log.Infof("I've been promoted as leader")
 		ctl.isLeader = true
 		ctl.ctxL, ctl.cancelL = context.WithCancel(ctl.ctx)
-		go ctl.servBalance(ctl.ctxL)
+		go ctl.servLeaderWork(ctl.ctxL)
 	} else if ctl.ListenAddr!=curLeader && isLeader {
 		log.Infof("I've resigned as follower")
 		ctl.isLeader = false
@@ -26,7 +40,52 @@ func (ctl *Controller) leaderChangedCb(prevLeader, curLeader string) {
 	}
 }
 
-func (ctl *Controller) servBalance(ctx context.Context) {
+func (ctl *Controller) servLeaderWork(ctx context.Context) {
+	var err error
+	load := make(map[string][]int, 0)
+	pfx := fmt.Sprintf("%s/vectodblite", ctl.conf.EurekaApp)
+	var resp *clientv3.GetResponse
+	if resp, err = clientv3.NewKV(ctl.etcdCli).Get(ctx, pfx, clientv3.WithPrefix()); err != nil {
+		err = errors.Wrap(err, "")
+		log.Fatalf("got error %+x", err)
+	}
+	for _, item := range resp.Kvs {
+		strDbID := filepath.Base(item.Key)
+		var dbID int
+		if dbID, err = strconv.Atoi(strDbID); err != nil {
+			err = errors.Wrap(err, "")
+			log.Fatalf("got error %+x", err)
+		}
+		nodeAddr := item.Value
+		var dbList []int
+		if dbList, ok := aliveNodes[nodeAddr], !ok {
+			dbList = []int{}
+		}
+		dbList = append(dbList, dbID)
+		load[nodeAddr] = dbList
+	}
+
+	aliveNodes := make(map[string]int, 0)
+	pfx = fmt.Sprintf("%s/node", ctl.conf.EurekaApp)
+	if resp, err = clientv3.NewKV(ctl.etcdCli).Get(ctx, pfx, clientv3.WithPrefix()); err != nil {
+		err = errors.Wrap(err, "")
+		log.Fatalf("got error %+x", err)
+	}
+	for _, item := range resp.Kvs {
+		nodeAddr := filepath.Base(item.Key)
+		if _, ok := aliveNodes[nodeAddr], !ok {
+			alive[nodes] = 0
+		}
+	}
+	revision := resp.Header.Revision
+
+	if err = ctl.purgeDeadNodes(load, aliveNodes); err != nil {
+		log.Fatalf("got error %+x", err)
+	}
+
+	watcher := clientv3.NewWatcher(ctl.etcdCli)
+	nodeChangeCh := watcher.Watch(ctx, pfx, clientv3.WithPrefix(), clientv3.WithRev(revision+1))
+
 	ticker := time.Ticker(60*time.Second)
 	var err error
 	for {
@@ -34,8 +93,10 @@ func (ctl *Controller) servBalance(ctx context.Context) {
 		case <-s.Done():
 			log.Info("balance goroutine exited due to context done")
 			return
+		case nc: = <- nodeChangeCh:
+			log.Infof("node change: %+v", nc)
 		case <- ticker:
-			if err = ctl.balance(ctx); err != nil {
+			if err = ctl.leaderWork(ctx); err != nil {
 				log.Errorf("got error %+v", err)
 			}
 		}
@@ -43,7 +104,25 @@ func (ctl *Controller) servBalance(ctx context.Context) {
 	return
 }
 
-func (ctl *Controller) balance(ctx context.Context) (err error){
+
+func (ctl *Controller) purgeDeadNode(load map[string][]int, activeNodes map[string]int) (err error){
+	for nodeAddr, dbList := range load {
+		if _, ok := aliveNodes[nodeAddr], !ok {
+			// deleate from etcd
+			for _, dbID := range dbList {
+				key := fmt.Sprintf("%s/vectodblite/%s", ctl.conf.EurekaApp)
+				if _, err = clientv3.NewKV(ctl.etcdCli).Delete(ctx, key); err != nil {
+					err = errors.Wrap(err, "")
+					log.Errorf("got error %+x", err)
+				}
+
+			}
+		}
+	}
+}
+
+
+func (ctl *Controller) leaderWork(ctx context.Context) (err error){
 }
 
 // @Description Assocaite a vectodblite with the given node. Only the leader node supports this API. 
@@ -86,7 +165,7 @@ func (ctl *Controller) acquire(dbID int, nodeAddr string) (dstNodeAddr string, e
 	k := fmt.Sprintf("%s/vectodblite/%d", ctl.conf.EurekaApp, dbID)
 	val := nodeAddr
 	txn := ctl.etcdCli.Txn(ctx).If(v3.Compare(v3.CreateRevision(k), "=", 0))
-	txn = txn.Then(v3.OpPut(k, val, v3.WithLease(concurrency.WithTTL(60))))
+	txn = txn.Then(v3.OpPut(k, val))
 	txn = txn.Else(v3.OpGet(k))
 	resp, err := txn.Commit()
 	if err != nil {

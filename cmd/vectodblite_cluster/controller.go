@@ -96,14 +96,14 @@ func NewController(conf *ControllerConf, ctx context.Context) (ctl *Controller) 
 		hc:   &http.Client{Timeout: time.Second * 5},
 		ctx:  ctx,
 	}
-	var etcdCli *clientv3.Client
 	var err error
-	if etcdCli, _, err = NewEtcdClient(conf.EtcdAddr); err != nil {
+	if ctl.etcdCli, _, err = NewEtcdClient(conf.EtcdAddr); err != nil {
 		log.Fatalf("got error %+v", err)
 	}
-	ctl.etcdCli = etcdCli
-	StartElection(ctx, etcdCli, conf.EurekaApp, conf.ListenAddr, ctl.leaderChangedCb)
-	go ctl.servHoldKeepalive(ctx)
+	if err = ctl.servNodeKeepalive(ctx); err != nil {
+		log.Fatalf("got error %+v", err)
+	}
+	StartElection(ctx, ctl.etcdCli, conf.EurekaApp, conf.ListenAddr, ctl.leaderChangedCb)
 	return
 }
 
