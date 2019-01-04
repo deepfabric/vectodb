@@ -11,12 +11,21 @@ import (
 	"golang.org/x/net/context"
 )
 
-type ReqMove struct {
-	DbID    int    `json:"dbID"`
-	DstNode string `json:"dstNode"`
+type ReqAcquire struct {
+	DbID     int    `json:"dbID"`
+	NodeAddr string `json:"nodeAddr"`
 }
 
-type RspMove struct {
+type RspAcquire struct {
+	ReqAcquire
+	Err string `json:"err"`
+}
+
+type ReqRelease struct {
+	DbID int `json:"dbID"`
+}
+type RspRelease struct {
+	ReqRelease
 	Err string `json:"err"`
 }
 
@@ -55,13 +64,16 @@ type ControllerConf struct {
 }
 
 type Controller struct {
-	conf     *ControllerConf
-	dbls     map[int]*vectodb.VectoDBLite
-	etcdCli  *clientv3.Client
-	isLeader bool
-	ctx      context.Context
-	ctxL     context.Context
-	cancelL  context.CancelFunc
+	conf      *ControllerConf
+	rwlock	  sync.RWMutext
+	dbls      map[int]*vectodb.VectoDBLite
+	hc *http.Client
+	etcdCli   *clientv3.Client
+	isLeader  bool
+	curLeader string
+	ctx       context.Context
+	ctxL      context.Context
+	cancelL   context.CancelFunc
 }
 
 func NewControllerConf() (conf *ControllerConf) {
@@ -81,6 +93,7 @@ func NewController(conf *ControllerConf, ctx context.Context) (ctl *Controller) 
 	ctl = &Controller{
 		conf: conf,
 		dbls: make(map[string]*vectodb.VectoDBLite),
+		hc:   &http.Client{Timeout: time.Second * 5},
 		ctx:  ctx,
 	}
 	var etcdCli *clientv3.Client
@@ -101,7 +114,7 @@ func NewController(conf *ControllerConf, ctx context.Context) (ctl *Controller) 
 // @Produce  json
 // @Param   add		body	main.ReqAdd	true 	"ReqAdd. If xid is 0 or ^uint64(0), the cluster will generate one."
 // @Success 200 {object} main.RspAdd "RspAdd"
-// @Failure 300 "redirection"
+// @Failure 301 "redirection"
 // @Failure 400
 // @Router /api/v1/add [post]
 func (ctl *Controller) HandleAdd(c *gin.Context) {
@@ -114,7 +127,8 @@ func (ctl *Controller) HandleAdd(c *gin.Context) {
 	} else {
 		var rspAdd RspAdd
 		var dbl *vectodb.VectoDBLite
-		var dstNode string
+		ctl.rwlock.RLock()
+		defer ctl.rwlock.RUnlock()
 		if dbl, err = ctl.getVectoDBLite(c, dbID); err != nil {
 			rspAdd.Err = err.Error()
 			log.Errorf("got error %+v", err)
@@ -143,7 +157,7 @@ func (ctl *Controller) HandleAdd(c *gin.Context) {
 // @Produce  json
 // @Param   search		body	main.ReqSearch	true 	"ReqSearch"
 // @Success 200 {object} main.RspSearch "RspSearch"
-// @Failure 300 "redirection"
+// @Failure 301 "redirection"
 // @Failure 400
 // @Router /api/v1/search [post]
 func (ctl *Controller) HandleSearch(c *gin.Context) {
@@ -157,6 +171,8 @@ func (ctl *Controller) HandleSearch(c *gin.Context) {
 		var rspSearch RspSearch
 		var dbl *vectodb.VectoDBLite
 		var dstNode string
+		ctl.rwlock.RLock()
+		defer ctl.rwlock.RUnlock()
 		if dbl, err = ctl.getVectoDBLite(c, dbID); err != nil {
 			rspSearch.Err = err.Error()
 			log.Errorf("got error %+v", err)
@@ -175,23 +191,54 @@ func (ctl *Controller) HandleSearch(c *gin.Context) {
 	}
 }
 
-func (ctl *Controller) getVectoDBLite(c *gin.Context, dbID int) (dbl *vectodb.VectoDBLite, dstNode string, err error) {
-	// TODO: RWLock on ctl.dbls
-	if dbl, ok = ctl.dbls[dbID]; !ok {
-		var nodeAddr string
-		if nodeAddr, err = ctl.holdDb(dbID); err != nil {
-			return
+// assumes RLock is holded
+func (ctl *Controller) getVectoDBLite(c *gin.Context, dbID int) (dbl *vectodb.VectoDBLite, err error) {
+	if dbl, ok = ctl.dbls[dbID]; ok {
+		return
+	}
+	var dstNodeAddr string
+	if ctl.isLeader {
+			if dstNodeAddr, err = acquire(dbID, ctl.conf.ListenAddr); err != nil {
+				return
+			}
+		} else {
+			curLeader := ctl.curLeader
+			if curLeader == "" {
+				err = errors.Errorf("Need to send acquire request to the leader. However the leader is unknown.")
+				return
+			}
+			servURL := fmt.Sprintf("http://%s/mgmt/v1/acquire", curLeader)
+			reqAcquire := ReqAcquire {
+				DbID: dbID,
+				NodeAddr: ctl.conf.ListenAddr,
+			}
+			rspAcquire := &RsqAcquire{}
+			if err = PostJson(ctl.hc, servURL, reqAcquire, rspAcquire); err != nil {
+				return
+			}
+			dstNodeAddr = rspAcquire.NodeAddr
 		}
-		if ctl.conf.ListenAddr != nodeAddr {
+
+		if ctl.conf.ListenAddr != dstNodeAddr {
 			dstURL := *c.Request.URL
 			dstURL.Host = nodeAddr
 			c.Redirect(http.StatusMovedPermanently, dstURL.String())
 			return
 		}
-		if dbl, err = vectodb.NewVectoDBLite(ctl.conf.RedisAddr, dbID, ctl.conf.Dim, float32(ctl.conf.DisThr), ctl.conf.SizeLimit); err != nil {
+		var dblNew *vectodb.VectoDBLite
+		if dblNew, err = vectodb.NewVectoDBLite(ctl.conf.RedisAddr, dbID, ctl.conf.Dim, float32(ctl.conf.DisThr), ctl.conf.SizeLimit); err != nil {
 			return
 		}
-		ctl.dbls[dbID] = dbl
-	}
+		ctl.rwlock.RUnlock()
+		ctl.rwlock.Lock()
+		defer func() {
+			ctl.rwlock.Unlock()
+			ctl.rwlock.Rlock()
+		}
+		if dbl, ok = ctl.dbls[dbID]; ok {
+			return
+		}
+		ctl.dbls[dbID] = dblNew
+		dbl = dblNew
 	return
 }
