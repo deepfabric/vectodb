@@ -90,7 +90,7 @@ func observe(ctx context.Context, c *clientv3.Client, pfx string, cb LeaderChang
 		}
 	}
 	log.Info("observe goroutine exited due to context done")
-	return nil
+	return
 }
 
 func campaign(ctx context.Context, c *clientv3.Client, pfx string, prop string) {
@@ -107,36 +107,24 @@ func campaign(ctx context.Context, c *clientv3.Client, pfx string, prop string) 
 	e := concurrency.NewElection(s, pfx)
 
 	log.Infof("my proposal: %v", prop)
-	var err error
-	for {
-		//Campaign puts a value as eligible for the election. It blocks until it is elected, an error occurs, or the context is cancelled.
-		if err = e.Campaign(ctx, prop); err != nil {
-			err = errors.Wrap(err, "")
-			break
-		}
-
-		// print key since elected
-		resp, err := c.Get(ctx, e.Key())
-		if err != nil {
-			err = errors.Wrap(err, "")
-			break
-		}
-		k, v := parseResp(resp)
-		if k != "" {
-			log.Info(fmt.Sprintf("I'v been elected as leader: %s %s", k, v))
-		} else {
-			log.Info("Campaign got empty response")
-		}
-		time.Sleep(s.Lease() / 2)
-	}
-	select {
-	case <-s.Done():
-		log.Info("campaingn goroutine exited due to context done")
+	//Campaign puts a value as eligible for the election. It blocks until it is elected, an error occurs, or the context is cancelled.
+	if err = e.Campaign(ctx, prop); err != nil {
+		err = errors.Wrap(err, "")
 		return
-	default:
-		if err != nil {
-			log.Errorf("got error %+v", err)
-		}
+	}
+
+	// print key since elected
+	resp, err := c.Get(ctx, e.Key())
+	if err != nil {
+		err = errors.Wrap(err, "")
+		return
+	}
+	k, v := parseResp(resp)
+	if k != "" {
+		log.Info(fmt.Sprintf("I'v been elected as leader: %s %s", k, v))
+	} else {
+		err = errors.Errorf("Campaign got empty response")
+		return
 	}
 	return
 }

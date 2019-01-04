@@ -1,7 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/gin-gonic/gin"
@@ -17,16 +20,18 @@ type ReqAcquire struct {
 }
 
 type RspAcquire struct {
-	ReqAcquire
-	Err string `json:"err"`
+	DbID     int    `json:"dbID"`
+	NodeAddr string `json:"nodeAddr"`
+	Err      string `json:"err"`
 }
 
 type ReqRelease struct {
 	DbID int `json:"dbID"`
 }
+
 type RspRelease struct {
-	ReqRelease
-	Err string `json:"err"`
+	DbID int    `json:"dbID"`
+	Err  string `json:"err"`
 }
 
 type ReqAdd struct {
@@ -65,9 +70,9 @@ type ControllerConf struct {
 
 type Controller struct {
 	conf      *ControllerConf
-	rwlock	  sync.RWMutext
+	rwlock    sync.RWMutex
 	dbls      map[int]*vectodb.VectoDBLite
-	hc *http.Client
+	hc        *http.Client
 	etcdCli   *clientv3.Client
 	isLeader  bool
 	curLeader string
@@ -79,7 +84,7 @@ type Controller struct {
 func NewControllerConf() (conf *ControllerConf) {
 	return &ControllerConf{
 		ListenAddr: "127.0.0.1:8080",
-		EctdAddr:   "127.0.0.1:2379",
+		EtcdAddr:   "127.0.0.1:2379",
 		RedisAddr:  "127.0.0.1:6379",
 		Dim:        512,
 		DisThr:     0.9,
@@ -92,7 +97,7 @@ func NewControllerConf() (conf *ControllerConf) {
 func NewController(conf *ControllerConf, ctx context.Context) (ctl *Controller) {
 	ctl = &Controller{
 		conf: conf,
-		dbls: make(map[string]*vectodb.VectoDBLite),
+		dbls: make(map[int]*vectodb.VectoDBLite),
 		hc:   &http.Client{Timeout: time.Second * 5},
 		ctx:  ctx,
 	}
@@ -100,7 +105,7 @@ func NewController(conf *ControllerConf, ctx context.Context) (ctl *Controller) 
 	if ctl.etcdCli, _, err = NewEtcdClient(conf.EtcdAddr); err != nil {
 		log.Fatalf("got error %+v", err)
 	}
-	if err = ctl.servNodeKeepalive(ctx); err != nil {
+	if err = ctl.nodeKeepalive(ctx); err != nil {
 		log.Fatalf("got error %+v", err)
 	}
 	StartElection(ctx, ctl.etcdCli, conf.EurekaApp, conf.ListenAddr, ctl.leaderChangedCb)
@@ -129,7 +134,7 @@ func (ctl *Controller) HandleAdd(c *gin.Context) {
 		var dbl *vectodb.VectoDBLite
 		ctl.rwlock.RLock()
 		defer ctl.rwlock.RUnlock()
-		if dbl, err = ctl.getVectoDBLite(c, dbID); err != nil {
+		if dbl, err = ctl.getVectoDBLite(c, reqAdd.DbID); err != nil {
 			rspAdd.Err = err.Error()
 			log.Errorf("got error %+v", err)
 			c.JSON(200, rspAdd)
@@ -139,10 +144,10 @@ func (ctl *Controller) HandleAdd(c *gin.Context) {
 			return
 		}
 		if reqAdd.Xid == 0 || reqAdd.Xid == ^uint64(0) {
-			rspAdd.Xid, err = dbl.Add(reqAdd.DbID, reqAdd.Xb)
+			rspAdd.Xid, err = dbl.Add(reqAdd.Xb)
 		} else {
 			rspAdd.Xid = reqAdd.Xid
-			err = dbl.AddWithId(reqAdd.DbID, reqAdd.Xb, rspAdd.Xid)
+			err = dbl.AddWithId(reqAdd.Xb, rspAdd.Xid)
 		}
 		if err != nil {
 			rspAdd.Err = err.Error()
@@ -170,19 +175,18 @@ func (ctl *Controller) HandleSearch(c *gin.Context) {
 	} else {
 		var rspSearch RspSearch
 		var dbl *vectodb.VectoDBLite
-		var dstNode string
 		ctl.rwlock.RLock()
 		defer ctl.rwlock.RUnlock()
-		if dbl, err = ctl.getVectoDBLite(c, dbID); err != nil {
+		if dbl, err = ctl.getVectoDBLite(c, reqSearch.DbID); err != nil {
 			rspSearch.Err = err.Error()
 			log.Errorf("got error %+v", err)
-			c.JSON(200, rspAdd)
+			c.JSON(200, rspSearch)
 			return
 		} else if dbl == nil {
 			//already return a response
 			return
 		}
-		rspSearch.Xid, rspSearch.Distance, err = dbl.Search(reqSearch.DbID, reqSearch.Xq)
+		rspSearch.Xid, rspSearch.Distance, err = dbl.Search(reqSearch.Xq)
 		if err != nil {
 			rspSearch.Err = err.Error()
 			log.Printf("got error %+v", err)
@@ -193,52 +197,54 @@ func (ctl *Controller) HandleSearch(c *gin.Context) {
 
 // assumes RLock is holded
 func (ctl *Controller) getVectoDBLite(c *gin.Context, dbID int) (dbl *vectodb.VectoDBLite, err error) {
+	var ok bool
 	if dbl, ok = ctl.dbls[dbID]; ok {
 		return
 	}
 	var dstNodeAddr string
 	if ctl.isLeader {
-			if dstNodeAddr, err = acquire(dbID, ctl.conf.ListenAddr); err != nil {
-				return
-			}
-		} else {
-			curLeader := ctl.curLeader
-			if curLeader == "" {
-				err = errors.Errorf("Need to send acquire request to the leader. However the leader is unknown.")
-				return
-			}
-			servURL := fmt.Sprintf("http://%s/mgmt/v1/acquire", curLeader)
-			reqAcquire := ReqAcquire {
-				DbID: dbID,
-				NodeAddr: ctl.conf.ListenAddr,
-			}
-			rspAcquire := &RsqAcquire{}
-			if err = PostJson(ctl.hc, servURL, reqAcquire, rspAcquire); err != nil {
-				return
-			}
-			dstNodeAddr = rspAcquire.NodeAddr
+		ctx := c.Request.Context()
+		if dstNodeAddr, err = ctl.acquire(ctx, dbID, ctl.conf.ListenAddr); err != nil {
+			return
 		}
+	} else {
+		curLeader := ctl.curLeader
+		if curLeader == "" {
+			err = errors.Errorf("Need to send acquire request to the leader. However the leader is unknown.")
+			return
+		}
+		servURL := fmt.Sprintf("http://%s/mgmt/v1/acquire", curLeader)
+		reqAcquire := ReqAcquire{
+			DbID:     dbID,
+			NodeAddr: ctl.conf.ListenAddr,
+		}
+		rspAcquire := &RspAcquire{}
+		if err = PostJson(ctl.hc, servURL, reqAcquire, rspAcquire); err != nil {
+			return
+		}
+		dstNodeAddr = rspAcquire.NodeAddr
+	}
 
-		if ctl.conf.ListenAddr != dstNodeAddr {
-			dstURL := *c.Request.URL
-			dstURL.Host = nodeAddr
-			c.Redirect(http.StatusMovedPermanently, dstURL.String())
-			return
-		}
-		var dblNew *vectodb.VectoDBLite
-		if dblNew, err = vectodb.NewVectoDBLite(ctl.conf.RedisAddr, dbID, ctl.conf.Dim, float32(ctl.conf.DisThr), ctl.conf.SizeLimit); err != nil {
-			return
-		}
-		ctl.rwlock.RUnlock()
-		ctl.rwlock.Lock()
-		defer func() {
-			ctl.rwlock.Unlock()
-			ctl.rwlock.Rlock()
-		}
-		if dbl, ok = ctl.dbls[dbID]; ok {
-			return
-		}
-		ctl.dbls[dbID] = dblNew
-		dbl = dblNew
+	if ctl.conf.ListenAddr != dstNodeAddr {
+		dstURL := *c.Request.URL
+		dstURL.Host = dstNodeAddr
+		c.Redirect(http.StatusMovedPermanently, dstURL.String())
+		return
+	}
+	var dblNew *vectodb.VectoDBLite
+	if dblNew, err = vectodb.NewVectoDBLite(ctl.conf.RedisAddr, dbID, ctl.conf.Dim, float32(ctl.conf.DisThr), ctl.conf.SizeLimit); err != nil {
+		return
+	}
+	ctl.rwlock.RUnlock()
+	ctl.rwlock.Lock()
+	defer func() {
+		ctl.rwlock.Unlock()
+		ctl.rwlock.RLock()
+	}()
+	if dbl, ok = ctl.dbls[dbID]; ok {
+		return
+	}
+	ctl.dbls[dbID] = dblNew
+	dbl = dblNew
 	return
 }

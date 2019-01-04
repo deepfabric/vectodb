@@ -2,6 +2,7 @@ import os
 import os.path
 import inspect
 import subprocess
+import glob
 
 # Build vectodb on CentOS 7 x86_64:
 # 1. Enable EPEL, refers to https://fedoraproject.org/wiki/EPEL.
@@ -42,3 +43,5 @@ env.StaticLibrary('vectodb', ['vectodb.cpp'], LIBS=['boost_thread', 'boost_files
 
 
 env.Command('demos/demo_sift1M_vectodb_go', ['vectodb.go', 'demos/demo_sift1M_vectodb.go', 'demos/demo_sift1M_vectodb', 'vectodblite.go'], 'GO111MODULE=on go install -x . && pushd demos && GO111MODULE=on go build -o demo_sift1M_vectodb_go demo_sift1M_vectodb.go && GO111MODULE=on go build -o demo_sift100M_vectodb_go demo_sift100M_vectodb.go && GO111MODULE=on go build -o demo_vectodblite_go demo_vectodblite.go && popd')
+
+env.Command('cmd/vectodblite_cluster/vectodblite_cluster', glob.glob('cmd/vectodblite_cluster/*.go'), 'pushd cmd/vectodblite_cluster && GO111MODULE=on go build . && popd')

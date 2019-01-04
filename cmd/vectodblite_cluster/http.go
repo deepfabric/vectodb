@@ -10,16 +10,16 @@ import (
 )
 
 func PostJson(hc *http.Client, servURL string, reqObj, rspObj interface{}) (err error) {
+	var reqBody, rspBody []byte
 	if reqBody, err = json.Marshal(reqObj); err != nil {
 		err = errors.Wrapf(err, "failed to encode reqObj: %+v", reqObj)
 		return
 	}
 	var rsp *http.Response
-	if rsp, err = ctl.hc.Post(servURL, "application/json", reqBody); err != nil {
+	if rsp, err = hc.Post(servURL, "application/json", bytes.NewReader(reqBody)); err != nil {
 		err = errors.Wrapf(err, "")
 		return
 	}
-	var rspBody []byte
 	rspBody, err = ioutil.ReadAll(rsp.Body)
 	rsp.Body.Close()
 	if err != nil {
