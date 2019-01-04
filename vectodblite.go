@@ -17,7 +17,7 @@ import (
 
 	"github.com/cespare/xxhash"
 	"github.com/go-redis/redis"
-	"github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
@@ -157,6 +157,10 @@ func (vdbl *VectoDBLite) servExpire(ctx context.Context) {
 			for _, xidS := range expiredXids {
 				vdbl.rcli.HDel(vdbl.dbKey, xidS)
 				log.Infof("purged %v %v from LRU and redis", vdbl.dbKey, xidS)
+			}
+			expiredXids = make([]string, vdbl.sizeLimit/10)
+			if err := vdbl.rebuildFlatC(); err != nil {
+				log.Errorf("got error %+v", err)
 			}
 		}
 	}
