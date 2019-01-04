@@ -117,6 +117,7 @@ func (ctl *Controller) purgeDeadNode(load map[string][]int, activeNodes map[stri
 				}
 
 			}
+			delete(load, nodeAddr)
 		}
 	}
 }
