@@ -102,7 +102,7 @@ func NewController(conf *ControllerConf, ctx context.Context) (ctl *Controller) 
 		ctx:  ctx,
 	}
 	var err error
-	if ctl.etcdCli, _, err = NewEtcdClient(conf.EtcdAddr); err != nil {
+	if ctl.etcdCli, err = NewEtcdClient(conf.EtcdAddr); err != nil {
 		log.Fatalf("got error %+v", err)
 	}
 	if err = ctl.nodeKeepalive(ctx); err != nil {

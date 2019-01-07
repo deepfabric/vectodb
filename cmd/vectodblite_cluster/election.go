@@ -11,7 +11,6 @@ c1 up (expect c1 retry connecting in endless loop), etcd up (at c1, expect it's 
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
@@ -30,32 +29,6 @@ type urlParams struct {
 	path     string
 	userName string
 	password string
-}
-
-// parseEtcdUrl parses the etcd url, for example etcd://127.0.0.1:2379/chronos-go
-func parseEtcdUrl(etcdurls string) (*urlParams, error) {
-	u, err := url.Parse(etcdurls)
-
-	if err != nil {
-		log.V(1).Infof("failed to parse url: %v", err)
-		return nil, err
-	}
-
-	if u.Scheme != "etcd" {
-		return nil, fmt.Errorf("invalid url scheme for etcd url: '%v'", u.Scheme)
-	}
-
-	var (
-		username = ""
-		password = ""
-	)
-	if u.User != nil {
-		username = u.User.Username()
-		passwd, _ := u.User.Password()
-		password = passwd
-	}
-
-	return &urlParams{strings.Split(u.Host, ","), u.Path, username, password}, nil
 }
 
 func parseResp(resp *clientv3.GetResponse) (k string, v string) {
@@ -129,28 +102,22 @@ func campaign(ctx context.Context, c *clientv3.Client, pfx string, prop string) 
 	return
 }
 
-func NewEtcdClient(etcdUrl string) (*clientv3.Client, string, error) {
-	params, err := parseEtcdUrl(etcdUrl)
-	if err != nil {
-		log.Error(err)
-		return nil, "", err
-	}
-	endpoints, path := params.hosts, params.path
-
+func NewEtcdClient(etcdAddr string) (*clientv3.Client, error) {
 	//grpc dialing occurs when constructing clientv3.Config.
 	//Note that DialTimeout only applis to the first time connecting.
 	//2016/08/31 11:42:32 Failed to dial 127.0.0.1:2379: context canceled; please retry.
 	//grpc: timed out when dialing
 	cfg := &clientv3.Config{
-		Endpoints:   endpoints,
-		DialTimeout: 10 * time.Second,
+		Endpoints:   strings.Split(etcdAddr, ","),
+		DialTimeout: 3 * time.Second,
 	}
 	client, err := clientv3.New(*cfg)
 	if err != nil {
+		err = errors.Wrap(err, "")
 		log.Error(err)
-		return nil, "", err
+		return nil, err
 	}
-	return client, path, nil
+	return client, nil
 }
 
 //https://blog.golang.org/context, Go Concurrency Patterns: Context

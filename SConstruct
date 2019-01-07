@@ -45,3 +45,5 @@ env.StaticLibrary('vectodb', ['vectodb.cpp'], LIBS=['boost_thread', 'boost_files
 env.Command('demos/demo_sift1M_vectodb_go', ['vectodb.go', 'demos/demo_sift1M_vectodb.go', 'demos/demo_sift1M_vectodb', 'vectodblite.go'], 'GO111MODULE=on go install -x . && pushd demos && GO111MODULE=on go build -o demo_sift1M_vectodb_go demo_sift1M_vectodb.go && GO111MODULE=on go build -o demo_sift100M_vectodb_go demo_sift100M_vectodb.go && GO111MODULE=on go build -o demo_vectodblite_go demo_vectodblite.go && popd')
 
 env.Command('cmd/vectodblite_cluster/vectodblite_cluster', glob.glob('cmd/vectodblite_cluster/*.go') + ['faiss/libfaiss.a'], 'pushd cmd/vectodblite_cluster && GO111MODULE=on go build . && popd')
+
+env.Command('cmd/vdblc_bb/vdblc_bb', glob.glob('cmd/vdblc_bb/*.go') + ['cmd/vectodblite_cluster/vectodblite_cluster'], 'pushd cmd/vdblc_bb && GO111MODULE=on go build . && popd')
