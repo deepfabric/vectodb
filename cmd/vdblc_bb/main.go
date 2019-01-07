@@ -153,7 +153,12 @@ func main() {
 		log.Fatalf("got error %+v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	defer func() {
+		log.Infof("cancel...")
+		cancel()
+		time.Sleep(5 * time.Second)
+		log.Infof("exited")
+	}()
 	for i := 0; i < ClusterSize; i++ {
 		cmd := []string{"../vectodblite_cluster/vectodblite_cluster",
 			"--listen-addr", fmt.Sprintf("127.0.0.1:%d", ClusterPortBegin+i),
