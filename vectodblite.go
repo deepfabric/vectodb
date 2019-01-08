@@ -141,7 +141,7 @@ func (vdbl *VectoDBLite) rebuildFlatC() (err error) {
 
 func (vdbl *VectoDBLite) servExpire(ctx context.Context) {
 	tickCh := time.Tick(10 * time.Second)
-	expiredXids := make([]string, vdbl.sizeLimit/10)
+	expiredXids := make([]string, 0)
 	for {
 		select {
 		case <-ctx.Done():
@@ -158,7 +158,7 @@ func (vdbl *VectoDBLite) servExpire(ctx context.Context) {
 				vdbl.rcli.HDel(vdbl.dbKey, xidS)
 				log.Infof("purged %v %v from LRU and redis", vdbl.dbKey, xidS)
 			}
-			expiredXids = make([]string, vdbl.sizeLimit/10)
+			expiredXids = make([]string, 0)
 			if err := vdbl.rebuildFlatC(); err != nil {
 				log.Errorf("got error %+v", err)
 			}
