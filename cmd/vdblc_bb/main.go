@@ -84,22 +84,22 @@ func startCmd(ctx context.Context, cmd []string, stdout, stderr io.Writer) (err 
 func PostJson(hc *http.Client, servURL string, reqObj, rspObj interface{}) (err error) {
 	var reqBody, rspBody []byte
 	if reqBody, err = json.Marshal(reqObj); err != nil {
-		err = errors.Wrapf(err, "failed to encode reqObj: %+v", reqObj)
+		err = errors.Wrapf(err, "servURL %+v, failed to encode reqObj: %+v", servURL, reqObj)
 		return
 	}
 	var rsp *http.Response
 	if rsp, err = hc.Post(servURL, "application/json", bytes.NewReader(reqBody)); err != nil {
-		err = errors.Wrapf(err, "")
+		err = errors.Wrapf(err, "servURL %+v", servURL)
 		return
 	}
 	rspBody, err = ioutil.ReadAll(rsp.Body)
 	rsp.Body.Close()
 	if err != nil {
-		err = errors.Wrap(err, "")
+		err = errors.Wrapf(err, "servURL %+v", servURL)
 		return
 	}
 	if err = json.Unmarshal(rspBody, rspObj); err != nil {
-		err = errors.Wrapf(err, "failed to decode rspBody: %+v", string(rspBody))
+		err = errors.Wrapf(err, "servURL %+v, failed to decode rspBody: %+v", servURL, string(rspBody))
 		return
 	}
 	return
@@ -111,7 +111,7 @@ func setupEnv(clear bool) (err error) {
 			return
 		}
 	}
-	cmd := []string{"docker-compose", "--file", "docker-compose.yml", "--project-name", "vdblcc_bb", "up", "-d"}
+	cmd := []string{"docker-compose", "--file", "docker-compose.yml", "up", "-d"}
 	err = runCmd(cmd)
 	return
 }

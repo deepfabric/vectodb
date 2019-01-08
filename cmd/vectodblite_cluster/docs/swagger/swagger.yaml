@@ -1,5 +1,12 @@
 basePath: /api/v1
 definitions:
+  main.ReqAcquire:
+    properties:
+      dbID:
+        type: integer
+      nodeAddr:
+        type: string
+    type: object
   main.ReqAdd:
     properties:
       dbID:
@@ -11,6 +18,11 @@ definitions:
       xid:
         type: integer
     type: object
+  main.ReqRelease:
+    properties:
+      dbID:
+        type: integer
+    type: object
   main.ReqSearch:
     properties:
       dbID:
@@ -20,12 +32,28 @@ definitions:
           type: number
         type: array
     type: object
+  main.RspAcquire:
+    properties:
+      dbID:
+        type: integer
+      err:
+        type: string
+      nodeAddr:
+        type: string
+    type: object
   main.RspAdd:
     properties:
       err:
         type: string
       xid:
         type: integer
+    type: object
+  main.RspRelease:
+    properties:
+      dbID:
+        type: integer
+      err:
+        type: string
     type: object
   main.RspSearch:
     properties:
@@ -72,7 +100,7 @@ paths:
           schema:
             $ref: '#/definitions/main.RspAdd'
             type: object
-        "300":
+        "301":
           description: redirection
         "400": {}
   /api/v1/search:
@@ -96,7 +124,56 @@ paths:
           schema:
             $ref: '#/definitions/main.RspSearch'
             type: object
-        "300":
+        "301":
+          description: redirection
+        "400": {}
+  /mgmt/v1/acquire:
+    post:
+      consumes:
+      - application/json
+      description: Assocaite a vectodblite with the given node. Only the leader node
+        supports this API.
+      parameters:
+      - description: ReqAcquire
+        in: body
+        name: add
+        required: true
+        schema:
+          $ref: '#/definitions/main.ReqAcquire'
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: RspAcquire
+          schema:
+            $ref: '#/definitions/main.RspAcquire'
+            type: object
+        "301":
+          description: redirection
+        "400": {}
+  /mgmt/v1/release:
+    post:
+      consumes:
+      - application/json
+      description: De-associate a vectodblite with this node.
+      parameters:
+      - description: ReqRelease
+        in: body
+        name: add
+        required: true
+        schema:
+          $ref: '#/definitions/main.ReqRelease'
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: RspRelease
+          schema:
+            $ref: '#/definitions/main.RspRelease'
+            type: object
+        "301":
           description: redirection
         "400": {}
 swagger: "2.0"

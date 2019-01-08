@@ -157,7 +157,7 @@ func (ctl *Controller) purgeDeadNodes(ctx context.Context, load map[string][]int
 
 func (ctl *Controller) balance(ctx context.Context, load map[string][]int) (err error) {
 	if len(load) < 2 {
-		log.Info("skipped balancing since number of nodes %d is less than 2", len(load))
+		log.Infof("skipped balancing since number of nodes %d is less than 2", len(load))
 		return
 	}
 	var maxNodeAddr string
@@ -175,7 +175,7 @@ func (ctl *Controller) balance(ctx context.Context, load map[string][]int) (err 
 		}
 	}
 	if maxDbLen-minDbLen <= MaxLoadDelta {
-		log.Info("skipped balancing since maxDbLen-minDbLen=%d is no larger than %d", maxDbLen-minDbLen, MaxLoadDelta)
+		log.Infof("skipped balancing since maxDbLen-minDbLen=%d is no larger than %d", maxDbLen-minDbLen, MaxLoadDelta)
 		return
 	}
 	// Pick a random db from the busiest node, tell the node to release it, remove it from etcd and load.
@@ -240,6 +240,7 @@ func (ctl *Controller) acquire(ctx context.Context, dbID int, nodeAddr string) (
 		return
 	}
 	k := fmt.Sprintf("%s/vectodblite/%d", ctl.conf.EurekaApp, dbID)
+	// https://coreos.com/etcd/docs/latest/learning/api.html
 	val := nodeAddr
 	txn := ctl.etcdCli.Txn(ctx).If(clientv3.Compare(clientv3.CreateRevision(k), "=", 0))
 	txn = txn.Then(clientv3.OpPut(k, val))
@@ -249,8 +250,12 @@ func (ctl *Controller) acquire(ctx context.Context, dbID int, nodeAddr string) (
 		err = errors.Wrap(err, "")
 		return "", err
 	}
-	kv := resp.Responses[0].GetResponseRange().Kvs[0]
-	dstNodeAddr = string(kv.Value)
+	if resp.Succeeded {
+		dstNodeAddr = nodeAddr
+	} else {
+		kv := resp.Responses[0].GetResponseRange().Kvs[0]
+		dstNodeAddr = string(kv.Value)
+	}
 	return
 }
 

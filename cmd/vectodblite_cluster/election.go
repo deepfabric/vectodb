@@ -53,7 +53,7 @@ func observe(ctx context.Context, c *clientv3.Client, pfx string, cb LeaderChang
 		//&{Header:cluster_id:3373127551666285087 member_id:13506963981489885289 revision:23 raft_term:4  Kvs:[] More:false Count:0}
 		k, v := parseResp(&resp)
 		if k != "" {
-			log.Info(fmt.Sprintf("observed leader: %s %s", k, v))
+			log.Infof(fmt.Sprintf("observed leader: %s %s", k, v))
 			if v != prevProposal && cb != nil {
 				cb(prevProposal, v)
 			}
@@ -94,7 +94,7 @@ func campaign(ctx context.Context, c *clientv3.Client, pfx string, prop string) 
 	}
 	k, v := parseResp(resp)
 	if k != "" {
-		log.Info(fmt.Sprintf("I'v been elected as leader: %s %s", k, v))
+		log.Infof("I'v been elected as leader: %s %s", k, v)
 	} else {
 		err = errors.Errorf("Campaign got empty response")
 		return
