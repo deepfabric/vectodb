@@ -8,8 +8,10 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"bytes"
@@ -25,7 +27,7 @@ const (
 	ClusterSize      = 5
 	ClusterPortBegin = 6731
 	Dim              = 128
-	SizeLimit        = 10000
+	SizeLimit        = 100
 	ShopIdBegin      = 1000
 	ShopNum          = 100
 )
@@ -55,6 +57,94 @@ type RspSearch struct {
 type Record struct {
 	Vec []float32
 	Xid uint64
+}
+
+type ReqCommon struct {
+	DbID int `json:"dbID"`
+}
+
+type Router struct {
+	rwlock     sync.RWMutex
+	nodeAddrs  []string       // All nodes' address. It shall not be empty.
+	routeTable map[int]string //dbID -> nodeAddr. It's empty at begining, and be updated whenever a redirect occurs.
+}
+
+func NewRouter(nodeAddrs []string) (rt *Router) {
+	rt = &Router{
+		nodeAddrs:  nodeAddrs,
+		routeTable: make(map[int]string, 0),
+	}
+	return
+}
+
+func (rt *Router) SetNodeAddrs(nodeAddrs []string) {
+	rt.rwlock.Lock()
+	defer rt.rwlock.Unlock()
+	rt.nodeAddrs = nodeAddrs
+	for shopID := range rt.routeTable {
+		delete(rt.routeTable, shopID)
+	}
+}
+
+func (rt *Router) GetRoute(dbID int) (nodeAddr string, isRandom bool) {
+	rt.rwlock.RLock()
+	defer rt.rwlock.RUnlock()
+	var ok bool
+	if nodeAddr, ok = rt.routeTable[dbID]; ok {
+		return
+	}
+	idx := rand.Intn(len(rt.nodeAddrs))
+	nodeAddr = rt.nodeAddrs[idx]
+	isRandom = true
+	return
+}
+
+func (rt *Router) Print() {
+	rt.rwlock.RLock()
+	defer rt.rwlock.RUnlock()
+	reverseTable := make(map[string][]int, 0)
+	for dbID, nodeAddr := range rt.routeTable {
+		var dbList []int
+		var ok bool
+		if dbList, ok = reverseTable[nodeAddr]; !ok {
+			dbList = make([]int, 0)
+		} else {
+			dbList = append(dbList, dbID)
+		}
+		reverseTable[nodeAddr] = dbList
+	}
+	var msg string
+	nodeAddrs := make([]string, 0)
+	for nodeAddr, _ := range reverseTable {
+		nodeAddrs = append(nodeAddrs, nodeAddr)
+	}
+	sort.Strings(nodeAddrs)
+	for _, nodeAddr := range nodeAddrs {
+		dbList, _ := reverseTable[nodeAddr]
+		sort.Ints(dbList)
+		msg += fmt.Sprintf("%s: %+v\n", nodeAddr, dbList)
+	}
+	log.Infof("route:\n" + msg)
+}
+
+func (rt *Router) CheckRedirect(req *http.Request, via []*http.Request) error {
+	reqBody, err := ioutil.ReadAll(req.Body)
+	// https://stackoverflow.com/questions/23070876/reading-body-of-http-request-without-modifying-request-state
+	req.Body = ioutil.NopCloser(bytes.NewBuffer(reqBody))
+	reqCommon := &ReqCommon{}
+	if err = json.Unmarshal(reqBody, &reqCommon); err != nil {
+		log.Errorf("got error %+v", err)
+		return nil
+	}
+	nodeAddr := req.Host
+	if nodeAddr == "" {
+		nodeAddr = req.URL.Host
+	}
+	log.Debugf("DbID %v, req.Host %v, req.URL %+v, nodeAddr %v", reqCommon.DbID, req.Host, req.URL, nodeAddr)
+	rt.rwlock.Lock()
+	rt.routeTable[reqCommon.DbID] = nodeAddr
+	rt.rwlock.Unlock()
+	return nil
 }
 
 func runCmd(cmd []string) (err error) {
@@ -128,8 +218,8 @@ func teardownEnv(clear bool) (err error) {
 	return
 }
 
-func getApiURL(nodeSeq int, method string) (URL string) {
-	return fmt.Sprintf("http://127.0.0.1:%d/api/v1/%s", ClusterPortBegin+nodeSeq, method)
+func getApiURL(nodeAddr, method string) (URL string) {
+	return fmt.Sprintf("http://%s/api/v1/%s", nodeAddr, method)
 }
 
 func genVec() (vec []float32) {
@@ -162,12 +252,18 @@ func main() {
 	}()
 	shopDbCache := make(map[int][]Record)
 	hc := &http.Client{Timeout: time.Second * 5}
+	nodeAddrs := make([]string, 0)
+	var router *Router
+	var numRanAdd int
+	var numRanSearch int
 
 	for i := 0; i < ClusterSize; i++ {
+		nodeAddrs = append(nodeAddrs, fmt.Sprintf("127.0.0.1:%d", ClusterPortBegin+i))
 		cmd := []string{"../vectodblite_cluster/vectodblite_cluster",
 			"--listen-addr", fmt.Sprintf("127.0.0.1:%d", ClusterPortBegin+i),
 			"--dim", strconv.Itoa(Dim),
 			"--size-limit", strconv.Itoa(SizeLimit),
+			"--debug", "true",
 		}
 		var f *os.File
 		if f, err = os.OpenFile(fmt.Sprintf("%d.log", ClusterPortBegin+i), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644); err != nil {
@@ -178,6 +274,8 @@ func main() {
 			goto QUIT
 		}
 	}
+	router = NewRouter(nodeAddrs)
+	hc.CheckRedirect = router.CheckRedirect
 
 	// Wait the cluster be up.
 	time.Sleep(5 * time.Second)
@@ -186,8 +284,12 @@ func main() {
 		shopId := ShopIdBegin + i
 		records := make([]Record, 0)
 		rspAdd := &RspAdd{}
-		urlAdd := getApiURL(rand.Intn(ClusterSize), "add")
 		for j := 0; j < SizeLimit; j++ {
+			nodeAddr, isRandom := router.GetRoute(shopId)
+			if isRandom {
+				numRanAdd++
+			}
+			urlAdd := getApiURL(nodeAddr, "add")
 			reqAdd := ReqAdd{
 				DbID: shopId,
 				Xb:   genVec(),
@@ -206,13 +308,19 @@ func main() {
 		}
 		shopDbCache[shopId] = records
 	}
+	log.Infof("sent %d add requests to randomly picked node", numRanAdd)
+	router.Print()
 
 	for i := 0; i < ShopNum; i++ {
 		shopId := ShopIdBegin + i
 		records := shopDbCache[shopId]
 		rspSearch := &RspSearch{}
-		urlSearch := getApiURL(rand.Intn(ClusterSize), "search")
 		for j := 0; j < SizeLimit; j++ {
+			nodeAddr, isRandom := router.GetRoute(shopId)
+			if isRandom {
+				numRanSearch++
+			}
+			urlSearch := getApiURL(nodeAddr, "search")
 			reqSearch := ReqSearch{
 				DbID: shopId,
 				Xq:   records[j].Vec,
@@ -230,6 +338,9 @@ func main() {
 			}
 		}
 	}
+	log.Infof("sent %d search requests to randomly picked node", numRanSearch)
+	router.Print()
+
 	//TODO: db over-size
 	//TODO: load balance
 	//TODO: node temporary/permenant failure

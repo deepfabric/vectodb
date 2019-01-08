@@ -62,6 +62,7 @@ func NewVectoDBLite(redisAddr string, dbID int, dimIn int, distThreshold float32
 	}
 	onEvicted := func(key, value interface{}) {
 		vdbl.expiresCh <- key.(string)
+		log.Debugf("pushed %v to expiresCh", key.(string))
 	}
 	if vdbl.lru, err = lru.NewWithEvict(sizeLimit, onEvicted); err != nil {
 		err = errors.Wrapf(err, "")
