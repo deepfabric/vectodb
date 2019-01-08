@@ -228,7 +228,7 @@ func (ctl *Controller) getVectoDBLite(c *gin.Context, dbID int) (dbl *vectodb.Ve
 	if ctl.conf.ListenAddr != dstNodeAddr {
 		dstURL := *c.Request.URL
 		dstURL.Host = dstNodeAddr
-		c.Redirect(http.StatusMovedPermanently, dstURL.String())
+		c.Redirect(http.StatusPermanentRedirect, dstURL.String())
 		return
 	}
 	var dblNew *vectodb.VectoDBLite

@@ -219,7 +219,7 @@ func (ctl *Controller) HandleAcquire(c *gin.Context) {
 	} else if !ctl.isLeader && ctl.curLeader != "" {
 		dstURL := *c.Request.URL
 		dstURL.Host = ctl.curLeader
-		c.Redirect(http.StatusMovedPermanently, dstURL.String())
+		c.Redirect(http.StatusPermanentRedirect, dstURL.String())
 	} else {
 		rspAcquire := RspAcquire{
 			DbID: reqAcquire.DbID,
