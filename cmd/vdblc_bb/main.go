@@ -154,11 +154,15 @@ func main() {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer func() {
-		log.Infof("cancel...")
 		cancel()
+		log.Infof("cancel ctx")
+		// Wait subprocesses be killed.
 		time.Sleep(5 * time.Second)
-		log.Infof("exited")
+		log.Infof("bye")
 	}()
+	shopDbCache := make(map[int][]Record)
+	hc := &http.Client{Timeout: time.Second * 5}
+
 	for i := 0; i < ClusterSize; i++ {
 		cmd := []string{"../vectodblite_cluster/vectodblite_cluster",
 			"--listen-addr", fmt.Sprintf("127.0.0.1:%d", ClusterPortBegin+i),
@@ -168,18 +172,16 @@ func main() {
 		var f *os.File
 		if f, err = os.OpenFile(fmt.Sprintf("%d.log", ClusterPortBegin+i), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644); err != nil {
 			err = errors.Wrap(err, "")
-			log.Fatalf("got error %+v", err)
+			goto QUIT
 		}
 		if err = startCmd(ctx, cmd, f, f); err != nil {
-			log.Fatalf("got error %+v", err)
+			goto QUIT
 		}
 	}
 
 	// Wait the cluster be up.
 	time.Sleep(5 * time.Second)
 
-	shopDbCache := make(map[int][]Record)
-	hc := &http.Client{Timeout: time.Second * 5}
 	for i := 0; i < ShopNum; i++ {
 		shopId := ShopIdBegin + i
 		records := make([]Record, 0)
@@ -191,10 +193,11 @@ func main() {
 				Xb:   genVec(),
 			}
 			if err = PostJson(hc, urlAdd, reqAdd, rspAdd); err != nil {
-				log.Fatalf("got error %+v", err)
+				goto QUIT
 			}
 			if rspAdd.Err != "" {
-				log.Fatalf("got error %+v", rspAdd.Err)
+				err = errors.New(rspAdd.Err)
+				goto QUIT
 			}
 			records = append(records, Record{
 				Vec: reqAdd.Xb,
@@ -215,17 +218,23 @@ func main() {
 				Xq:   records[j].Vec,
 			}
 			if err = PostJson(hc, urlSearch, reqSearch, rspSearch); err != nil {
-				log.Fatalf("got error %+v", err)
+				goto QUIT
 			}
 			if rspSearch.Err != "" {
-				log.Fatalf("got error %+v", rspSearch.Err)
+				err = errors.New(rspSearch.Err)
+				goto QUIT
 			}
 			if rspSearch.Xid != records[j].Xid {
-				log.Fatalf("incorrect xid, want %v, have %v", records[j].Xid, rspSearch.Xid)
+				err = errors.Errorf("incorrect xid, want %v, have %v", records[j].Xid, rspSearch.Xid)
+				goto QUIT
 			}
 		}
 	}
 	//TODO: db over-size
 	//TODO: load balance
 	//TODO: node temporary/permenant failure
+QUIT:
+	if err != nil {
+		log.Errorf("got error %+v", err)
+	}
 }
