@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 /**
@@ -223,7 +223,7 @@ func (vm *VectodbMulti) StartBuilderLoop() {
 			case <-ctx.Done():
 				return
 			case <-ticker:
-				log.Printf("build iteration begin")
+				log.Infof("build iteration begin")
 				vdbs := vm.vdbs
 				for _, vdb := range vdbs {
 					if err = vdb.UpdateIndex(); err != nil {
@@ -236,7 +236,7 @@ func (vm *VectodbMulti) StartBuilderLoop() {
 					case <-ticker:
 					}
 				}
-				log.Printf("build iteration done")
+				log.Infof("build iteration done")
 			}
 		}
 

@@ -75,7 +75,7 @@ func main() {
 		log.Fatalf("%+v", err)
 	}
 
-	log.Printf("VectoDBLite size %v", vdbl.Size())
+	log.Infof("VectoDBLite size %v", vdbl.Size())
 
 	xids := make([]uint64, numVecs)
 	vecs := make([][]float32, numVecs)
@@ -88,7 +88,7 @@ func main() {
 		log.Infof("added xid %016x, vec %v", xids[i], vecs[i])
 	}
 
-	log.Printf("Searching index")
+	log.Infof("Searching index")
 	for i := 0; i < numVecs; i++ {
 		var xid uint64
 		var distance float32

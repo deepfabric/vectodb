@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"flag"
-	"log"
 	"os"
 	"os/signal"
 	runPprof "runtime/pprof"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/infinivision/vectodb"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -117,18 +117,18 @@ func builderLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 		case <-ctx.Done():
 			return
 		case <-ticker:
-			log.Printf("build iteration begin")
+			log.Infof("build iteration begin")
 			if err = vdb.UpdateIndex(); err != nil {
 				log.Fatalf("%+v", err)
 			}
-			log.Printf("build iteration done")
+			log.Infof("build iteration done")
 		}
 	}
 }
 
 func searcherLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 	var err error
-	log.Printf("Searching index")
+	log.Infof("Searching index")
 	var xq []float32
 	var dim2 int
 	var nq int
@@ -147,15 +147,15 @@ func searcherLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 		case <-ctx.Done():
 			return
 		default:
-			log.Printf("search iteration begin")
+			log.Infof("search iteration begin")
 			if nflat, err = vdb.GetFlatSize(); err != nil {
 				log.Fatalf("%+v", err)
 			}
-			log.Printf("nflat %d", nflat)
+			log.Infof("nflat %d", nflat)
 			if ntotal, err = vdb.Search(xq, D, I); err != nil {
 				log.Fatalf("%+v", err)
 			}
-			log.Printf("search iteration done, ntotal=%d", ntotal)
+			log.Infof("search iteration done, ntotal=%d", ntotal)
 		}
 	}
 }
@@ -175,7 +175,7 @@ func benchmarkAdd() {
 	go builderLoop(ctx, vdb)
 	go searcherLoop(ctx, vdb)
 
-	log.Printf("Loading database")
+	log.Infof("Loading database")
 	var xb []float32
 	var dim int
 	var nb int
@@ -196,7 +196,7 @@ func benchmarkAdd() {
 	for i := 0; i < nb/batchSize; i++ {
 		vdb.AddWithIds(xb[i*batchSize*siftDim:(i+1)*batchSize*siftDim], xids[i*batchSize:(i+1)*batchSize])
 	}
-	log.Printf("added %d vectors in %v\n", nb, time.Since(begin))
+	log.Infof("added %d vectors in %v\n", nb, time.Since(begin))
 	cancel()
 	time.Sleep(1 * time.Second)
 	return
@@ -216,7 +216,7 @@ func main() {
 				case syscall.SIGUSR1:
 					buf := bytes.NewBuffer([]byte{})
 					_ = runPprof.Lookup("goroutine").WriteTo(buf, 1)
-					log.Printf("got signal=<%d>.", sig)
+					log.Infof("got signal=<%d>.", sig)
 					log.Println(buf.String())
 					continue
 				}
@@ -236,7 +236,7 @@ func main() {
 		log.Fatalf("%+v", err)
 	}
 
-	log.Printf("Loading database")
+	log.Infof("Loading database")
 	var xb []float32
 	var dim int
 	var nb int
@@ -260,7 +260,7 @@ func main() {
 		log.Fatalf("%+v", err)
 	}
 
-	log.Printf("Searching index")
+	log.Infof("Searching index")
 	var xq []float32
 	var dim2 int
 	var nq int
@@ -276,9 +276,9 @@ func main() {
 	if ntotal, err = vdb.Search(xq, D, I); err != nil {
 		log.Fatalf("%+v", err)
 	}
-	log.Printf("Search done on %d vectors", ntotal)
+	log.Infof("Search done on %d vectors", ntotal)
 
-	log.Printf("Loading ground truth for %d queries", nq)
+	log.Infof("Loading ground truth for %d queries", nq)
 	var gt []int32
 	var k int
 	var nq2 int
@@ -289,7 +289,7 @@ func main() {
 		log.Fatalf("%s nq %d, expects %d", siftGround, nq2, nq)
 	}
 
-	log.Printf("Compute recalls")
+	log.Infof("Compute recalls")
 	// evaluate result by hand.
 	var n_1 int
 	for i := 0; i < nq; i++ {
@@ -298,7 +298,7 @@ func main() {
 			n_1++
 		}
 	}
-	log.Printf("R@1 = %v", float32(n_1)/float32(nq))
+	log.Infof("R@1 = %v", float32(n_1)/float32(nq))
 
 	if err = vdb.Destroy(); err != nil {
 		log.Fatalf("%+v", err)

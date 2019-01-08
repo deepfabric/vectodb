@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"syscall"
 	"time"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/infinivision/vectodb"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -112,18 +112,18 @@ func builderLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 		case <-ctx.Done():
 			return
 		case <-ticker:
-			log.Printf("build iteration begin")
+			log.Infof("build iteration begin")
 			if err = vdb.UpdateIndex(); err != nil {
 				log.Fatalf("%+v", err)
 			}
-			log.Printf("build iteration done")
+			log.Infof("build iteration done")
 		}
 	}
 }
 
 func searcherLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 	var err error
-	log.Printf("Searching index")
+	log.Infof("Searching index")
 	var xq []float32
 	var dim2 int
 	var nq int
@@ -142,15 +142,15 @@ func searcherLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 		case <-ctx.Done():
 			return
 		default:
-			log.Printf("search iteration begin")
+			log.Infof("search iteration begin")
 			if nflat, err = vdb.GetFlatSize(); err != nil {
 				log.Fatalf("%+v", err)
 			}
-			log.Printf("nflat %d", nflat)
+			log.Infof("nflat %d", nflat)
 			if ntotal, err = vdb.Search(xq, D, I); err != nil {
 				log.Fatalf("%+v", err)
 			}
-			log.Printf("search iteration done, ntotal=%d", ntotal)
+			log.Infof("search iteration done, ntotal=%d", ntotal)
 		}
 	}
 }
@@ -166,7 +166,7 @@ func main() {
 		log.Fatalf("%+v", err)
 	}
 
-	log.Printf("Loading database")
+	log.Infof("Loading database")
 	var xb []float32
 	var dim int
 	var nb int
@@ -190,7 +190,7 @@ func main() {
 		log.Fatalf("%+v", err)
 	}
 
-	log.Printf("Searching index")
+	log.Infof("Searching index")
 	var xq []float32
 	var dim2 int
 	var nq int
@@ -206,7 +206,7 @@ func main() {
 	if ntotal, err = vdb.Search(xq, D, I); err != nil {
 		log.Fatalf("%+v", err)
 	}
-	log.Printf("Search done on %d vectors", ntotal)
+	log.Infof("Search done on %d vectors", ntotal)
 
 	if err = vdb.Destroy(); err != nil {
 		log.Fatalf("%+v", err)

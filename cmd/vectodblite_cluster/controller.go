@@ -127,7 +127,7 @@ func (ctl *Controller) HandleAdd(c *gin.Context) {
 	var err error
 	if err = c.ShouldBind(&reqAdd); err != nil {
 		err = errors.Wrap(err, "")
-		log.Printf("got error %+v", err)
+		log.Infof("failed to parse request body, error %+v", err)
 		c.String(http.StatusBadRequest, err.Error())
 	} else {
 		var rspAdd RspAdd
@@ -170,7 +170,7 @@ func (ctl *Controller) HandleSearch(c *gin.Context) {
 	var err error
 	if err = c.ShouldBind(&reqSearch); err != nil {
 		err = errors.Wrap(err, "")
-		log.Printf("got error %+v", err)
+		log.Infof("failed to parse request body, error %+v", err)
 		c.String(http.StatusBadRequest, err.Error())
 	} else {
 		var rspSearch RspSearch
@@ -189,7 +189,7 @@ func (ctl *Controller) HandleSearch(c *gin.Context) {
 		rspSearch.Xid, rspSearch.Distance, err = dbl.Search(reqSearch.Xq)
 		if err != nil {
 			rspSearch.Err = err.Error()
-			log.Printf("got error %+v", err)
+			log.Errorf("got error %+v", err)
 		}
 		c.JSON(200, rspSearch)
 	}

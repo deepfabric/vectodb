@@ -214,7 +214,7 @@ func (ctl *Controller) HandleAcquire(c *gin.Context) {
 	var err error
 	if err = c.ShouldBind(&reqAcquire); err != nil {
 		err = errors.Wrap(err, "")
-		log.Errorf("got error %+v", err)
+		log.Infof("failed to parse request body, error %+v", err)
 		c.String(http.StatusBadRequest, err.Error())
 	} else if !ctl.isLeader && ctl.curLeader != "" {
 		dstURL := *c.Request.URL
@@ -272,7 +272,7 @@ func (ctl *Controller) HandleRelease(c *gin.Context) {
 	var err error
 	if err = c.ShouldBind(&reqRelease); err != nil {
 		err = errors.Wrap(err, "")
-		log.Errorf("got error %+v", err)
+		log.Infof("failed to parse request body, error %+v", err)
 		c.String(http.StatusBadRequest, err.Error())
 	} else {
 		ctl.rwlock.Lock()
