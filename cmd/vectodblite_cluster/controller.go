@@ -3,11 +3,13 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/gin-gonic/gin"
+	"github.com/hudl/fargo"
 	"github.com/infinivision/vectodb"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -80,6 +82,7 @@ type Controller struct {
 	ctx       context.Context
 	ctxL      context.Context
 	cancelL   context.CancelFunc
+	conn      fargo.EurekaConnection
 }
 
 func NewControllerConf() (conf *ControllerConf) {
@@ -104,6 +107,27 @@ func NewController(conf *ControllerConf, ctx context.Context) (ctl *Controller) 
 		ctx:  ctx,
 	}
 	var err error
+	addrs := strings.Split(conf.EurekaAddr, ",")
+	ctl.conn = fargo.NewConn(addrs...)
+	inst := fargo.Instance{
+		App:            conf.EurekaApp,
+		Status:         "UP",
+		HomePageUrl:    "http://%s/api/v1",
+		StatusPageUrl:  "http://%s/status",
+		HealthCheckUrl: "http://%s/health",
+	}
+	if err = ctl.conn.RegisterInstance(&inst); err != nil {
+		log.Fatalf("got error %+v", err)
+	}
+	go func() {
+		for {
+			time.Sleep(30 * time.Second)
+			if err = ctl.conn.HeartBeatInstance(&inst); err != nil {
+				log.Fatalf("got error %+v", err)
+			}
+		}
+	}()
+
 	if ctl.etcdCli, err = NewEtcdClient(conf.EtcdAddr); err != nil {
 		log.Fatalf("got error %+v", err)
 	}
