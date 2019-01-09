@@ -32,6 +32,7 @@ const (
 	SizeExtra                = 5
 	ShopIdBegin              = 1000
 	ShopNum                  = 100
+	BalanceInterval          = 20
 )
 
 type ReqAdd struct {
@@ -124,7 +125,7 @@ func (rt *Router) Print() {
 	for _, nodeAddr := range nodeAddrs {
 		dbList, _ := reverseTable[nodeAddr]
 		sort.Ints(dbList)
-		msg += fmt.Sprintf("%s: %+v\n", nodeAddr, dbList)
+		msg += fmt.Sprintf("%s(%d): %+v\n", nodeAddr, len(dbList), dbList)
 	}
 	log.Infof("route:\n" + msg)
 }
@@ -238,6 +239,52 @@ func genVec() (vec []float32) {
 	return
 }
 
+func search(shopDbCache map[int][]Record, hc *http.Client, router *Router) (err error) {
+	var numRanSearch int
+	for i := 0; i < ShopNum; i++ {
+		shopId := ShopIdBegin + i
+		records := shopDbCache[shopId]
+		rspSearch := &RspSearch{}
+		log.Infof("searching vectors in shop %d...", shopId)
+		for j := 0; j < SizeLimit+SizeExtra; j++ {
+			nodeAddr, isRandom := router.GetRoute(shopId)
+			if isRandom {
+				numRanSearch++
+			}
+			urlSearch := getApiURL(nodeAddr, "search")
+			reqSearch := ReqSearch{
+				DbID: shopId,
+				Xq:   records[j].Vec,
+			}
+			if err = PostJson(hc, urlSearch, reqSearch, rspSearch); err != nil {
+				return
+			}
+			if rspSearch.Err != "" {
+				err = errors.New(rspSearch.Err)
+				return
+			}
+			if rspSearch.Xid != ^uint64(0) && rspSearch.Distance < DisThr {
+				err = errors.Errorf("incorrect distance for vector %d, want >=%v, have %v.", j, DisThr, rspSearch.Distance)
+				return
+			}
+			if j < SizeExtra {
+				if rspSearch.Xid != ^uint64(0) {
+					err = errors.Errorf("incorrect xid for vector %d, want %016x, have %016x. distance %v.", j, ^uint64(0), rspSearch.Xid, rspSearch.Distance)
+					return
+				}
+			} else {
+				if rspSearch.Xid != records[j].Xid {
+					err = errors.Errorf("incorrect xid for vector %d, want %016x, have %016x. distance %v.", j, records[j].Xid, rspSearch.Xid, rspSearch.Distance)
+					return
+				}
+			}
+		}
+	}
+	log.Infof("sent %d search requests to randomly picked node", numRanSearch)
+	router.Print()
+	return
+}
+
 func main() {
 	log.SetLevel(log.DebugLevel)
 	var err error
@@ -257,7 +304,6 @@ func main() {
 	nodeAddrs := make([]string, 0)
 	var router *Router
 	var numRanAdd int
-	var numRanSearch int
 
 	// Start the cluster.
 	for i := 0; i < ClusterSize; i++ {
@@ -267,6 +313,7 @@ func main() {
 			"--dim", strconv.Itoa(Dim),
 			"--distance-threshold", fmt.Sprintf("%v", DisThr),
 			"--size-limit", strconv.Itoa(SizeLimit),
+			"--balance-interval", strconv.Itoa(BalanceInterval),
 			"--debug", "true",
 		}
 		var f *os.File
@@ -285,6 +332,7 @@ func main() {
 	time.Sleep(5 * time.Second)
 
 	// Fill all databases with random vectors
+	log.Infof("adding vectors...")
 	for i := 0; i < ShopNum; i++ {
 		shopId := ShopIdBegin + i
 		records := make([]Record, 0)
@@ -317,48 +365,19 @@ func main() {
 	router.Print()
 
 	// Search the vector just inserted, expect to get the same xid as insertion for the last SizeLimit vectors.
-	for i := 0; i < ShopNum; i++ {
-		shopId := ShopIdBegin + i
-		records := shopDbCache[shopId]
-		rspSearch := &RspSearch{}
-		for j := 0; j < SizeLimit+SizeExtra; j++ {
-			nodeAddr, isRandom := router.GetRoute(shopId)
-			if isRandom {
-				numRanSearch++
-			}
-			urlSearch := getApiURL(nodeAddr, "search")
-			reqSearch := ReqSearch{
-				DbID: shopId,
-				Xq:   records[j].Vec,
-			}
-			if err = PostJson(hc, urlSearch, reqSearch, rspSearch); err != nil {
-				goto QUIT
-			}
-			if rspSearch.Err != "" {
-				err = errors.New(rspSearch.Err)
-				goto QUIT
-			}
-			if rspSearch.Xid != ^uint64(0) && rspSearch.Distance < DisThr {
-				err = errors.Errorf("incorrect distance for vector %d, want >=%v, have %v.", j, DisThr, rspSearch.Distance)
-				goto QUIT
-			}
-			if j < SizeExtra {
-				if rspSearch.Xid != ^uint64(0) {
-					err = errors.Errorf("incorrect xid for vector %d, want %016x, have %016x. distance %v.", j, ^uint64(0), rspSearch.Xid, rspSearch.Distance)
-					goto QUIT
-				}
-			} else {
-				if rspSearch.Xid != records[j].Xid {
-					err = errors.Errorf("incorrect xid for vector %d, want %016x, have %016x. distance %v.", j, records[j].Xid, rspSearch.Xid, rspSearch.Distance)
-					goto QUIT
-				}
-			}
-		}
+	if err = search(shopDbCache, hc, router); err != nil {
+		goto QUIT
 	}
-	log.Infof("sent %d search requests to randomly picked node", numRanSearch)
-	router.Print()
 
-	//TODO: load balance
+	// Wait the cluster be balanced.
+	time.Sleep(time.Duration(1.5*BalanceInterval) * time.Second)
+	// Search again, expect to get balanced route.
+	router = NewRouter(nodeAddrs)
+	hc.CheckRedirect = router.CheckRedirect
+	if err = search(shopDbCache, hc, router); err != nil {
+		goto QUIT
+	}
+
 	//TODO: node temporary/permenant failure
 QUIT:
 	if err != nil {

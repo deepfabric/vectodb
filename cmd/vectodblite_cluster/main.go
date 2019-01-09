@@ -44,6 +44,7 @@ func parseConfig() (conf *ControllerConf) {
 	flag.IntVar(&conf.Dim, "dim", conf.Dim, "VectoDBLite dimension")
 	flag.Float64Var(&conf.DisThr, "distance-threshold", conf.DisThr, "VectoDBLite distance threshold")
 	flag.IntVar(&conf.SizeLimit, "size-limit", conf.SizeLimit, "VectoDBLite size limit")
+	flag.IntVar(&conf.BalanceInterval, "balance-interval", conf.BalanceInterval, "Time interval (in seconds) to balance the cluster load")
 
 	flag.StringVar(&conf.EurekaAddr, "eureka-addr", conf.EurekaAddr, "eureka server address list, seperated by comma.")
 	flag.StringVar(&conf.EurekaApp, "eureka-app", conf.EurekaApp, "VectoDBLite cluster service name which will be registered with eureka.")

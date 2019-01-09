@@ -57,12 +57,13 @@ type RspSearch struct {
 }
 
 type ControllerConf struct {
-	ListenAddr string
-	EtcdAddr   string
-	RedisAddr  string
-	Dim        int
-	DisThr     float64
-	SizeLimit  int
+	ListenAddr      string
+	EtcdAddr        string
+	RedisAddr       string
+	Dim             int
+	DisThr          float64
+	SizeLimit       int
+	BalanceInterval int
 
 	EurekaAddr string
 	EurekaApp  string
@@ -83,14 +84,15 @@ type Controller struct {
 
 func NewControllerConf() (conf *ControllerConf) {
 	return &ControllerConf{
-		ListenAddr: "127.0.0.1:8080",
-		EtcdAddr:   "127.0.0.1:2379",
-		RedisAddr:  "127.0.0.1:6379",
-		Dim:        512,
-		DisThr:     0.9,
-		SizeLimit:  10000,
-		EurekaAddr: "http://127.0.0.1:8761/eureka",
-		EurekaApp:  "vectodblite-cluster",
+		ListenAddr:      "127.0.0.1:8080",
+		EtcdAddr:        "127.0.0.1:2379",
+		RedisAddr:       "127.0.0.1:6379",
+		Dim:             512,
+		DisThr:          0.9,
+		SizeLimit:       10000,
+		BalanceInterval: 60,
+		EurekaAddr:      "http://127.0.0.1:8761/eureka",
+		EurekaApp:       "vectodblite-cluster",
 	}
 }
 
