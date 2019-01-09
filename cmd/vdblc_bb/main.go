@@ -67,9 +67,11 @@ type ReqCommon struct {
 }
 
 type Router struct {
-	rwlock     sync.RWMutex
-	nodeAddrs  []string       // All nodes' address. It shall not be empty.
-	routeTable map[int]string //dbID -> nodeAddr. It's empty at begining, and be updated whenever a redirect occurs.
+	rwlock      sync.RWMutex
+	nodeAddrs   []string       // All nodes' address. It shall not be empty.
+	routeTable  map[int]string //dbID -> nodeAddr. It's empty at begining, and be updated whenever a redirect occurs.
+	numRandom   int
+	numRedirect int
 }
 
 func NewRouter(nodeAddrs []string) (rt *Router) {
@@ -89,7 +91,7 @@ func (rt *Router) SetNodeAddrs(nodeAddrs []string) {
 	}
 }
 
-func (rt *Router) GetRoute(dbID int) (nodeAddr string, isRandom bool) {
+func (rt *Router) GetRoute(dbID int) (nodeAddr string) {
 	rt.rwlock.RLock()
 	defer rt.rwlock.RUnlock()
 	var ok bool
@@ -99,7 +101,7 @@ func (rt *Router) GetRoute(dbID int) (nodeAddr string, isRandom bool) {
 	idx := rand.Intn(len(rt.nodeAddrs))
 	nodeAddr = rt.nodeAddrs[idx]
 	rt.routeTable[dbID] = nodeAddr
-	isRandom = true
+	rt.numRandom++
 	return
 }
 
@@ -111,7 +113,7 @@ func (rt *Router) Print() {
 		var dbList []int
 		var ok bool
 		if dbList, ok = reverseTable[nodeAddr]; !ok {
-			dbList = make([]int, 0)
+			dbList = []int{dbID}
 		} else {
 			dbList = append(dbList, dbID)
 		}
@@ -119,7 +121,7 @@ func (rt *Router) Print() {
 	}
 	var msg string
 	nodeAddrs := make([]string, 0)
-	for nodeAddr, _ := range reverseTable {
+	for nodeAddr := range reverseTable {
 		nodeAddrs = append(nodeAddrs, nodeAddr)
 	}
 	sort.Strings(nodeAddrs)
@@ -128,7 +130,7 @@ func (rt *Router) Print() {
 		sort.Ints(dbList)
 		msg += fmt.Sprintf("%s(%d): %+v\n", nodeAddr, len(dbList), dbList)
 	}
-	log.Infof("route:\n" + msg)
+	log.Infof("router numRandom %d, numRedirect %d, route table:\n%s", rt.numRandom, rt.numRedirect, msg)
 }
 
 func (rt *Router) CheckRedirect(req *http.Request, via []*http.Request) error {
@@ -148,6 +150,7 @@ func (rt *Router) CheckRedirect(req *http.Request, via []*http.Request) error {
 	rt.rwlock.Lock()
 	rt.routeTable[reqCommon.DbID] = nodeAddr
 	rt.rwlock.Unlock()
+	rt.numRedirect++
 	return nil
 }
 
@@ -241,17 +244,13 @@ func genVec() (vec []float32) {
 }
 
 func search(shopDbCache map[int][]Record, hc *http.Client, router *Router) (err error) {
-	var numRanSearch int
 	for i := 0; i < ShopNum; i++ {
 		shopId := ShopIdBegin + i
 		records := shopDbCache[shopId]
 		rspSearch := &RspSearch{}
 		log.Infof("searching vectors in shop %d...", shopId)
 		for j := 0; j < SizeLimit+SizeExtra; j++ {
-			nodeAddr, isRandom := router.GetRoute(shopId)
-			if isRandom {
-				numRanSearch++
-			}
+			nodeAddr := router.GetRoute(shopId)
 			urlSearch := getApiURL(nodeAddr, "search")
 			reqSearch := ReqSearch{
 				DbID: shopId,
@@ -281,7 +280,6 @@ func search(shopDbCache map[int][]Record, hc *http.Client, router *Router) (err 
 			}
 		}
 	}
-	log.Infof("sent %d search requests to randomly picked node", numRanSearch)
 	router.Print()
 	return
 }
@@ -304,7 +302,6 @@ func main() {
 	hc := &http.Client{Timeout: time.Second * 5}
 	nodeAddrs := make([]string, 0)
 	var router *Router
-	var numRanAdd int
 
 	// Start the cluster.
 	for i := 0; i < ClusterSize; i++ {
@@ -339,10 +336,7 @@ func main() {
 		records := make([]Record, 0)
 		rspAdd := &RspAdd{}
 		for j := 0; j < SizeLimit+SizeExtra; j++ {
-			nodeAddr, isRandom := router.GetRoute(shopId)
-			if isRandom {
-				numRanAdd++
-			}
+			nodeAddr := router.GetRoute(shopId)
 			urlAdd := getApiURL(nodeAddr, "add")
 			reqAdd := ReqAdd{
 				DbID: shopId,
@@ -362,7 +356,6 @@ func main() {
 		}
 		shopDbCache[shopId] = records
 	}
-	log.Infof("sent %d add requests to randomly picked node", numRanAdd)
 	router.Print()
 
 	// Search the vector just inserted, expect to get the same xid as insertion for the last SizeLimit vectors.
