@@ -98,6 +98,7 @@ func (rt *Router) GetRoute(dbID int) (nodeAddr string, isRandom bool) {
 	}
 	idx := rand.Intn(len(rt.nodeAddrs))
 	nodeAddr = rt.nodeAddrs[idx]
+	rt.routeTable[dbID] = nodeAddr
 	isRandom = true
 	return
 }
@@ -376,8 +377,8 @@ func main() {
 	// Wait the cluster be balanced.
 	time.Sleep(time.Duration(1.5*BalanceInterval) * time.Second)
 	// Search again, expect to get balanced route.
-	//router = NewRouter(nodeAddrs)
-	//hc.CheckRedirect = router.CheckRedirect
+	router = NewRouter(nodeAddrs)
+	hc.CheckRedirect = router.CheckRedirect
 	if err = search(shopDbCache, hc, router); err != nil {
 		goto QUIT
 	}
