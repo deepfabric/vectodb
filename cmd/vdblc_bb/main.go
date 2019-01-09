@@ -369,11 +369,15 @@ func main() {
 		goto QUIT
 	}
 
+	if err = search(shopDbCache, hc, router); err != nil {
+		goto QUIT
+	}
+
 	// Wait the cluster be balanced.
 	time.Sleep(time.Duration(1.5*BalanceInterval) * time.Second)
 	// Search again, expect to get balanced route.
-	router = NewRouter(nodeAddrs)
-	hc.CheckRedirect = router.CheckRedirect
+	//router = NewRouter(nodeAddrs)
+	//hc.CheckRedirect = router.CheckRedirect
 	if err = search(shopDbCache, hc, router); err != nil {
 		goto QUIT
 	}
