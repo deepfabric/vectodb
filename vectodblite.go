@@ -46,8 +46,8 @@ type VectoDBLite struct {
 }
 
 func NewVectoDBLite(redisAddr string, dbID int, dimIn int, distThreshold float32, sizeLimit int) (vdbl *VectoDBLite, err error) {
-	log.Infof("creating VectoDBLite %v %v", redisAddr, dbID)
 	dbKey := getDbKey(dbID)
+	log.Infof("vectodblite %s creating", dbKey)
 	rcli := redis.NewClient(&redis.Options{
 		Addr:     redisAddr,
 		Password: "", // no password set
@@ -87,7 +87,7 @@ func (vdbl *VectoDBLite) load() (err error) {
 		err = errors.Wrap(err, "")
 		return
 	}
-	log.Debugf("HGetAll(%v): %+v", vdbl.dbKey, vecMapS)
+	log.Debugf("vectodblite %s HGetAll: %+v", vdbl.dbKey, vecMapS)
 	expiredXids := make([]string, 0)
 	now := time.Now().Unix()
 	for xidS, vtS := range vecMapS {
@@ -104,7 +104,7 @@ func (vdbl *VectoDBLite) load() (err error) {
 	}
 
 	if len(expiredXids) != 0 {
-		log.Infof("purging expired items %v %v from redis", vdbl.dbKey, expiredXids)
+		log.Infof("vectodblite %s purging expired items from redis: %v", vdbl.dbKey, expiredXids)
 		for _, xidS := range expiredXids {
 			if _, err = vdbl.rcli.HDel(vdbl.dbKey, xidS).Result(); err != nil {
 				err = errors.Wrapf(err, "")
@@ -136,7 +136,7 @@ func (vdbl *VectoDBLite) rebuildFlatC() (err error) {
 		var vtInf interface{}
 		var ok bool
 		if vtInf, ok = vdbl.lru.Peek(xidInf); !ok {
-			err = errors.Errorf("vdbl.lru is corrupted, want %v be present, have absent", xidInf.(string))
+			err = errors.Errorf("vectodblite %s vdbl.lru is corrupted, want %v be present, have absent", vdbl.dbKey, xidInf.(string))
 			return
 		}
 		vt := vtInf.(*VecTimestamp)
@@ -150,12 +150,12 @@ func (vdbl *VectoDBLite) servExpire(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Infof("servExpire goroutine exited")
+			log.Infof("vectodblite %s servExpire goroutine exited", vdbl.dbKey)
 			return
 		case <-tickCh:
 			if atomic.SwapInt32(&vdbl.numEvicted, 0) != 0 {
 				if err := vdbl.rebuildFlatC(); err != nil {
-					log.Errorf("got error %+v", err)
+					log.Errorf("vectodblite %s got error %+v", vdbl.dbKey, err)
 				}
 			}
 		}
@@ -163,7 +163,7 @@ func (vdbl *VectoDBLite) servExpire(ctx context.Context) {
 }
 
 func (vdbl *VectoDBLite) Destroy() (err error) {
-	log.Infof("destroying VectoDBLite %v %v", vdbl.redisAddr, vdbl.dbKey)
+	log.Infof("vectodblite %s destroying", vdbl.dbKey)
 	vdbl.cancel()
 	vdbl.rwlock.Lock()
 	defer vdbl.rwlock.Unlock()
@@ -184,7 +184,7 @@ func (vdbl *VectoDBLite) Add(xb []float32) (xid uint64, err error) {
 
 func (vdbl *VectoDBLite) AddWithId(xb []float32, xid uint64) (err error) {
 	if len(xb) != vdbl.dim {
-		log.Fatalf("invalid length of xb, want %v, have %v", vdbl.dim, len(xb))
+		log.Fatalf("vectodblite %s invalid length of xb, want %v, have %v", vdbl.dbKey, vdbl.dim, len(xb))
 	}
 	xidS := getXidKey(xid)
 	vt := &VecTimestamp{
@@ -210,7 +210,7 @@ func (vdbl *VectoDBLite) AddWithId(xb []float32, xid uint64) (err error) {
 
 func (vdbl *VectoDBLite) Search(xq []float32) (xid uint64, distance float32, err error) {
 	if len(xq) != vdbl.dim {
-		log.Fatalf("invalid length of xq, want %v, have %v", vdbl.dim, len(xq))
+		log.Fatalf("vectodblite %s invalid length of xq, want %v, have %v", vdbl.dbKey, vdbl.dim, len(xq))
 	}
 	vdbl.rwlock.RLock()
 	C.IndexFlatSearch(vdbl.flatC, C.long(1), (*C.float)(&xq[0]), (*C.float)(&distance), (*C.ulong)(&xid))
@@ -221,7 +221,7 @@ func (vdbl *VectoDBLite) Search(xq []float32) (xid uint64, distance float32, err
 		var vtInf interface{}
 		var ok bool
 		if vtInf, ok = vdbl.lru.Get(xidS); !ok {
-			log.Infof("xid %v in IndexFlat is absent in LRU", xidS)
+			log.Infof("vectodblite %s xid %v in IndexFlat is absent in LRU", vdbl.dbKey, xidS)
 			xid = ^uint64(0)
 			return
 		}
