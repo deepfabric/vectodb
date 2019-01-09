@@ -24,12 +24,14 @@ import (
 )
 
 const (
-	ClusterSize      = 5
-	ClusterPortBegin = 6731
-	Dim              = 128
-	SizeLimit        = 100
-	ShopIdBegin      = 1000
-	ShopNum          = 100
+	ClusterSize              = 5
+	ClusterPortBegin         = 6731
+	Dim                      = 128
+	DisThr           float32 = 0.9
+	SizeLimit                = 100
+	SizeExtra                = 5
+	ShopIdBegin              = 1000
+	ShopNum                  = 100
 )
 
 type ReqAdd struct {
@@ -246,7 +248,7 @@ func main() {
 	defer func() {
 		cancel()
 		log.Infof("cancel ctx")
-		// Wait subprocesses be killed.
+		// Wait the cluster subprocesses be killed.
 		time.Sleep(5 * time.Second)
 		log.Infof("bye")
 	}()
@@ -257,11 +259,13 @@ func main() {
 	var numRanAdd int
 	var numRanSearch int
 
+	// Start the cluster.
 	for i := 0; i < ClusterSize; i++ {
 		nodeAddrs = append(nodeAddrs, fmt.Sprintf("127.0.0.1:%d", ClusterPortBegin+i))
 		cmd := []string{"../vectodblite_cluster/vectodblite_cluster",
 			"--listen-addr", fmt.Sprintf("127.0.0.1:%d", ClusterPortBegin+i),
 			"--dim", strconv.Itoa(Dim),
+			"--distance-threshold", fmt.Sprintf("%v", DisThr),
 			"--size-limit", strconv.Itoa(SizeLimit),
 			"--debug", "true",
 		}
@@ -277,14 +281,15 @@ func main() {
 	router = NewRouter(nodeAddrs)
 	hc.CheckRedirect = router.CheckRedirect
 
-	// Wait the cluster be up.
+	// Wait the cluster be ready (the leader be elected).
 	time.Sleep(5 * time.Second)
 
+	// Fill all databases with random vectors
 	for i := 0; i < ShopNum; i++ {
 		shopId := ShopIdBegin + i
 		records := make([]Record, 0)
 		rspAdd := &RspAdd{}
-		for j := 0; j < SizeLimit; j++ {
+		for j := 0; j < SizeLimit+SizeExtra; j++ {
 			nodeAddr, isRandom := router.GetRoute(shopId)
 			if isRandom {
 				numRanAdd++
@@ -311,11 +316,12 @@ func main() {
 	log.Infof("sent %d add requests to randomly picked node", numRanAdd)
 	router.Print()
 
+	// Search the vector just inserted, expect to get the same xid as insertion for the last SizeLimit vectors.
 	for i := 0; i < ShopNum; i++ {
 		shopId := ShopIdBegin + i
 		records := shopDbCache[shopId]
 		rspSearch := &RspSearch{}
-		for j := 0; j < SizeLimit; j++ {
+		for j := 0; j < SizeLimit+SizeExtra; j++ {
 			nodeAddr, isRandom := router.GetRoute(shopId)
 			if isRandom {
 				numRanSearch++
@@ -332,16 +338,26 @@ func main() {
 				err = errors.New(rspSearch.Err)
 				goto QUIT
 			}
-			if rspSearch.Xid != records[j].Xid {
-				err = errors.Errorf("incorrect xid, want %v, have %v", records[j].Xid, rspSearch.Xid)
+			if rspSearch.Xid != ^uint64(0) && rspSearch.Distance < DisThr {
+				err = errors.Errorf("incorrect distance for vector %d, want >=%v, have %v.", j, DisThr, rspSearch.Distance)
 				goto QUIT
+			}
+			if j < SizeExtra {
+				if rspSearch.Xid != ^uint64(0) {
+					err = errors.Errorf("incorrect xid for vector %d, want %016x, have %016x. distance %v.", j, ^uint64(0), rspSearch.Xid, rspSearch.Distance)
+					goto QUIT
+				}
+			} else {
+				if rspSearch.Xid != records[j].Xid {
+					err = errors.Errorf("incorrect xid for vector %d, want %016x, have %016x. distance %v.", j, records[j].Xid, rspSearch.Xid, rspSearch.Distance)
+					goto QUIT
+				}
 			}
 		}
 	}
 	log.Infof("sent %d search requests to randomly picked node", numRanSearch)
 	router.Print()
 
-	//TODO: db over-size
 	//TODO: load balance
 	//TODO: node temporary/permenant failure
 QUIT:
