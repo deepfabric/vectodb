@@ -19,6 +19,7 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	"github.com/montanaflynn/stats"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
@@ -105,7 +106,7 @@ func (rt *Router) GetRoute(dbID int) (nodeAddr string) {
 	return
 }
 
-func (rt *Router) Print() {
+func (rt *Router) Print() (sdev float64) {
 	rt.rwlock.RLock()
 	defer rt.rwlock.RUnlock()
 	reverseTable := make(map[string][]int, 0)
@@ -125,12 +126,16 @@ func (rt *Router) Print() {
 		nodeAddrs = append(nodeAddrs, nodeAddr)
 	}
 	sort.Strings(nodeAddrs)
+	lens := make([]float64, 0)
 	for _, nodeAddr := range nodeAddrs {
 		dbList, _ := reverseTable[nodeAddr]
 		sort.Ints(dbList)
+		lens = append(lens, float64(len(dbList)))
 		msg += fmt.Sprintf("%s(%d): %+v\n", nodeAddr, len(dbList), dbList)
 	}
-	log.Infof("router numRandom %d, numRedirect %d, route table:\n%s", rt.numRandom, rt.numRedirect, msg)
+	sdev, _ = stats.Variance(lens)
+	log.Infof("router numRandom %d, numRedirect %d, route table variance %v, route table:\n%s", rt.numRandom, rt.numRedirect, sdev, msg)
+	return
 }
 
 func (rt *Router) CheckRedirect(req *http.Request, via []*http.Request) error {
@@ -280,7 +285,6 @@ func search(shopDbCache map[int][]Record, hc *http.Client, router *Router) (err 
 			}
 		}
 	}
-	router.Print()
 	return
 }
 
@@ -302,6 +306,7 @@ func main() {
 	hc := &http.Client{Timeout: time.Second * 5}
 	nodeAddrs := make([]string, 0)
 	var router *Router
+	var sdev0, sdev1 float64
 
 	// Start the cluster.
 	for i := 0; i < ClusterSize; i++ {
@@ -356,7 +361,7 @@ func main() {
 		}
 		shopDbCache[shopId] = records
 	}
-	router.Print()
+	sdev0 = router.Print()
 
 	// Search the vector just inserted, expect to get the same xid as insertion for the last SizeLimit vectors.
 	if err = search(shopDbCache, hc, router); err != nil {
@@ -373,6 +378,11 @@ func main() {
 	router = NewRouter(nodeAddrs)
 	hc.CheckRedirect = router.CheckRedirect
 	if err = search(shopDbCache, hc, router); err != nil {
+		goto QUIT
+	}
+	sdev1 = router.Print()
+	if sdev1 >= sdev0 {
+		err = errors.Errorf("route table variance doesn't match expectation, want <%v, have %v", sdev0, sdev1)
 		goto QUIT
 	}
 
