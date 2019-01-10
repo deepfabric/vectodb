@@ -18,7 +18,9 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"reflect"
 
+	"github.com/hudl/fargo"
 	"github.com/montanaflynn/stats"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -34,6 +36,11 @@ const (
 	ShopIdBegin              = 1000
 	ShopNum                  = 100
 	BalanceInterval          = 20
+)
+
+var (
+	//EurekaAddr = "http://127.0.0.1:8761/eureka"
+	EurekaAddr = "http://172.19.0.101:8761/eureka"
 )
 
 type ReqAdd struct {
@@ -288,10 +295,33 @@ func search(shopDbCache map[int][]Record, hc *http.Client, router *Router) (err 
 	return
 }
 
+// get node addrs from eureka
+func getNodeAddrs() (nodeAddrs []string, err error) {
+	conn := fargo.NewConn(EurekaAddr)
+	conn.UseJson = true
+	var app *fargo.Application
+	if app, err = conn.GetApp("vectodblite-cluster"); err != nil {
+		err = errors.Wrap(err, "")
+		return
+	}
+	nodeAddrs = make([]string, len(app.Instances))
+	for i, ins := range app.Instances {
+		nodeAddr := fmt.Sprintf("%s:%d", ins.IPAddr, ins.Port)
+		nodeAddrs[i] = nodeAddr
+	}
+	sort.Strings(nodeAddrs)
+	return
+}
+
 func main() {
+	formatter := &log.TextFormatter{
+		FullTimestamp: true,
+	}
+	log.SetFormatter(formatter)
 	log.SetLevel(log.DebugLevel)
 	var err error
-	if err = setupEnv(true); err != nil {
+	clear := false
+	if err = setupEnv(clear); err != nil {
 		log.Fatalf("got error %+v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -307,6 +337,7 @@ func main() {
 	nodeAddrs := make([]string, 0)
 	var router *Router
 	var sdev0, sdev1 float64
+	var nodeAddrs2 []string
 
 	// Start the cluster.
 	for i := 0; i < ClusterSize; i++ {
@@ -317,6 +348,7 @@ func main() {
 			"--distance-threshold", fmt.Sprintf("%v", DisThr),
 			"--size-limit", strconv.Itoa(SizeLimit),
 			"--balance-interval", strconv.Itoa(BalanceInterval),
+			"--eureka-addr", EurekaAddr,
 			"--debug", "true",
 		}
 		var f *os.File
@@ -328,14 +360,21 @@ func main() {
 			goto QUIT
 		}
 	}
-	router = NewRouter(nodeAddrs)
-	hc.CheckRedirect = router.CheckRedirect
 
-	// Wait the cluster be ready (the leader be elected).
-	time.Sleep(5 * time.Second)
+	// Wait the cluster be ready: an instance has been elected as leader, and all have registered with Eureka.
+	time.Sleep(10 * time.Second)
+	if nodeAddrs2, err = getNodeAddrs(); err != nil {
+		goto QUIT
+	}
+	if ok := reflect.DeepEqual(nodeAddrs, nodeAddrs2); !ok {
+		err = errors.Errorf("Instances' address are incorrect, want %v, have %v", nodeAddrs, nodeAddrs2)
+		goto QUIT
+	}
 
 	// Fill all databases with random vectors
 	log.Infof("adding vectors...")
+	router = NewRouter(nodeAddrs)
+	hc.CheckRedirect = router.CheckRedirect
 	for i := 0; i < ShopNum; i++ {
 		shopId := ShopIdBegin + i
 		records := make([]Record, 0)
@@ -383,6 +422,15 @@ func main() {
 	sdev1 = router.Print()
 	if sdev1 >= sdev0 {
 		err = errors.Errorf("route table variance doesn't match expectation, want <%v, have %v", sdev0, sdev1)
+		goto QUIT
+	}
+
+	// Check registration in Eureka again
+	if nodeAddrs2, err = getNodeAddrs(); err != nil {
+		goto QUIT
+	}
+	if ok := reflect.DeepEqual(nodeAddrs, nodeAddrs2); !ok {
+		err = errors.Errorf("Instances' address are incorrect, want %v, have %v", nodeAddrs, nodeAddrs2)
 		goto QUIT
 	}
 

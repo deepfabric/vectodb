@@ -10,8 +10,3 @@ services:
     image: "quay.io/coreos/etcd"
     network_mode: "host"
     restart: on-failure
-
-  eureka:
-    image: "springcloud/eureka"
-    network_mode: "host"
-    restart: on-failure

@@ -19,6 +19,8 @@ import (
 
 const (
 	MaxLoadDelta = 2
+	// https://github.com/Netflix/eureka/wiki/Understanding-eureka-client-server-communication
+	EurekaHeartbeatInterval = 30
 )
 
 func (ctl *Controller) initMgmt() (err error) {
@@ -364,14 +366,28 @@ func (ctl *Controller) servRegister() {
 	var err error
 	addrs := strings.Split(ctl.conf.EurekaAddr, ",")
 	ctl.conn = fargo.NewConn(addrs...)
+	ctl.conn.UseJson = true
+	ipPort := strings.Split(ctl.conf.ListenAddr, ":")
+	var port int
+	if port, err = strconv.Atoi(ipPort[1]); err != nil {
+		log.Fatalf("invalid listen address %v", ctl.conf.ListenAddr)
+	}
 	inst := fargo.Instance{
 		App:            ctl.conf.EurekaApp,
+		IPAddr:         ipPort[0],
+		Port:           port,
 		Status:         "UP",
-		HomePageUrl:    "http://%s",
-		StatusPageUrl:  "http://%s/status",
-		HealthCheckUrl: "http://%s/health",
+		HomePageUrl:    fmt.Sprintf("http://%s", ctl.conf.ListenAddr),
+		StatusPageUrl:  fmt.Sprintf("http://%s/status", ctl.conf.ListenAddr),
+		HealthCheckUrl: fmt.Sprintf("http://%s/health", ctl.conf.ListenAddr),
 	}
-	ticker := time.NewTicker(30 * time.Second)
+	defer func() {
+		if err = ctl.conn.DeregisterInstance(&inst); err != nil {
+			log.Warnf("failed to deregister with Eureka, error %+v", err)
+		}
+	}()
+
+	ticker := time.NewTicker(time.Duration(EurekaHeartbeatInterval) * time.Second)
 	for {
 		select {
 		case <-ctl.ctx.Done():
@@ -379,11 +395,13 @@ func (ctl *Controller) servRegister() {
 			return
 		default:
 		}
+		log.Infof("registering with Eureka %v, instance %v", ctl.conf.EurekaAddr, inst)
 		if err = ctl.conn.RegisterInstance(&inst); err != nil {
 			log.Warnf("failed to register with Eureka, error %+v", err)
 			time.Sleep(10 * time.Second)
 			continue
 		}
+		log.Infof("registered with Eureka %v, instance %v", ctl.conf.EurekaAddr, inst)
 	HEARTBEAT_LOOP:
 		for {
 			select {
