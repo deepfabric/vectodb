@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/gin-gonic/gin"
+	"github.com/hudl/fargo"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
@@ -19,14 +21,26 @@ const (
 	MaxLoadDelta = 2
 )
 
-func (ctl *Controller) nodeKeepalive(ctx context.Context) (err error) {
-	resp, err := ctl.etcdCli.Grant(ctx, int64(60))
+func (ctl *Controller) initMgmt() (err error) {
+	if ctl.etcdCli, err = NewEtcdClient(ctl.conf.EtcdAddr); err != nil {
+		err = errors.Wrap(err, "")
+	}
+	if err = ctl.nodeKeepalive(); err != nil {
+		return
+	}
+	StartElection(ctl.ctx, ctl.etcdCli, ctl.conf.EurekaApp, ctl.conf.ListenAddr, ctl.leaderChangedCb)
+	go ctl.servRegister()
+	return
+}
+
+func (ctl *Controller) nodeKeepalive() (err error) {
+	resp, err := ctl.etcdCli.Grant(ctl.ctx, int64(60))
 	if err != nil {
 		err = errors.Wrap(err, "")
 		return
 	}
 	// the key will be kept forever
-	_, kaerr := ctl.etcdCli.KeepAlive(ctx, resp.ID)
+	_, kaerr := ctl.etcdCli.KeepAlive(ctl.ctx, resp.ID)
 	if kaerr != nil {
 		err = errors.Wrap(err, "")
 		return
@@ -35,7 +49,7 @@ func (ctl *Controller) nodeKeepalive(ctx context.Context) (err error) {
 
 	k := fmt.Sprintf("%s/node/%s", ctl.conf.EurekaApp, ctl.conf.ListenAddr)
 	val := "alive"
-	txn := ctl.etcdCli.Txn(ctx).If(clientv3.Compare(clientv3.CreateRevision(k), "=", 0))
+	txn := ctl.etcdCli.Txn(ctl.ctx).If(clientv3.Compare(clientv3.CreateRevision(k), "=", 0))
 	txn = txn.Then(clientv3.OpPut(k, val, clientv3.WithLease(leaseID)))
 	if _, err = txn.Commit(); err != nil {
 		err = errors.Wrap(err, "")
@@ -221,7 +235,7 @@ func (ctl *Controller) balance(load map[string][]int) (err error) {
 
 // @Description Assocaite a vectodblite with the given node. Only the leader node supports this API.
 // @Accept  json
-// @Produce  json
+// @Produce json
 // @Param   add		body	main.ReqAcquire	true 	"ReqAcquire"
 // @Success 200 {object} main.RspAcquire "RspAcquire"
 // @Failure 301 "redirection"
@@ -281,7 +295,7 @@ func (ctl *Controller) acquire(ctx context.Context, dbID int, nodeAddr string) (
 
 // @Description De-associate a vectodblite with this node.
 // @Accept  json
-// @Produce  json
+// @Produce json
 // @Param   add		body	main.ReqRelease	true 	"ReqRelease"
 // @Success 200 {object} main.RspRelease "RspRelease"
 // @Failure 301 "redirection"
@@ -321,4 +335,67 @@ func (ctl *Controller) release(dbID int) (err error) {
 		log.Infof("vectodblite %d is already released", dbID)
 	}
 	return
+}
+
+// @Description Eureka statusPageUrl.
+// @Produce json
+// @Success 200 {object} main.Status "Status"
+// @Router /status [get]
+func (ctl *Controller) HandleStatus(c *gin.Context) {
+	status := Status{
+		Status: "UP",
+	}
+	c.JSON(200, status)
+}
+
+// @Description Eureka healthCheckUrl.
+// @Produce json
+// @Success 200 {object} main.Health "Health"
+// @Router /health [get]
+func (ctl *Controller) HandleHealth(c *gin.Context) {
+	health := Health{
+		Description: "VectoDBLite cluster",
+		Status:      "UP",
+	}
+	c.JSON(200, health)
+}
+
+func (ctl *Controller) servRegister() {
+	var err error
+	addrs := strings.Split(ctl.conf.EurekaAddr, ",")
+	ctl.conn = fargo.NewConn(addrs...)
+	inst := fargo.Instance{
+		App:            ctl.conf.EurekaApp,
+		Status:         "UP",
+		HomePageUrl:    "http://%s",
+		StatusPageUrl:  "http://%s/status",
+		HealthCheckUrl: "http://%s/health",
+	}
+	ticker := time.NewTicker(30 * time.Second)
+	for {
+		select {
+		case <-ctl.ctx.Done():
+			log.Info("servRegister goroutine exited due to context done")
+			return
+		default:
+		}
+		if err = ctl.conn.RegisterInstance(&inst); err != nil {
+			log.Warnf("failed to register with Eureka, error %+v", err)
+			time.Sleep(10 * time.Second)
+			continue
+		}
+	HEARTBEAT_LOOP:
+		for {
+			select {
+			case <-ctl.ctx.Done():
+				log.Info("servRegister goroutine exited due to context done")
+				return
+			case <-ticker.C:
+				if err = ctl.conn.HeartBeatInstance(&inst); err != nil {
+					log.Warnf("failed to heartbeat with Eureka, error %+v", err)
+					break HEARTBEAT_LOOP
+				}
+			}
+		}
+	}
 }

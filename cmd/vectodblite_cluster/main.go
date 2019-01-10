@@ -81,6 +81,8 @@ func main() {
 	r.POST("/api/v1/search", ctl.HandleSearch)
 	r.POST("/mgmt/v1/acquire", ctl.HandleAcquire)
 	r.POST("/mgmt/v1/release", ctl.HandleRelease)
+	r.GET("/status", ctl.HandleStatus)
+	r.GET("/health", ctl.HandleHealth)
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	r.Run(conf.ListenAddr)
 }

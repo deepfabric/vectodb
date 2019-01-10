@@ -90,6 +90,23 @@
                 }
             }
         },
+        "/health": {
+            "get": {
+                "description": "Eureka healthCheckUrl.",
+                "produces": [
+                    "application/json"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Health",
+                        "schema": {
+                            "type": "object",
+                            "$ref": "#/definitions/main.Health"
+                        }
+                    }
+                }
+            }
+        },
         "/mgmt/v1/acquire": {
             "post": {
                 "description": "Assocaite a vectodblite with the given node. Only the leader node supports this API.",
@@ -161,9 +178,37 @@
                     "400": {}
                 }
             }
+        },
+        "/status": {
+            "get": {
+                "description": "Eureka statusPageUrl.",
+                "produces": [
+                    "application/json"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Status",
+                        "schema": {
+                            "type": "object",
+                            "$ref": "#/definitions/main.Status"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "main.Health": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "main.ReqAcquire": {
             "type": "object",
             "properties": {
@@ -261,6 +306,14 @@
                 },
                 "xid": {
                     "type": "integer"
+                }
+            }
+        },
+        "main.Status": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
                 }
             }
         }

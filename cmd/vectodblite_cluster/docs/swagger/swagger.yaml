@@ -1,5 +1,12 @@
 basePath: /api/v1
 definitions:
+  main.Health:
+    properties:
+      description:
+        type: string
+      status:
+        type: string
+    type: object
   main.ReqAcquire:
     properties:
       dbID:
@@ -64,6 +71,11 @@ definitions:
       xid:
         type: integer
     type: object
+  main.Status:
+    properties:
+      status:
+        type: string
+    type: object
 host: '{{.Host}}'
 info:
   contact:
@@ -127,6 +139,17 @@ paths:
         "301":
           description: redirection
         "400": {}
+  /health:
+    get:
+      description: Eureka healthCheckUrl.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Health
+          schema:
+            $ref: '#/definitions/main.Health'
+            type: object
   /mgmt/v1/acquire:
     post:
       consumes:
@@ -176,4 +199,15 @@ paths:
         "301":
           description: redirection
         "400": {}
+  /status:
+    get:
+      description: Eureka statusPageUrl.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Status
+          schema:
+            $ref: '#/definitions/main.Status'
+            type: object
 swagger: "2.0"

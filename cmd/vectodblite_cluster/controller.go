@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +14,15 @@ import (
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 )
+
+type Status struct {
+	Status string `json:"status"`
+}
+
+type Health struct {
+	Description string `json:"description"`
+	Status      string `json:"status"`
+}
 
 type ReqAcquire struct {
 	DbID     int    `json:"dbID"`
@@ -106,35 +114,9 @@ func NewController(conf *ControllerConf, ctx context.Context) (ctl *Controller) 
 		hc:   &http.Client{Timeout: time.Second * 5},
 		ctx:  ctx,
 	}
-	var err error
-	addrs := strings.Split(conf.EurekaAddr, ",")
-	ctl.conn = fargo.NewConn(addrs...)
-	inst := fargo.Instance{
-		App:            conf.EurekaApp,
-		Status:         "UP",
-		HomePageUrl:    "http://%s/api/v1",
-		StatusPageUrl:  "http://%s/status",
-		HealthCheckUrl: "http://%s/health",
-	}
-	if err = ctl.conn.RegisterInstance(&inst); err != nil {
+	if err := ctl.initMgmt(); err != nil {
 		log.Fatalf("got error %+v", err)
 	}
-	go func() {
-		for {
-			time.Sleep(30 * time.Second)
-			if err = ctl.conn.HeartBeatInstance(&inst); err != nil {
-				log.Fatalf("got error %+v", err)
-			}
-		}
-	}()
-
-	if ctl.etcdCli, err = NewEtcdClient(conf.EtcdAddr); err != nil {
-		log.Fatalf("got error %+v", err)
-	}
-	if err = ctl.nodeKeepalive(ctx); err != nil {
-		log.Fatalf("got error %+v", err)
-	}
-	StartElection(ctx, ctl.etcdCli, conf.EurekaApp, conf.ListenAddr, ctl.leaderChangedCb)
 	return
 }
 
