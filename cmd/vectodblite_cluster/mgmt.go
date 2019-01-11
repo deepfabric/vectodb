@@ -378,6 +378,7 @@ func (ctl *Controller) servRegister() {
 		App:            ctl.conf.EurekaApp,
 		IPAddr:         ipPort[0],
 		Port:           port,
+		PortEnabled:    true,
 		Status:         "UP",
 		HomePageUrl:    fmt.Sprintf("http://%s", ctl.conf.ListenAddr),
 		StatusPageUrl:  fmt.Sprintf("http://%s/status", ctl.conf.ListenAddr),
