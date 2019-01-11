@@ -39,7 +39,8 @@ const (
 )
 
 var (
-	EurekaAddr = "http://127.0.0.1:8080/eureka/v2"
+	//EurekaAddr = "http://127.0.0.1:8080/eureka/v2"
+	EurekaAddr = "http://127.0.0.1:8761/eureka"
 	//EurekaAddr = "http://172.19.0.101:8761/eureka"
 )
 
@@ -331,7 +332,7 @@ func main() {
 	log.SetFormatter(formatter)
 	log.SetLevel(log.DebugLevel)
 	var err error
-	clear := false
+	clear := true
 	if err = setupEnv(clear); err != nil {
 		log.Fatalf("got error %+v", err)
 	}
@@ -374,8 +375,9 @@ func main() {
 	}
 
 	// Wait the cluster be ready: an instance has been elected as leader, and all have registered with Eureka.
-	for i := 0; i < 12; i++ {
-		time.Sleep(5 * time.Second)
+	// Eureka bootstrap and instance registration is slow.
+	for i := 0; i < 4; i++ {
+		time.Sleep(20 * time.Second)
 		if nodeAddrs2, err = getNodeAddrs(); err != nil {
 			goto QUIT
 		}
