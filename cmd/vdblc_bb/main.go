@@ -40,7 +40,6 @@ const (
 
 var (
 	EurekaAddr = "http://127.0.0.1:8080/eureka/v2"
-	//EurekaAddr = "http://127.0.0.1:8761/eureka"
 	//EurekaAddr = "http://172.19.0.101:8761/eureka"
 )
 
@@ -299,7 +298,6 @@ func search(shopDbCache map[int][]Record, hc *http.Client, router *Router) (err 
 // get node addrs from eureka
 func getNodeAddrs() (nodeAddrs []string, err error) {
 	conn := fargo.NewConn(EurekaAddr)
-	conn.UseJson = true
 	var app *fargo.Application
 	if app, err = conn.GetApp("vectodblite-cluster"); err != nil {
 		err = errors.Wrap(err, "")
@@ -309,6 +307,18 @@ func getNodeAddrs() (nodeAddrs []string, err error) {
 	for i, ins := range app.Instances {
 		nodeAddr := fmt.Sprintf("%s:%d", ins.IPAddr, ins.Port)
 		nodeAddrs[i] = nodeAddr
+		/*
+			// It's likely that Eureka has not purge dead nodes for some reason.
+			lastRenewal := ins.LeaseInfo.LastRenewalTimestamp / 1000
+			now := time.Now().Unix()
+			durationInSeconds := ins.LeaseInfo.DurationInSecs
+			if lastRenewal+int64(durationInSeconds*3) > now {
+				nodeAddr := fmt.Sprintf("%s:%d", ins.IPAddr, ins.Port)
+				nodeAddrs[i] = nodeAddr
+			} else {
+				log.Infof("found dead node %s:%d, lastRenewal %d, now %d", ins.IPAddr, ins.Port, lastRenewal, now)
+			}
+		*/
 	}
 	sort.Strings(nodeAddrs)
 	return
@@ -339,6 +349,7 @@ func main() {
 	var router *Router
 	var sdev0, sdev1 float64
 	var nodeAddrs2 []string
+	var eurekaOk bool
 
 	// Start the cluster.
 	for i := 0; i < ClusterSize; i++ {
@@ -363,12 +374,19 @@ func main() {
 	}
 
 	// Wait the cluster be ready: an instance has been elected as leader, and all have registered with Eureka.
-	time.Sleep(10 * time.Second)
-	if nodeAddrs2, err = getNodeAddrs(); err != nil {
-		goto QUIT
+	for i := 0; i < 12; i++ {
+		time.Sleep(5 * time.Second)
+		if nodeAddrs2, err = getNodeAddrs(); err != nil {
+			goto QUIT
+		}
+		log.Infof("Instances in eureka: %+v", nodeAddrs2)
+		if ok := reflect.DeepEqual(nodeAddrs, nodeAddrs2); ok {
+			eurekaOk = true
+			break
+		}
 	}
-	if ok := reflect.DeepEqual(nodeAddrs, nodeAddrs2); !ok {
-		err = errors.Errorf("Instances' address are incorrect, want %v, have %v", nodeAddrs, nodeAddrs2)
+	if !eurekaOk {
+		err = errors.Errorf("Instances in eureka doesn't match expectation, want %v, have %v", nodeAddrs, nodeAddrs2)
 		goto QUIT
 	}
 
@@ -421,8 +439,8 @@ func main() {
 		goto QUIT
 	}
 	sdev1 = router.Print()
-	if sdev1 >= sdev0 {
-		err = errors.Errorf("route table variance doesn't match expectation, want <%v, have %v", sdev0, sdev1)
+	if sdev1 > sdev0 {
+		err = errors.Errorf("route table variance doesn't match expectation, want <=%v, have %v", sdev0, sdev1)
 		goto QUIT
 	}
 

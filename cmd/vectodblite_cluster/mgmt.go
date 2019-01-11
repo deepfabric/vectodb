@@ -366,7 +366,6 @@ func (ctl *Controller) servRegister() {
 	var err error
 	addrs := strings.Split(ctl.conf.EurekaAddr, ",")
 	ctl.conn = fargo.NewConn(addrs...)
-	ctl.conn.UseJson = true
 	ipPort := strings.Split(ctl.conf.ListenAddr, ":")
 	var port int
 	if port, err = strconv.Atoi(ipPort[1]); err != nil {
