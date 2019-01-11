@@ -39,8 +39,9 @@ const (
 )
 
 var (
+	EurekaAddr = "http://127.0.0.1:8080/eureka/v2"
 	//EurekaAddr = "http://127.0.0.1:8761/eureka"
-	EurekaAddr = "http://172.19.0.101:8761/eureka"
+	//EurekaAddr = "http://172.19.0.101:8761/eureka"
 )
 
 type ReqAdd struct {

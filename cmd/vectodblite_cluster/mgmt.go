@@ -373,6 +373,8 @@ func (ctl *Controller) servRegister() {
 		log.Fatalf("invalid listen address %v", ctl.conf.ListenAddr)
 	}
 	inst := fargo.Instance{
+		InstanceId:     ctl.conf.ListenAddr,
+		HostName:       ctl.conf.ListenAddr,
 		App:            ctl.conf.EurekaApp,
 		IPAddr:         ipPort[0],
 		Port:           port,
@@ -380,6 +382,10 @@ func (ctl *Controller) servRegister() {
 		HomePageUrl:    fmt.Sprintf("http://%s", ctl.conf.ListenAddr),
 		StatusPageUrl:  fmt.Sprintf("http://%s/status", ctl.conf.ListenAddr),
 		HealthCheckUrl: fmt.Sprintf("http://%s/health", ctl.conf.ListenAddr),
+		DataCenterInfo: fargo.DataCenterInfo{
+			Name:  "MyOwn",
+			Class: "ignored",
+		},
 	}
 	defer func() {
 		if err = ctl.conn.DeregisterInstance(&inst); err != nil {
