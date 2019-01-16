@@ -184,7 +184,8 @@ func (vdbl *VectoDBLite) Add(xb []float32) (xid uint64, err error) {
 
 func (vdbl *VectoDBLite) AddWithId(xb []float32, xid uint64) (err error) {
 	if len(xb) != vdbl.dim {
-		log.Fatalf("vectodblite %s invalid length of xb, want %v, have %v", vdbl.dbKey, vdbl.dim, len(xb))
+		err = errors.Errorf("vectodblite %s invalid length of xb, want %v, have %v", vdbl.dbKey, vdbl.dim, len(xb))
+		return
 	}
 	xidS := getXidKey(xid)
 	vt := &VecTimestamp{
@@ -210,7 +211,8 @@ func (vdbl *VectoDBLite) AddWithId(xb []float32, xid uint64) (err error) {
 
 func (vdbl *VectoDBLite) Search(xq []float32) (xid uint64, distance float32, err error) {
 	if len(xq) != vdbl.dim {
-		log.Fatalf("vectodblite %s invalid length of xq, want %v, have %v", vdbl.dbKey, vdbl.dim, len(xq))
+		err = errors.Errorf("vectodblite %s invalid length of xq, want %v, have %v", vdbl.dbKey, vdbl.dim, len(xq))
+		return
 	}
 	vdbl.rwlock.RLock()
 	C.IndexFlatSearch(vdbl.flatC, C.long(1), (*C.float)(&xq[0]), (*C.float)(&distance), (*C.ulong)(&xid))
