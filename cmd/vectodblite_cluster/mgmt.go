@@ -240,7 +240,7 @@ func (ctl *Controller) balance(load map[string][]int) (err error) {
 // @Produce json
 // @Param   add		body	main.ReqAcquire	true 	"ReqAcquire"
 // @Success 200 {object} main.RspAcquire "RspAcquire"
-// @Failure 301 "redirection"
+// @Failure 308 "redirection"
 // @Failure 400
 // @Router /mgmt/v1/acquire [post]
 func (ctl *Controller) HandleAcquire(c *gin.Context) {
@@ -300,7 +300,7 @@ func (ctl *Controller) acquire(ctx context.Context, dbID int, nodeAddr string) (
 // @Produce json
 // @Param   add		body	main.ReqRelease	true 	"ReqRelease"
 // @Success 200 {object} main.RspRelease "RspRelease"
-// @Failure 301 "redirection"
+// @Failure 308 "redirection"
 // @Failure 400
 // @Router /mgmt/v1/release [post]
 func (ctl *Controller) HandleRelease(c *gin.Context) {

@@ -112,7 +112,7 @@ paths:
           schema:
             $ref: '#/definitions/main.RspAdd'
             type: object
-        "301":
+        "308":
           description: redirection
         "400": {}
   /api/v1/search:
@@ -136,7 +136,7 @@ paths:
           schema:
             $ref: '#/definitions/main.RspSearch'
             type: object
-        "301":
+        "308":
           description: redirection
         "400": {}
   /health:
@@ -172,7 +172,7 @@ paths:
           schema:
             $ref: '#/definitions/main.RspAcquire'
             type: object
-        "301":
+        "308":
           description: redirection
         "400": {}
   /mgmt/v1/release:
@@ -196,7 +196,7 @@ paths:
           schema:
             $ref: '#/definitions/main.RspRelease'
             type: object
-        "301":
+        "308":
           description: redirection
         "400": {}
   /status:

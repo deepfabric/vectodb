@@ -127,7 +127,7 @@ func NewController(conf *ControllerConf, ctx context.Context) (ctl *Controller) 
 // @Produce  json
 // @Param   add		body	main.ReqAdd	true 	"ReqAdd. If xid is 0 or ^uint64(0), the cluster will generate one."
 // @Success 200 {object} main.RspAdd "RspAdd"
-// @Failure 301 "redirection"
+// @Failure 308 "redirection"
 // @Failure 400
 // @Router /api/v1/add [post]
 func (ctl *Controller) HandleAdd(c *gin.Context) {
@@ -170,7 +170,7 @@ func (ctl *Controller) HandleAdd(c *gin.Context) {
 // @Produce  json
 // @Param   search		body	main.ReqSearch	true 	"ReqSearch"
 // @Success 200 {object} main.RspSearch "RspSearch"
-// @Failure 301 "redirection"
+// @Failure 308 "redirection"
 // @Failure 400
 // @Router /api/v1/search [post]
 func (ctl *Controller) HandleSearch(c *gin.Context) {

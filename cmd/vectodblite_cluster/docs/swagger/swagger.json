@@ -47,7 +47,7 @@
                             "$ref": "#/definitions/main.RspAdd"
                         }
                     },
-                    "301": {
+                    "308": {
                         "description": "redirection"
                     },
                     "400": {}
@@ -83,7 +83,7 @@
                             "$ref": "#/definitions/main.RspSearch"
                         }
                     },
-                    "301": {
+                    "308": {
                         "description": "redirection"
                     },
                     "400": {}
@@ -136,7 +136,7 @@
                             "$ref": "#/definitions/main.RspAcquire"
                         }
                     },
-                    "301": {
+                    "308": {
                         "description": "redirection"
                     },
                     "400": {}
@@ -172,7 +172,7 @@
                             "$ref": "#/definitions/main.RspRelease"
                         }
                     },
-                    "301": {
+                    "308": {
                         "description": "redirection"
                     },
                     "400": {}
