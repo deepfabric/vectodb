@@ -373,7 +373,7 @@ func (ctl *Controller) servRegister() {
 	}
 	inst := fargo.Instance{
 		InstanceId:       ctl.conf.ListenAddr,
-		HostName:         ctl.conf.ListenAddr,
+		HostName:         ipPort[0], // shall not contain port
 		App:              ctl.conf.EurekaApp,
 		IPAddr:           ipPort[0],
 		VipAddress:       ctl.conf.EurekaApp,
