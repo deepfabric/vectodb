@@ -24,7 +24,8 @@ WORKDIR /app
 RUN scons -c && scons
 
 FROM centos:7
-RUN yum -y install boost-thread boost-system boost-filesystem glog gflags openblas jemalloc
+RUN yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm && yum clean all && rm -rf /var/cache/yum
+RUN yum -y install boost-thread boost-system boost-filesystem glog gflags openblas-devel jemalloc && yum clean all && rm -rf /var/cache/yum
 # Finally we copy the statically compiled Go binary.
-COPY --from=build_base /app/cmd/vectodblite_cluster/vectodblite_cluster /bin/vectodblite_cluster
-ENTRYPOINT ["/bin/vectodblite_cluster"]
+COPY --from=build_base /app/cmd/vectodblite_cluster/vectodblite_cluster /usr/local/bin/vectodblite_cluster
+ENTRYPOINT ["/usr/local/bin/vectodblite_cluster"]
