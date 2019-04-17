@@ -19,7 +19,6 @@ require (
 	github.com/go-openapi/spec v0.17.2 // indirect
 	github.com/go-redis/redis v6.14.2+incompatible
 	github.com/gogo/protobuf v1.2.0
-	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/golang/groupcache v0.0.0-20181024230925-c65c006176ff // indirect
 	github.com/golang/protobuf v1.2.0
 	github.com/google/btree v0.0.0-20180813153112-4030bb1f1f0c // indirect

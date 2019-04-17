@@ -2,7 +2,7 @@ FROM centos/devtoolset-7-toolchain-centos7 AS build_base
 
 USER 0
 
-RUN curl -o go.tgz https://dl.google.com/go/go1.11.4.linux-amd64.tar.gz && tar -C /usr/local -xzf go.tgz
+RUN curl -o go.tgz https://dl.google.com/go/go1.12.4.linux-amd64.tar.gz && tar -C /usr/local -xzf go.tgz
 
 RUN yum -y install git 
 

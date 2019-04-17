@@ -18,7 +18,7 @@ import (
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/clientv3/concurrency"
-	log "github.com/golang/glog"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 )
 
