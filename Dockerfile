@@ -12,13 +12,6 @@ RUN yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.n
 
 RUN yum -y install scons make openblas-devel swig python-devel numpy glog-devel gflags-devel boost-devel jemalloc-devel
 
-# https://container-solutions.com/faster-builds-in-docker-with-go-1-11/
-# We want to populate the module cache based on the go.{mod,sum} files.
-COPY go.mod .
-COPY go.sum .
-RUN echo http_proxy: $http_proxy, https_proxy: $https_proxy
-RUN go mod download
-
 RUN mkdir /app
 ADD . /app/
 WORKDIR /app
