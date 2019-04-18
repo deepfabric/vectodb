@@ -1,0 +1,4 @@
+*.test
+eureka
+.vagrant/
+.idea/

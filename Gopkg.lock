@@ -51,7 +51,7 @@
   revision = "5ee34bb343f10ecfc125261107681de62f985cf6"
 
 [[projects]]
-  digest = "1:2f0592b38445200d3d6bd90ad4ca14fa2902402928c8f418872b335c4a641234"
+  digest = "1:8bdd161127646f035e63906b6fd7be11a25a16194f92b59214927f1b418f6c22"
   name = "github.com/coreos/etcd"
   packages = [
     "auth/authpb",
@@ -63,8 +63,8 @@
     "pkg/types",
   ]
   pruneopts = "UT"
-  revision = "06cec40911744c0aca5d1afd69b2631b0a4879ba"
-  version = "v3.2.26"
+  revision = "d57e8b8d97adfc4a6c224fe116714bf1a1f3beb9"
+  version = "v3.3.12"
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
@@ -162,11 +162,10 @@
   version = "v1.2.1"
 
 [[projects]]
-  digest = "1:64c2b533ffd17023738c534548ab2455d7f519bc15ed4225145425ed2222448b"
+  digest = "1:239c4c7fd2159585454003d9be7207167970194216193a8a210b8d29576f19c9"
   name = "github.com/golang/protobuf"
   packages = [
     "proto",
-    "protoc-gen-go/descriptor",
     "ptypes",
     "ptypes/any",
     "ptypes/duration",
@@ -186,6 +185,14 @@
   pruneopts = "UT"
   revision = "7087cb70de9f7a8bc0a10c375cb0d2280a8edf9c"
   version = "v0.5.1"
+
+[[projects]]
+  branch = "master"
+  digest = "1:803c65e8170306c397a319b62939d2c685130bab35a77721c18bf9fe5c581bb0"
+  name = "github.com/hudl/fargo"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "fce5cf495554be9ef0766f6f5459e2874fb08c89"
 
 [[projects]]
   digest = "1:be97e109f627d3ba8edfef50c9c74f0d0c17cbe3a2e924a8985e4804a894f282"
@@ -366,17 +373,15 @@
     "go/loader",
   ]
   pruneopts = "UT"
-  revision = "4ca4b55e2050cfa75f1a1f72ae10825e80b052a0"
+  revision = "a5870b40385977769b3e1d711864fcd2d82bb9fd"
 
 [[projects]]
-  digest = "1:0efcfe82e59b828eb6f4115bba88ff45c0898c38e823fbe7f450bdffed9e739b"
+  branch = "master"
+  digest = "1:c3076e7defee87de1236f1814beb588f40a75544c60121e6eb38b3b3721783e2"
   name = "google.golang.org/genproto"
-  packages = [
-    "googleapis/api/annotations",
-    "googleapis/rpc/status",
-  ]
+  packages = ["googleapis/rpc/status"]
   pruneopts = "UT"
-  revision = "09f6ed296fc66555a25fe4ce95173148778dfa85"
+  revision = "d1146b9035b912113a38af3b138eb2af567b2c67"
 
 [[projects]]
   digest = "1:45101b53b1b93d50e2464e3b164bfa72cc77229fb998cfcd029987006488c641"
