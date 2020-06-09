@@ -307,7 +307,7 @@ void VectoDB::AddWithIds(long nb, const float* xb, const long* xids)
     }
 }
 
-long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
+long VectoDB::Search(long nq, long k, const float* xq, float* distances, long* xids)
 {
     for (int i = 0; i < nq; i++) {
         xids[i] = long(-1);
@@ -315,45 +315,60 @@ long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
     long total = state->total;
     if (total <= 0)
         return total;
-    // output buffers
-    const long k = 100;
-    vector<float> D(nq * k);
-    vector<faiss::Index::idx_t> I(nq * k);
-
-    std::vector<float> xb2(dim * k);
-    std::vector<float> D2(k);
-    vector<faiss::Index::idx_t> I2(k);
     /*
     // refers to https://blog.csdn.net/quyuan2009/article/details/50001679
-    float xb2[dim * k];
-    float D2[k];
-    faiss::Index::idx_t I2[k];
     */
 
     long index_size = 0;
+    bool searched_pq = false;
+    bool searched_flat = false;
+    vector<float> D(nq * k, -1.0);
+    vector<faiss::Index::idx_t> I(nq * k, -1L);
+    vector<float> D2(nq * k, -1.0);
+    vector<faiss::Index::idx_t> I2(nq * k, -1L);
     {
         rlock r{ state->rw_index };
         if (state->index != nullptr) {
             index_size = state->index->ntotal;
             // Perform a search
             state->index->search(nq, xq, k, &D[0], &I[0]);
-            for (int i = 0; i < nq; i++) {
-                distances[i] = D[i * k];
-                xids[i] = I[i * k];
-            }
+            searched_pq = true;
         }
     }
 
     {
         rlock r{ state->rw_flat };
         if (state->flat->ntotal != 0) {
-            state->flat->search(nq, xq, k, &D[0], &I[0]);
-            for (int i = 0; i < nq; i++) {
-                if (0 == index_size || CompareDistance(metric_type, D[i * k], distances[i])) {
-                    distances[i] = D[i * k];
-                    xids[i] = I[i * k] + state->flat_start_num;
+            // Perform a search
+            state->flat->search(nq, xq, k, &D2[0], &I2[0]);
+            searched_flat = true;
+        }
+    }
+    if (searched_pq && searched_flat) {
+        for (int i = 0; i < nq; i++) {
+            // merge D[i*k..(i+1)*k] and D2[i*k..(i+1)*k]
+            int i1 = 0, i2 = 0;
+            for (int j = 0; j < k; j++) {
+                if (CompareDistance(metric_type, D[i * k + i1], D2[i * k + i2])) {
+                    distances[i] = D[i * k + i1];
+                    xids[i] = I[i * k + i1];
+                    i1++;
+                } else {
+                    distances[i] = D2[i * k + i2];
+                    xids[i] = I2[i * k + i2];
+                    i2++;
                 }
             }
+        }
+    } else if (searched_pq) {
+        for (int i = 0; i < nq * k; i++) {
+            distances[i] = D[i];
+            xids[i] = I[i];
+        }
+    } else if (searched_flat) {
+        for (int i = 0; i < nq * k; i++) {
+            distances[i] = D2[i];
+            xids[i] = I2[i];
         }
     }
 

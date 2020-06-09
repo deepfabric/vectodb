@@ -81,11 +81,12 @@ public:
      * The upper layer does memory management for xq, distances, xids.
      *
      * @param nq            input the number of vectors to search
+     * @param k             input do kNN search
      * @param xq            input vectors to search, size nq * d
      * @param xids          output labels of the 1-NNs, size nq
      * @param distances     output pairwise distances, size nq
      */
-    long Search(long nq, const float* xq, float* distances, long* xids);
+    long Search(long nq, long k, const float* xq, float* distances, long* xids);
 
 public:
     /** 

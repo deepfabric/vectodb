@@ -19,7 +19,7 @@ long VectodbGetFlatSize(void* vdb);
 
 void VectodbActivateIndex(void* vdb, void* index, long ntrain);
 void VectodbGetIndexSize(void* vdb, long* ntrain, long* nsize);
-long VectodbSearch(void* vdb, long nq, float* xq, float* distances, long* xids);
+long VectodbSearch(void* vdb, long nq, long k, float* xq, float* distances, long* xids);
 
 /**
  * Static methods.
