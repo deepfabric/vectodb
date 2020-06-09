@@ -78,7 +78,6 @@ struct DbState {
     long flat_start_num; //the line num of the first vecrot of flat. It's index->ntotal normally.
 
     boost::shared_mutex rw_xids;
-    unordered_map<long, long> xid2num;
     vector<long> xids; //vector of xid of all vectors
 
     mutex m_update;
@@ -137,17 +136,7 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, int metric_type_in, const
 
     vector<long> xids;
     readXids(state->data, state->total, 0, xids);
-    for (long i = 0; i < (long)xids.size(); i++) {
-        state->xid2num[xids[i]] = i;
-    }
     state->xids = std::move(xids);
-
-    const string& fp_update = getUpdateFp();
-    state->fs_update.exceptions(std::ios::failbit | std::ios::badbit);
-    state->fs_update.open(fp_update, std::fstream::out | std::fstream::app);
-    state->fs_update.close();
-    state->fs_update.open(fp_update, std::fstream::in | std::fstream::out | std::fstream::binary);
-    state->fs_update.seekp(0, ios_base::end);
 
     state->fs_base2.exceptions(std::ios::failbit | std::ios::badbit);
     state->fs_base2.open(fp_base, std::fstream::in | std::fstream::out | std::fstream::binary);
@@ -305,12 +294,6 @@ void VectoDB::AddWithIds(long nb, const float* xb, const long* xids)
         *(long*)&buf[i * len_base_line + sizeof(long)] = 1;
         memcpy(&buf[i * len_base_line + 2 * sizeof(long)], &xb[i * dim], len_vec);
     }
-    // deduplicate xids
-    {
-        rlock r{ state->rw_xids };
-        if (state->xid2num.count(xids[0]) > 0)
-            return;
-    }
     mtxlock m{ state->m_base };
     state->fs_base.write(&buf[0], len_buf);
     long ntotal = state->total.fetch_add(nb);
@@ -320,106 +303,8 @@ void VectoDB::AddWithIds(long nb, const float* xb, const long* xids)
         state->flat->add(nb, xb);
         for (long i = 0; i < nb; i++) {
             state->xids.push_back(xids[i]);
-            state->xid2num[xids[i]] = ntotal + i;
         }
     }
-}
-
-void VectoDB::UpdateWithIds(long nb, const float* xb, const long* xids)
-{
-    long len_buf = nb * len_upd_line;
-    std::vector<char> buf(len_buf);
-    int pos = 0;
-    mtxlock m{ state->m_update };
-    {
-        rlock r{ state->rw_xids };
-        auto end = state->xid2num.end();
-        for (long i = 0; i < nb; i++) {
-            auto it = state->xid2num.find(xids[i]);
-            if (it == end)
-                continue;
-            long line_num = it->second;
-            *(long*)&buf[pos] = line_num;
-            memcpy(&buf[pos + sizeof(long)], &xb[i * dim], len_vec);
-            pos += len_upd_line;
-        }
-    }
-    state->fs_update.write(&buf[0], pos);
-}
-
-long VectoDB::UpdateBase()
-{
-    map<long, unique_ptr<VecExt>> updates;
-    long played = 0;
-    {
-        mtxlock m{ state->m_update };
-        played = state->fs_update.tellp() / len_upd_line;
-        if (played <= 0)
-            return played;
-
-        LOG(INFO) << "Loading " << played << " updates";
-        // read and truncate update.fvecs
-        auto update{ std::make_unique<VecExt>() };
-        update->vec.resize(dim);
-        long line_num = 0;
-        state->fs_update.seekg(0, ios_base::beg);
-        for (long i = 0; i < played; i++) {
-            state->fs_update.read((char*)&line_num, sizeof(long));
-            state->fs_update.read((char*)&update->vec[0], len_vec);
-            auto it = updates.find(line_num);
-            if (it == updates.end()) {
-                // not found - insert and reallocate update
-                update->count = 1;
-                updates[line_num] = std::move(update);
-                update = std::make_unique<VecExt>();
-                update->vec.resize(dim);
-            } else {
-                // found - reuse update
-                auto& curUpdate = it->second;
-                curUpdate->count++;
-                for (int d = 0; d < dim; d++) {
-                    curUpdate->vec[d] += update->vec[d];
-                }
-            }
-        }
-        state->fs_update.close();
-        state->fs_update.open(getUpdateFp(), std::fstream::in | std::fstream::out | std::fstream::binary | std::fstream::trunc);
-    }
-    LOG(INFO) << "Playing " << played << " updates";
-    {
-        const string& fp_base = getBaseFp();
-        uint8_t* data = nullptr;
-        long len_data = 0;
-        mmapFile(fp_base, data, len_data);
-        getNumLines(len_data, len_base_line);
-        mtxlock m{ state->m_base2 };
-
-        for (auto& elem : updates) {
-            long line_num = elem.first;
-            auto& update = elem.second;
-            long line_pos = line_num * len_base_line;
-            long pos = line_pos + sizeof(long);
-            long curCnt = *(long*)(data + pos);
-            update->count += curCnt;
-            pos += sizeof(long);
-            //LOG(INFO) << "Playing update, line_num " << line_num << " updates";
-            for (long d = 0; d < dim; pos += sizeof(float), d++) {
-                float curVec = *(float*)(data + pos);
-                update->vec[d] += curCnt * curVec;
-            }
-            VectoDB::Normalize(update->vec);
-            state->fs_base2.seekp(line_pos + sizeof(long), ios_base::beg);
-            state->fs_base2.write((const char*)&update->count, sizeof(long));
-            state->fs_base2.write((const char*)&update->vec[0], len_vec);
-        }
-        // The experiment indicates that the readers of mmaped file are not ware to following changes untill they be flushed.
-        // TODO: Is it possible that readers get the middle state of a change?
-        state->fs_base2.flush();
-        munmapFile(fp_base, data, len_data);
-    }
-    LOG(INFO) << "Played " << played << " updates";
-    google::FlushLogFiles(google::INFO);
-    return played;
 }
 
 long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
@@ -452,24 +337,10 @@ long VectoDB::Search(long nq, const float* xq, float* distances, long* xids)
             index_size = state->index->ntotal;
             // Perform a search
             state->index->search(nq, xq, k, &D[0], &I[0]);
-
-            // Refine result
-            faiss::Index* index2 = new faiss::IndexFlat(dim, metric_type == 0 ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2);
             for (int i = 0; i < nq; i++) {
-                {
-                    rlock r{ state->rw_data };
-                    for (int j = 0; j < k; j++) {
-                        long line_num = I[i * k + j];
-                        memcpy(&xb2[j * dim], &state->data[len_base_line * line_num + 2 * sizeof(long)], len_vec);
-                    }
-                }
-                index2->add(k, &xb2[0]);
-                index2->search(1, xq + i * dim, k, &D2[0], &I2[0]);
-                index2->reset();
-                distances[i] = D2[0];
-                xids[i] = I[i * k + I2[0]];
+                distances[i] = D[i * k];
+                xids[i] = I[i * k];
             }
-            delete index2;
         }
     }
 
@@ -511,13 +382,6 @@ std::string VectoDB::getIndexFp(long ntrain) const
 {
     ostringstream oss;
     oss << work_dir << "/" << index_key << "." << ntrain << ".index";
-    return oss.str();
-}
-
-std::string VectoDB::getUpdateFp() const
-{
-    ostringstream oss;
-    oss << work_dir << "/update.fvecs";
     return oss.str();
 }
 
@@ -686,16 +550,6 @@ void* VectodbBuildIndex(void* vdb, long cur_ntrain, long cur_nsize, long* ntrain
 void VectodbAddWithIds(void* vdb, long nb, float* xb, long* xids)
 {
     static_cast<VectoDB*>(vdb)->AddWithIds(nb, xb, xids);
-}
-
-void VectodbUpdateWithIds(void* vdb, long nb, float* xb, long* xids)
-{
-    static_cast<VectoDB*>(vdb)->UpdateWithIds(nb, xb, xids);
-}
-
-long VectodbUpdateBase(void* vdb)
-{
-    return static_cast<VectoDB*>(vdb)->UpdateBase();
 }
 
 long VectodbGetTotal(void* vdb)

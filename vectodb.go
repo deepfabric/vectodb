@@ -56,38 +56,19 @@ func (vdb *VectoDB) AddWithIds(xb []float32, xids []int64) (err error) {
 	return
 }
 
-func (vdb *VectoDB) UpdateWithIds(xb []float32, xids []int64) (err error) {
-	nb := len(xids)
-	if len(xb) != nb*vdb.dim {
-		log.Fatalf("invalid length of xb, want %v, have %v", nb*vdb.dim, len(xb))
-	}
-	C.VectodbUpdateWithIds(vdb.vdbC, C.long(nb), (*C.float)(&xb[0]), (*C.long)(&xids[0]))
-	return
-}
-
 func (vdb *VectoDB) UpdateIndex() (err error) {
 	var needBuild bool
 	var index unsafe.Pointer
-	var curNtrain, curNsize, ntrain, nflat, played int
-	if played, err = vdb.updateBase(); err != nil {
+	var curNtrain, curNsize, ntrain, nflat int
+	if nflat, err = vdb.GetFlatSize(); err != nil {
 		return
 	}
-	if played != 0 {
+	if nflat >= vdb.flatThreshold {
 		needBuild = true
-		curNtrain = 0
-		curNsize = 0
-		log.Infof("%s: played %d updates, need build index", vdb.workDir, played)
-	} else {
-		if nflat, err = vdb.GetFlatSize(); err != nil {
+		if curNtrain, curNsize, err = vdb.getIndexSize(); err != nil {
 			return
 		}
-		if nflat >= vdb.flatThreshold {
-			needBuild = true
-			if curNtrain, curNsize, err = vdb.getIndexSize(); err != nil {
-				return
-			}
-			log.Infof("%s: nflat %d goes above threshold, need build idnex. curNtrain %d, curNsize %d", vdb.workDir, nflat, curNtrain, curNsize)
-		}
+		log.Infof("%s: nflat %d goes above threshold, need build idnex. curNtrain %d, curNsize %d", vdb.workDir, nflat, curNtrain, curNsize)
 	}
 	if needBuild {
 		if index, ntrain, err = vdb.buildIndex(curNtrain, curNsize); err != nil {
@@ -107,12 +88,6 @@ func (vdb *VectoDB) buildIndex(cur_ntrain, cur_ntotal int) (index unsafe.Pointer
 	var ntrainC C.long
 	index = C.VectodbBuildIndex(vdb.vdbC, C.long(cur_ntrain), C.long(cur_ntotal), &ntrainC)
 	ntrain = int(ntrainC)
-	return
-}
-
-func (vdb *VectoDB) updateBase() (played int, err error) {
-	playedC := C.VectodbUpdateBase(vdb.vdbC)
-	played = int(playedC)
 	return
 }
 

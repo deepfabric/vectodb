@@ -48,22 +48,6 @@ public:
     void AddWithIds(long nb, const float* xb, const long* xids);
 
     /** 
-     * Record update requests to a backlog.
-     * The upper layer does memory management for xb, xids.
-     *
-     * @param xb        input matrix, size n * d
-     * @param xids      if non-null, ids to store for the vectors (size n)
-     */
-    void UpdateWithIds(long nb, const float* xb, const long* xids);
-
-    /** 
-     * Play update backlog and return the number of played updates.
-     * Assuming this operation is rare, i.e. once every 15 minutes.
-     * This causes disagreement between database and index, so user shall invoke BuildIndex and ActivateIndex later. 
-     */
-    long UpdateBase();
-
-    /** 
      * Get total number of vectors.
      *
      */
@@ -74,12 +58,6 @@ public:
      *
      */
     long GetFlatSize();
-
-    /** 
-     * Get update size.
-     *
-     */
-    long GetUpdateSize();
 
     /**  
      * Activate index built with TryBuildIndex or BuildIndex.
@@ -132,7 +110,6 @@ public:
 private:
     std::string getBaseFp() const;
     std::string getIndexFp(long ntrain) const;
-    std::string getUpdateFp() const;
     long getNumLines(long len_data, long len_base_line) const;
     long getIndexFpNtrain() const;
     void clearIndexFiles();

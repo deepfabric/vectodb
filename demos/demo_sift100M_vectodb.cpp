@@ -114,19 +114,6 @@ int main(int argc, char** argv)
         vdb.ActivateIndex(index, ntrain);
     }
 
-    const bool update = false;
-    if (update) {
-        LOG(INFO) << "Updating vectors";
-        vdb.UpdateWithIds(nb, xb, xids);
-        LOG(INFO) << "Playing updates";
-        long played = vdb.UpdateBase();
-        LOG(INFO) << "Played " << played << " updates";
-        faiss::Index* index;
-        long ntrain;
-        vdb.BuildIndex(0, 0, index, ntrain);
-        vdb.ActivateIndex(index, ntrain);
-    }
-
     delete[] xb;
     delete[] xids;
 

@@ -194,21 +194,6 @@ func (vm *VectodbMulti) AddWithIds(xb []float32, xids []int64) (err error) {
 	return
 }
 
-//UpdateWithIds update vectors
-/**
- * nb       number of vectors, shall be equal to len(xids)
- * xb       vectors
- * xids     vector identifiers
- */
-func (vm *VectodbMulti) UpdateWithIds(xb []float32, xids []int64) (err error) {
-	for _, vdb := range vm.vdbs {
-		if err = vdb.UpdateWithIds(xb, xids); err != nil {
-			return
-		}
-	}
-	return
-}
-
 //StartBuilderLoop starts a goroutine to build build index in loop
 func (vm *VectodbMulti) StartBuilderLoop() {
 	if vm.cancel != nil {
