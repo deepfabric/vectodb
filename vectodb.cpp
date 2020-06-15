@@ -155,8 +155,20 @@ VectoDB::~VectoDB()
     }
 }
 
-void VectoDB::BuildIndex(long cur_ntrain, long cur_nsize, faiss::Index*& index_out, long& ntrain) const
+void VectoDB::BuildIndex(faiss::Index*& index_out, long& ntrain) const
 {
+    long cur_ntrain, cur_nsize;
+    {
+        rlock r{ state->rw_index };
+        if (state->index == nullptr) {
+            cur_ntrain = 0;
+            cur_nsize = 0;
+        } else {
+            cur_ntrain = state->ntrain;
+            cur_nsize = state->index->ntotal;
+        }
+    }
+
     index_out = nullptr;
     ntrain = 0;
     if (0 == index_key.compare("Flat")) {
@@ -307,7 +319,7 @@ void VectoDB::AddWithIds(long nb, const float* xb, const long* xids)
     }
 }
 
-long VectoDB::Search(long nq, long k, const float* xq, float* distances, long* xids)
+long VectoDB::Search(long nq, long k, const float* xq, const char** uids, float* distances, long* xids)
 {
     for (int i = 0; i < nq; i++) {
         xids[i] = long(-1);
@@ -587,9 +599,9 @@ void VectodbGetIndexSize(void* vdb, long* ntrain, long* ntotal)
     static_cast<VectoDB*>(vdb)->GetIndexSize(*ntrain, *ntotal);
 }
 
-long VectodbSearch(void* vdb, long nq, float* xq, float* distances, long* xids)
+long VectodbSearch(void* vdb, long nq, float* xq, char** uids, float* distances, long* xids)
 {
-    return static_cast<VectoDB*>(vdb)->Search(nq, xq, distances, xids);
+    return static_cast<VectoDB*>(vdb)->Search(nq, xq, uids, distances, xids);
 }
 
 void VectodbClearWorkDir(char* work_dir)

@@ -116,7 +116,7 @@ func (vdb *VectoDB) getIndexSize() (ntrain, nsize int, err error) {
 	return
 }
 
-func (vdb *VectoDB) Search(int k, xq []float32, distances []float32, xids []int64) (ntotal int, err error) {
+func (vdb *VectoDB) Search(int k, xq []float32, uids []string, distances []float32, xids []int64) (ntotal int, err error) {
 	nq := len(xids)
 	if len(xq) != nq*vdb.dim {
 		log.Fatalf("invalid length of xq, want %v, have %v", nq*vdb.dim, len(xq))

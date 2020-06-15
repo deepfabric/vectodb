@@ -31,19 +31,17 @@ public:
 
     /** 
      * Build index.
-     * @param cur_ntrain    input the number of train vectors of current index
-     * @param cur_nsize     input the number of vectors of current index
      * @param index     output index
      * @param ntrain    output the number of train vectors
      */
-    void BuildIndex(long cur_ntrain, long cur_nsize, faiss::Index*& index, long& ntrain) const;
+    void BuildIndex(faiss::Index*& index, long& ntrain) const;
 
     /** 
      * Add n vectors of dimension d to the index.
      * The upper layer does memory management for xb, xids.
      *
      * @param xb     input matrix, size n * d
-     * @param xids if non-null, ids to store for the vectors (size n)
+     * @param xids   ids to store for the vectors (size n). High 32bits uid, low 32bits pid.
      */
     void AddWithIds(long nb, const float* xb, const long* xids);
 
@@ -71,7 +69,7 @@ public:
     /** 
      * Get index size.
      *
-     * @param ntain         output number of index train points
+     * @param ntrain        output number of index train points
      * @param nsize         output number of index points
      */
     void GetIndexSize(long& ntrain, long& nsize) const;
@@ -83,10 +81,11 @@ public:
      * @param nq            input the number of vectors to search
      * @param k             input do kNN search
      * @param xq            input vectors to search, size nq * d
-     * @param xids          output labels of the 1-NNs, size nq
-     * @param distances     output pairwise distances, size nq
+     * @param uids          input uid bitmap pointer array, size nq
+     * @param distances     output pairwise distances, size nq * k
+     * @param xids          output labels of the kNN, size nq * k
      */
-    long Search(long nq, long k, const float* xq, float* distances, long* xids);
+    long Search(long nq, long k, const float* xq, const char** uids, float* distances, long* xids);
 
 public:
     /** 
