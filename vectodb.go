@@ -42,6 +42,11 @@ func (vdb *VectoDB) Destroy() (err error) {
 	return
 }
 
+/*
+input parameters:
+@param xb:   nb个向量
+@param xids: nb个向量编号。xid 64 bit结构：高32 bit为uid（用户ID），低32 bit为pid（图片ID）
+*/
 func (vdb *VectoDB) AddWithIds(xb []float32, xids []int64) (err error) {
 	nb := len(xids)
 	if len(xb) != nb*vdb.dim {
@@ -111,6 +116,20 @@ func (vdb *VectoDB) getIndexSize() (ntrain, nsize int, err error) {
 	return
 }
 
+/**
+input parameters:
+@param xq:      nq个查询向量
+@param ks:      nq个参数k（每个kNN查询中的参数k）
+@param uids:    nq个序列化的roaring bitmap
+
+output parameters:
+@param scores:  所有结果的得分（查询1的k个得分，查询2的k个得分,...）
+@param xids:    所有结果的向量编号（查询1的k个向量编号，查询2的k个向量编号,...）
+
+return parameters:
+@return ntotal  数据库当前存储的向量总数
+@return err     错误
+*/
 func (vdb *VectoDB) Search(xq []float32, ks []int64, uids []string, scores []float32, xids []int64) (ntotal int, err error) {
 	nq := len(ks)
 	if len(xq) != nq*vdb.dim {
@@ -119,12 +138,12 @@ func (vdb *VectoDB) Search(xq []float32, ks []int64, uids []string, scores []flo
 	if len(uids) != nq {
 		log.Fatalf("invalid length of uids, want %v, have %v", nq, len(uids))
 	}
-	sum_k := 0
+	var sum_k int
 	for i, k := range ks {
 		if k <= 0 {
 			log.Fatalf("invalid ks[%v], want >0, have %v", i, ks[i])
 		}
-		sum_k += k
+		sum_k += int(k)
 	}
 	if len(scores) < sum_k {
 		log.Fatalf("invalid length of scores, want >=%v, have %v", sum_k, len(scores))
@@ -134,7 +153,7 @@ func (vdb *VectoDB) Search(xq []float32, ks []int64, uids []string, scores []flo
 	}
 	uidsFilter := make([]int64, nq)
 	for i := 0; i < nq; i++ {
-		uidFilter[i] = &uids[i][0]
+		uidsFilter[i] = &uids[i][0]
 	}
 	ntotalC := C.VectodbSearch(vdb.vdbC, C.long(nq), (*C.float)(&xq[0]), (*C.long)(&ks[0]), (*C.long)(&uidsFilter[0]), (*C.float)(&scores[0]), (*C.long)(&xids[0]))
 	ntotal = int(ntotalC)

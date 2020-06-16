@@ -8,7 +8,7 @@ import glob
 # 1. Enable EPEL, refers to https://fedoraproject.org/wiki/EPEL.
 # 2. Install dependencies.
 # $ sudo yum -y install gcc-c++ openblas-devel swig python-devel numpy glog-devel gflags-devel boost-devel jemalloc-devel
-# 3. Install and enable devtoolset-7, refers to https://www.softwarecollections.org/en/scls/rhscl/devtoolset-7/, https://access.redhat.com/solutions/527703
+# 3. Install and enable devtoolset-8, refers to https://www.softwarecollections.org/en/scls/rhscl/devtoolset-8/, https://access.redhat.com/solutions/527703
 # 4. Build all
 # $ scons
 
