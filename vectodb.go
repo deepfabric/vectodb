@@ -22,21 +22,16 @@ type VectoDB struct {
 	flatThreshold int
 }
 
-func NewVectoDB(workDir string, dimIn int, metricType int, indexKey string, queryParams string, distThreshold float32, flatThreshold int) (vdb *VectoDB, err error) {
+func NewVectoDB(workDir string, dimIn int) (vdb *VectoDB, err error) {
 	log.Infof("creating VectoDB %v", workDir)
 	wordDirC := C.CString(workDir)
-	indexKeyC := C.CString(indexKey)
-	queryParamsC := C.CString(queryParams)
-	vdbC := C.VectodbNew(wordDirC, C.long(dimIn), C.int(metricType), indexKeyC, queryParamsC, C.float(distThreshold))
+	vdbC := C.VectodbNew(wordDirC, C.long(dimIn))
 	vdb = &VectoDB{
-		vdbC:          vdbC,
-		dim:           dimIn,
-		workDir:       workDir,
-		flatThreshold: flatThreshold,
+		vdbC:    vdbC,
+		dim:     dimIn,
+		workDir: workDir,
 	}
 	C.free(unsafe.Pointer(wordDirC))
-	C.free(unsafe.Pointer(indexKeyC))
-	C.free(unsafe.Pointer(queryParamsC))
 	return
 }
 
@@ -116,15 +111,32 @@ func (vdb *VectoDB) getIndexSize() (ntrain, nsize int, err error) {
 	return
 }
 
-func (vdb *VectoDB) Search(int k, xq []float32, uids []string, distances []float32, xids []int64) (ntotal int, err error) {
-	nq := len(xids)
+func (vdb *VectoDB) Search(xq []float32, ks []int64, uids []string, scores []float32, xids []int64) (ntotal int, err error) {
+	nq := len(ks)
 	if len(xq) != nq*vdb.dim {
 		log.Fatalf("invalid length of xq, want %v, have %v", nq*vdb.dim, len(xq))
 	}
-	if len(distances) != nq {
-		log.Fatalf("invalid length of distances, want %v, have %v", nq, len(distances))
+	if len(uids) != nq {
+		log.Fatalf("invalid length of uids, want %v, have %v", nq, len(uids))
 	}
-	ntotalC := C.VectodbSearch(vdb.vdbC, C.long(nq), C.long(k), (*C.float)(&xq[0]), (*C.float)(&distances[0]), (*C.long)(&xids[0]))
+	sum_k := 0
+	for i, k := range ks {
+		if k <= 0 {
+			log.Fatalf("invalid ks[%v], want >0, have %v", i, ks[i])
+		}
+		sum_k += k
+	}
+	if len(scores) < sum_k {
+		log.Fatalf("invalid length of scores, want >=%v, have %v", sum_k, len(scores))
+	}
+	if len(xids) != len(scores) {
+		log.Fatalf("invalid length of xids, want len(scores)=%v, have %v", len(scores), len(scores))
+	}
+	uidsFilter := make([]int64, nq)
+	for i := 0; i < nq; i++ {
+		uidFilter[i] = &uids[i][0]
+	}
+	ntotalC := C.VectodbSearch(vdb.vdbC, C.long(nq), (*C.float)(&xq[0]), (*C.long)(&ks[0]), (*C.long)(&uidsFilter[0]), (*C.float)(&scores[0]), (*C.long)(&xids[0]))
 	ntotal = int(ntotalC)
 	return
 }
@@ -139,9 +151,4 @@ func VectodbClearWorkDir(workDir string) (err error) {
 	C.VectodbClearWorkDir(wordDirC)
 	C.free(unsafe.Pointer(wordDirC))
 	return
-}
-
-// VectodbCompareDistance returns true if dis1 is closer then dis2.
-func VectodbCompareDistance(metricType int, dis1, dis2 float32) bool {
-	return (metricType == 0) == (dis1 > dis2)
 }

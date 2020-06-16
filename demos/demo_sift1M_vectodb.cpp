@@ -81,7 +81,8 @@ int main(int argc, char** argv)
 
     //VectoDB::ClearWorkDir(work_dir);
     //VectoDB vdb(work_dir, sift_dim, 1);
-    VectoDB vdb(work_dir, sift_dim, 1, "IVF4096,PQ32", "nprobe=256,ht=256", 260000.0f);
+    //VectoDB vdb(work_dir, sift_dim, 0, "IVF4096,PQ32", "nprobe=256,ht=256", 260000.0f);
+    VectoDB vdb(work_dir, sift_dim, 0, "Flat", "", 0.0f);
     //VectoDB vdb(work_dir, sift_dim, 1, "IVF16384_HNSW32,Flat", "nprobe=384", 260000.0f);
     size_t nb, d;
     float* xb = fvecs_read("sift1M/sift_base.fvecs", &d, &nb);
@@ -90,7 +91,7 @@ int main(int argc, char** argv)
         xids[i] = i;
     }
 
-    const bool incremental = true;
+    const bool incremental = false;
     long cur_ntrain, cur_nsize;
     if (incremental) {
         const long batch_size = std::min(100000L, (long)nb);
@@ -126,12 +127,17 @@ int main(int argc, char** argv)
     float* xq = fvecs_read("sift1M/sift_query.fvecs", &d2, &nq);
     float* D = new float[nq];
     long* I = new long[nq];
-    const long num_thread = 4;
-    if (num_thread >= 2) {
-        const long batch_size = (long)nq / num_thread;
-        nq = num_thread * batch_size;
+
+    LOG(INFO) << "Executing " << nq << " queries in single batch";
+    vdb.Search(nq, xq, D, I);
+
+    LOG(INFO) << "Executing " << nq << " queries in multiple threads";
+    const long num_threads = 4;
+    if (num_threads >= 2) {
+        const long batch_size = (long)nq / num_threads;
+        nq = num_threads * batch_size;
         vector<thread> workers;
-        for (long i = 0; i < num_thread; i++) {
+        for (long i = 0; i < num_threads; i++) {
             std::thread worker{ [&vdb, batch_size, i, &xq, &D, &I]() {
                 LOG(INFO) << "thread " << i << " begins";
                 vdb.Search(batch_size, xq + i * batch_size * sift_dim, D + i * batch_size, I + i * batch_size);
@@ -139,11 +145,14 @@ int main(int argc, char** argv)
             } };
             workers.push_back(std::move(worker));
         }
-        for (long i = 0; i < num_thread; i++) {
+        for (long i = 0; i < num_threads; i++) {
             workers[i].join();
         }
-    } else {
-        vdb.Search(nq, xq, D, I);
+    }
+
+    LOG(INFO) << "Executing " << nq << " queries one by one";
+    for (long i = 0; i < nq; i++) {
+        vdb.Search(1, xq + i * sift_dim, D + i, I + i);
     }
 
     size_t k; // nb of results per query in the GT

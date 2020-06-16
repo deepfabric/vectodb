@@ -7,7 +7,7 @@ extern "C" {
 /**
  * Constructor and destructor methods.
  */
-void* VectodbNew(char* work_dir, long dim, int metric_type, char* index_key, char* query_params, float dist_threshold);
+void* VectodbNew(char* work_dir, long dim);
 void VectodbDelete(void* vdb);
 
 void* VectodbBuildIndex(void* vdb, long* ntrain);
@@ -17,7 +17,7 @@ long VectodbGetFlatSize(void* vdb);
 
 void VectodbActivateIndex(void* vdb, void* index, long ntrain);
 void VectodbGetIndexSize(void* vdb, long* ntrain, long* nsize);
-long VectodbSearch(void* vdb, long nq, long k, float* xq, char** uids, float* distances, long* xids);
+long VectodbSearch(void* vdb, long nq, float* xq, long *ks, float* scores, long* xids);
 
 /**
  * Static methods.

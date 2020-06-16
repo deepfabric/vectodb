@@ -14,17 +14,15 @@ using rlock = unique_lock<boost::shared_mutex>;
 using wlock = boost::shared_lock<boost::shared_mutex>;
 
 struct IndexFlatWrapper {
-    float dist_threshold;
     boost::shared_mutex rw_flat;
     faiss::IndexFlat* flat;
     unordered_map<uint64_t, uint64_t> xid2num;
     vector<uint64_t> xids; //vector of xid of all vectors
 };
 
-void* IndexFlatNew(long dim, float dist_threshold)
+void* IndexFlatNew(long dim)
 {
     IndexFlatWrapper* ifw = new IndexFlatWrapper();
-    ifw->dist_threshold = dist_threshold;
     ifw->flat = new faiss::IndexFlat(dim, faiss::METRIC_INNER_PRODUCT);
     return ifw;
 }
@@ -57,10 +55,6 @@ void IndexFlatSearch(void* ifwIn, long nq, float* xq, float* distances, unsigned
         ifw->flat->search(nq, xq, k, distances, (long*)xids);
     }
     for (int i = 0; i < nq; i++) {
-        if (distances[i] < ifw->dist_threshold) {
-            xids[i] = uint64_t(-1);
-        } else {
-            xids[i] = ifw->xids[xids[i]];
-        }
+        xids[i] = ifw->xids[xids[i]];
     }
 }
