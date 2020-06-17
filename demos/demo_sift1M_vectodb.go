@@ -17,21 +17,11 @@ import (
 )
 
 const (
-	siftDim    int     = 128
-	siftMetric int     = 1        //0 - IP, 1 - L2
-	distThr    float32 = 260000.0 //sift1M is not normalized
-
+	siftDim    int    = 128
 	siftBase   string = "sift1M/sift_base.fvecs"
 	siftQuery  string = "sift1M/sift_query.fvecs"
 	siftGround string = "sift1M/sift_groundtruth.ivecs"
-
-	siftIndexKey    string = "IVF4096,PQ32"
-	siftQueryParams string = "nprobe=256,ht=256"
-	//siftIndexKey    string = "IVF16384_HNSW32,Flat"
-	//siftQueryParams string = "nprobe=384"
-
-	workDir       string = "/tmp/demo_sift1M_vectodb_go"
-	flatThreshold int    = 1000
+	workDir    string = "/tmp/demo_sift1M_vectodb_go"
 )
 
 //FileMmap mmaps the given file.
@@ -118,7 +108,7 @@ func builderLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 			return
 		case <-ticker:
 			log.Infof("build iteration begin")
-			if err = vdb.UpdateIndex(); err != nil {
+			if err = vdb.SyncIndex(); err != nil {
 				log.Fatalf("%+v", err)
 			}
 			log.Infof("build iteration done")
@@ -132,6 +122,7 @@ func searcherLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 	var xq []float32
 	var dim2 int
 	var nq int
+	var k int
 	if xq, dim2, nq, err = fvecs_read(siftQuery); err != nil {
 		log.Fatalf("%+v", err)
 	}
@@ -139,23 +130,19 @@ func searcherLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 		log.Fatalf("%s dim %d, expects %d", siftQuery, dim2, siftDim)
 	}
 	nq = 500
-	D := make([]float32, nq)
-	I := make([]int64, nq)
-	var nflat, ntotal int
+	k = 10
+	var res [][]vectodb.XidScore
+	uids := make([]string, nq)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 			log.Infof("search iteration begin")
-			if nflat, err = vdb.GetFlatSize(); err != nil {
+			if res, err = vdb.Search(k, xq, uids); err != nil {
 				log.Fatalf("%+v", err)
 			}
-			log.Infof("nflat %d", nflat)
-			if ntotal, err = vdb.Search(xq, D, I); err != nil {
-				log.Fatalf("%+v", err)
-			}
-			log.Infof("search iteration done, ntotal=%d", ntotal)
+			log.Infof("search iteration done, res=%v", res)
 		}
 	}
 }
@@ -167,7 +154,7 @@ func benchmarkAdd() {
 	if err = vectodb.VectodbClearWorkDir(workDir); err != nil {
 		log.Fatalf("%+v", err)
 	}
-	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, siftMetric, siftIndexKey, siftQueryParams, distThr, flatThreshold); err != nil {
+	if vdb, err = vectodb.NewVectoDB(workDir, siftDim); err != nil {
 		log.Fatalf("%+v", err)
 	}
 
@@ -232,7 +219,7 @@ func main() {
 	//if err = vectodb.VectodbClearWorkDir(workDir); err != nil {
 	//	log.Fatalf("%+v", err)
 	//}
-	if vdb, err = vectodb.NewVectoDB(workDir, siftDim, siftMetric, siftIndexKey, siftQueryParams, distThr, flatThreshold); err != nil {
+	if vdb, err = vectodb.NewVectoDB(workDir, siftDim); err != nil {
 		log.Fatalf("%+v", err)
 	}
 
@@ -256,7 +243,7 @@ func main() {
 		log.Fatalf("%+v", err)
 	}
 
-	if err = vdb.UpdateIndex(); err != nil {
+	if err = vdb.SyncIndex(); err != nil {
 		log.Fatalf("%+v", err)
 	}
 
@@ -270,35 +257,13 @@ func main() {
 	if dim2 != siftDim {
 		log.Fatalf("%s dim %d, expects %d", siftQuery, dim2, siftDim)
 	}
-	D := make([]float32, nq)
-	I := make([]int64, nq)
-	var ntotal int
-	if ntotal, err = vdb.Search(xq, D, I); err != nil {
+	var res [][]vectodb.XidScore
+	uids := make([]string, nq)
+	k := 10
+	if res, err = vdb.Search(k, xq, uids); err != nil {
 		log.Fatalf("%+v", err)
 	}
-	log.Infof("Search done on %d vectors", ntotal)
-
-	log.Infof("Loading ground truth for %d queries", nq)
-	var gt []int32
-	var k int
-	var nq2 int
-	if gt, k, nq2, err = ivecs_read(siftGround); err != nil {
-		log.Fatalf("%+v", err)
-	}
-	if nq2 != nq {
-		log.Fatalf("%s nq %d, expects %d", siftGround, nq2, nq)
-	}
-
-	log.Infof("Compute recalls")
-	// evaluate result by hand.
-	var n_1 int
-	for i := 0; i < nq; i++ {
-		gt_nn := int64(gt[i*k])
-		if I[i] == gt_nn {
-			n_1++
-		}
-	}
-	log.Infof("R@1 = %v", float32(n_1)/float32(nq))
+	log.Infof("search result: %+v", res)
 
 	if err = vdb.Destroy(); err != nil {
 		log.Fatalf("%+v", err)

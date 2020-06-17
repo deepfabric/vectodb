@@ -14,7 +14,6 @@ genrule(
     ]),
     outs = [
         "demos/demo_sift1M_vectodb_go",
-        "demos/demo_sift100M_vectodb_go",
         "demos/demo_vectodblite_go",
     ],
     building_description = "build go modules and binaries",
@@ -22,7 +21,6 @@ genrule(
         "export GO111MODULE=on",
         "$TOOL install -x .",
         "$TOOL build -o demos/demo_sift1M_vectodb_go demos/demo_sift1M_vectodb.go",
-        "$TOOL build -o demos/demo_sift100M_vectodb_go demos/demo_sift100M_vectodb.go",
         "$TOOL build -o demos/demo_vectodblite_go demos/demo_vectodblite.go",
     ],
     tools = ["/usr/local/go/bin/go"],
@@ -39,13 +37,12 @@ for fp in [
         name = splitext(basename(fp))[0],
         srcs = [fp],
         compiler_flags = ["--std=c++17"],
-        linker_flags = ["-Lfaiss -lfaiss", "-lopenblas", "-lboost_filesystem", "-lboost_system", "-lgomp", "-lpthread"],
+        linker_flags = ["-Lfaiss -lfaiss", "-lopenblas", "-lstdc++fs", "-lgomp", "-lpthread"],
         deps = [":build_faiss"],
     )
 
 for fp in [
     "demos/demo_sift1M_vectodb.cpp",
-    "demos/demo_sift100M_vectodb.cpp",
 ]:
     cc_binary(
         name = splitext(basename(fp))[0],
@@ -55,7 +52,7 @@ for fp in [
             "vectodb.hpp",
         ],
         compiler_flags = ["--std=c++17"],
-        linker_flags = ["-L. -lvectodb", "-Lfaiss -lfaiss", "-lopenblas", "-lboost_thread", "-lboost_filesystem", "-lboost_system", "-lglog", "-lgflags", "-lgomp", "-lpthread"],
+        linker_flags = ["-L. -lvectodb", "-Lfaiss -lfaiss", "-lopenblas", "-lstdc++fs", "-lglog", "-lgflags", "-lgomp", "-lpthread"],
         deps = [":build_faiss", ":libvectodb"],
     )
 

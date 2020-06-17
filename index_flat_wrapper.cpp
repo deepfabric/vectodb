@@ -1,7 +1,7 @@
 
 #include "index_flat_wrapper.h"
 #include "faiss/IndexFlat.h"
-#include <boost/thread/shared_mutex.hpp>
+#include <shared_mutex>
 #include <mutex>
 #include <pthread.h>
 #include <sstream>
@@ -10,11 +10,11 @@
 
 using namespace std;
 using mtxlock = unique_lock<mutex>;
-using rlock = unique_lock<boost::shared_mutex>;
-using wlock = boost::shared_lock<boost::shared_mutex>;
+using rlock = unique_lock<shared_mutex>;
+using wlock = shared_lock<shared_mutex>;
 
 struct IndexFlatWrapper {
-    boost::shared_mutex rw_flat;
+    shared_mutex rw_flat;
     faiss::IndexFlat* flat;
     unordered_map<uint64_t, uint64_t> xid2num;
     vector<uint64_t> xids; //vector of xid of all vectors

@@ -3,8 +3,8 @@ package vectodb
 // https://golang.org/cmd/cgo/
 // When the Go tool sees that one or more Go files use the special import "C", it will look for other non-Go files in the directory and compile them as part of the Go package.
 
-// #cgo CXXFLAGS: -I${SRCDIR}
-// #cgo LDFLAGS: -L${SRCDIR}/faiss -lboost_thread -lboost_filesystem -lboost_system -lglog -lgflags -lfaiss -lopenblas -lgomp -lstdc++ -ljemalloc
+// #cgo CXXFLAGS: -std=c++17 -I${SRCDIR}
+// #cgo LDFLAGS: -L${SRCDIR}/faiss -lglog -lgflags -lfaiss -lopenblas -lgomp -lstdc++ -lstdc++fs -ljemalloc
 // #include "vectodb.h"
 // #include <stdlib.h>
 import "C"
@@ -56,70 +56,26 @@ func (vdb *VectoDB) AddWithIds(xb []float32, xids []int64) (err error) {
 	return
 }
 
-func (vdb *VectoDB) UpdateIndex() (err error) {
-	var needBuild bool
-	var index unsafe.Pointer
-	var curNtrain, curNsize, ntrain, nflat int
-	if nflat, err = vdb.GetFlatSize(); err != nil {
-		return
-	}
-	if nflat >= vdb.flatThreshold {
-		needBuild = true
-		if curNtrain, curNsize, err = vdb.getIndexSize(); err != nil {
-			return
-		}
-		log.Infof("%s: nflat %d goes above threshold, need build idnex. curNtrain %d, curNsize %d", vdb.workDir, nflat, curNtrain, curNsize)
-	}
-	if needBuild {
-		if index, ntrain, err = vdb.buildIndex(curNtrain, curNsize); err != nil {
-			return
-		}
-		if ntrain != 0 {
-			if err = vdb.activateIndex(index, ntrain); err != nil {
-				return
-			}
-		}
-		log.Infof("%s: UpdateIndex done", vdb.workDir)
-	}
-	return
-}
-
-func (vdb *VectoDB) buildIndex(cur_ntrain, cur_ntotal int) (index unsafe.Pointer, ntrain int, err error) {
-	var ntrainC C.long
-	index = C.VectodbBuildIndex(vdb.vdbC, C.long(cur_ntrain), C.long(cur_ntotal), &ntrainC)
-	ntrain = int(ntrainC)
+func (vdb *VectoDB) SyncIndex() (err error) {
+	C.VectodbSyncIndex(vdb.vdbC)
 	return
 }
 
 func (vdb *VectoDB) GetTotal() (total int, err error) {
-	totalC := C.VectodbGetFlatSize(vdb.vdbC)
+	totalC := C.VectodbGetTotal(vdb.vdbC)
 	total = int(totalC)
 	return
 }
 
-func (vdb *VectoDB) GetFlatSize() (nsize int, err error) {
-	nsizeC := C.VectodbGetFlatSize(vdb.vdbC)
-	nsize = int(nsizeC)
-	return
-}
-
-func (vdb *VectoDB) activateIndex(index unsafe.Pointer, ntrain int) (err error) {
-	C.VectodbActivateIndex(vdb.vdbC, index, C.long(ntrain))
-	return
-}
-
-func (vdb *VectoDB) getIndexSize() (ntrain, nsize int, err error) {
-	var ntrainC, nsizeC C.long
-	C.VectodbGetIndexSize(vdb.vdbC, &ntrainC, &nsizeC)
-	ntrain = int(ntrainC)
-	nsize = int(nsizeC)
-	return
+type XidScore struct {
+	Xid   int64
+	Score float32
 }
 
 /**
 input parameters:
+@param ks:      kNN参数k
 @param xq:      nq个查询向量
-@param ks:      nq个参数k（每个kNN查询中的参数k）
 @param uids:    nq个序列化的roaring bitmap
 
 output parameters:
@@ -127,36 +83,29 @@ output parameters:
 @param xids:    所有结果的向量编号（查询1的k个向量编号，查询2的k个向量编号,...）
 
 return parameters:
-@return ntotal  数据库当前存储的向量总数
 @return err     错误
 */
-func (vdb *VectoDB) Search(xq []float32, ks []int64, uids []string, scores []float32, xids []int64) (ntotal int, err error) {
-	nq := len(ks)
+func (vdb *VectoDB) Search(k int, xq []float32, uids []string) (res [][]XidScore, err error) {
+	nq := len(xq) / vdb.dim
 	if len(xq) != nq*vdb.dim {
 		log.Fatalf("invalid length of xq, want %v, have %v", nq*vdb.dim, len(xq))
 	}
 	if len(uids) != nq {
 		log.Fatalf("invalid length of uids, want %v, have %v", nq, len(uids))
 	}
-	var sum_k int
-	for i, k := range ks {
-		if k <= 0 {
-			log.Fatalf("invalid ks[%v], want >0, have %v", i, ks[i])
-		}
-		sum_k += int(k)
-	}
-	if len(scores) < sum_k {
-		log.Fatalf("invalid length of scores, want >=%v, have %v", sum_k, len(scores))
-	}
-	if len(xids) != len(scores) {
-		log.Fatalf("invalid length of xids, want len(scores)=%v, have %v", len(scores), len(scores))
-	}
-	uidsFilter := make([]int64, nq)
+	res = make([][]XidScore, nq)
+	scores := make([]float32, nq*k)
+	xids := make([]int64, nq*k)
+	var uidsFilter int64
+	C.VectodbSearch(vdb.vdbC, C.long(nq), C.long(k), (*C.float)(&xq[0]), (*C.long)(&uidsFilter), (*C.float)(&scores[0]), (*C.long)(&xids[0]))
 	for i := 0; i < nq; i++ {
-		uidsFilter[i] = &uids[i][0]
+		for j := 0; j < k; j++ {
+			if xids[i*k+j] == int64(-1) {
+				break
+			}
+			res[i] = append(res[i], XidScore{Xid: xids[i*k+j], Score: scores[i*k+j]})
+		}
 	}
-	ntotalC := C.VectodbSearch(vdb.vdbC, C.long(nq), (*C.float)(&xq[0]), (*C.long)(&ks[0]), (*C.long)(&uidsFilter[0]), (*C.float)(&scores[0]), (*C.long)(&xids[0]))
-	ntotal = int(ntotalC)
 	return
 }
 

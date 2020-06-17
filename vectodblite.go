@@ -1,7 +1,7 @@
 package vectodb
 
-// #cgo CXXFLAGS: -I${SRCDIR}
-// #cgo LDFLAGS: -L${SRCDIR}/faiss -lfaiss -lopenblas -lgomp -lstdc++ -ljemalloc
+// #cgo CXXFLAGS: -std=c++17 -I${SRCDIR}
+// #cgo LDFLAGS: -L${SRCDIR}/faiss -lfaiss -lopenblas -lgomp -lstdc++ -lstdc++fs -ljemalloc
 // #include "index_flat_wrapper.h"
 // #include <stdlib.h>
 import "C"
@@ -126,7 +126,7 @@ func (vdbl *VectoDBLite) rebuildFlatC() (err error) {
 	if vdbl.flatC != nil {
 		C.IndexFlatDelete(vdbl.flatC)
 	}
-	vdbl.flatC = C.IndexFlatNew(C.long(vdbl.dim), C.float(vdbl.distThreshold))
+	vdbl.flatC = C.IndexFlatNew(C.long(vdbl.dim))
 	var xid uint64
 	for _, xidInf := range vdbl.lru.Keys() {
 		if xid, err = strconv.ParseUint(xidInf.(string), 16, 64); err != nil {

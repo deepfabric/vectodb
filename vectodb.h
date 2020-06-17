@@ -9,15 +9,11 @@ extern "C" {
  */
 void* VectodbNew(char* work_dir, long dim);
 void VectodbDelete(void* vdb);
-
-void* VectodbBuildIndex(void* vdb, long* ntrain);
 void VectodbAddWithIds(void* vdb, long nb, float* xb, long* xids);
+void VectodbRemoveIds(long nb, long* xids);
+void VectodbSearch(void* vdb, long nq, long k, float* xq, long* uids, float* scores, long* xids);
+void VectodbSyncIndex(void* vdb);
 long VectodbGetTotal(void* vdb);
-long VectodbGetFlatSize(void* vdb);
-
-void VectodbActivateIndex(void* vdb, void* index, long ntrain);
-void VectodbGetIndexSize(void* vdb, long* ntrain, long* nsize);
-long VectodbSearch(void* vdb, long nq, float* xq, long *ks, float* scores, long* xids);
 
 /**
  * Static methods.

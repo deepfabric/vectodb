@@ -77,13 +77,9 @@ func VectodbMultiClearWorkDir(workDir string) (err error) {
 	return
 }
 
-func NewVectodbMulti(workDir string, dim int, metricType int, indexKey string, queryParams string, distThr float32, sizeLimit int) (vm *VectodbMulti, err error) {
+func NewVectodbMulti(workDir string, dim int, sizeLimit int) (vm *VectodbMulti, err error) {
 	vm = &VectodbMulti{
 		dim:         dim,
-		metricType:  metricType,
-		indexKey:    indexKey,
-		queryParams: queryParams,
-		distThr:     distThr,
 		workDir:     workDir,
 		sizeLimit:   sizeLimit,
 		curXidBatch: 0,
@@ -120,7 +116,7 @@ func NewVectodbMulti(workDir string, dim int, metricType int, indexKey string, q
 	sort.Ints(seqs)
 	for _, seq := range seqs {
 		dp := filepath.Join(workDir, getWorkDir(seq))
-		vdb, err = NewVectoDB(dp, dim, metricType, indexKey, queryParams, distThr, vm.sizeLimit/200)
+		vdb, err = NewVectoDB(dp, dim)
 		vm.vdbs = append(vm.vdbs, vdb)
 	}
 	vm.maxSeq = seqs[len(seqs)-1]
@@ -130,32 +126,22 @@ func NewVectodbMulti(workDir string, dim int, metricType int, indexKey string, q
 //Search perform batch search
 /**
  * nq       number of query points, shall be equal to len(xids)
+ * k        kNN
  * xq       query points
- * xids     vector identifiers
  */
-func (vm *VectodbMulti) Search(nq int, xq []float32) (xids []int64, err error) {
-	dis := make([]float32, nq)
-	xids = make([]int64, nq)
-	for i := 0; i < nq; i++ {
-		dis[i] = vm.distThr
-		xids[i] = int64(-1)
-	}
-	dis2 := make([]float32, nq)
-	xids2 := make([]int64, nq)
-	var total int
+func (vm *VectodbMulti) Search(nq, k int, xq []float32) (res [][]XidScore, err error) {
+	res = make([][]XidScore, nq)
+	var res2 [][]XidScore
 	for _, vdb := range vm.vdbs {
-		if total, err = vdb.Search(xq, dis2, xids2); err != nil {
+		if res2, err = vdb.Search(k, xq, nil); err != nil {
 			return
 		}
-		if total == 0 {
-			continue
-		}
 		for i := 0; i < nq; i++ {
-			if xids[i] == int64(-1) || VectodbCompareDistance(vm.metricType, dis2[i], dis[i]) {
-				dis[i] = dis2[i]
-				xids[i] = xids2[i]
-			}
+			res[i] = append(res[i], res2[i]...)
 		}
+	}
+	for i := 0; i < nq; i++ {
+		sort.Slice(res[i], func(i1, i2 int) bool { return res[i][i1].Score > res[i][i2].Score })
 	}
 	return
 }
@@ -184,7 +170,7 @@ func (vm *VectodbMulti) AddWithIds(xb []float32, xids []int64) (err error) {
 		} else {
 			vm.maxSeq++
 			dp := filepath.Join(vm.workDir, getWorkDir(vm.maxSeq))
-			if vdb, err = NewVectoDB(dp, vm.dim, vm.metricType, vm.indexKey, vm.queryParams, vm.distThr, vm.sizeLimit/200); err != nil {
+			if vdb, err = NewVectoDB(dp, vm.dim); err != nil {
 				return
 			}
 			vm.vdbs = append(vm.vdbs, vdb)
@@ -194,7 +180,7 @@ func (vm *VectodbMulti) AddWithIds(xb []float32, xids []int64) (err error) {
 	return
 }
 
-//StartBuilderLoop starts a goroutine to build build index in loop
+//StartBuilderLoop starts a goroutine to build index in loop
 func (vm *VectodbMulti) StartBuilderLoop() {
 	if vm.cancel != nil {
 		return
@@ -211,7 +197,7 @@ func (vm *VectodbMulti) StartBuilderLoop() {
 				log.Infof("build iteration begin")
 				vdbs := vm.vdbs
 				for _, vdb := range vdbs {
-					if err = vdb.UpdateIndex(); err != nil {
+					if err = vdb.SyncIndex(); err != nil {
 						log.Fatalf("%+v", err)
 					}
 					// sleep a while to avoid busy loop

@@ -25,6 +25,7 @@
 #include "faiss/IndexHNSW.h"
 #include "faiss/IndexIVFFlat.h"
 #include "faiss/index_io.h"
+#include "faiss/index_factory.h"
 
 using namespace std;
 

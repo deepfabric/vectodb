@@ -7,7 +7,7 @@ import glob
 # Build vectodb on CentOS 7 x86_64:
 # 1. Enable EPEL, refers to https://fedoraproject.org/wiki/EPEL.
 # 2. Install dependencies.
-# $ sudo yum -y install gcc-c++ openblas-devel swig python-devel numpy glog-devel gflags-devel boost-devel jemalloc-devel
+# $ sudo yum -y install gcc-c++ openblas-devel swig python-devel numpy glog-devel gflags-devel jemalloc-devel
 # 3. Install and enable devtoolset-8, refers to https://www.softwarecollections.org/en/scls/rhscl/devtoolset-8/, https://access.redhat.com/solutions/527703
 # 4. Build all
 # $ scons
@@ -17,7 +17,7 @@ import glob
 # $ sudo dpkg-reconfigure dash
 # select No.
 # 2. Install dependencies.
-# $ sudo apt install libboost-dev libboost-thread-dev libboost-system-dev libboost-filesystem-dev libopenblas-dev libgoogle-glog-dev libjemalloc-dev
+# $ sudo apt install libopenblas-dev libgoogle-glog-dev libjemalloc-dev
 # 3. Build all
 # $ scons
 
@@ -39,9 +39,9 @@ Export("env")
 
 SConscript(["demos/SConscript"])
 
-env.StaticLibrary('vectodb', ['vectodb.cpp'], LIBS=['boost_thread', 'boost_filesystem', 'boost_system'])
+env.StaticLibrary('vectodb', ['vectodb.cpp'])
 
-env.Command('demos/demo_sift1M_vectodb_go', glob.glob('*.go') + glob.glob('demos/*.go') + glob.glob('*.cpp') + ['faiss/libfaiss.a'], 'go install -x . && pushd demos && go build -o demo_sift1M_vectodb_go demo_sift1M_vectodb.go && go build -o demo_sift100M_vectodb_go demo_sift100M_vectodb.go && go build -o demo_vectodblite_go demo_vectodblite.go && popd')
+env.Command('demos/demo_sift1M_vectodb_go', glob.glob('*.go') + glob.glob('demos/*.go') + glob.glob('*.cpp') + ['faiss/libfaiss.a'], 'go install -x . && pushd demos && go build -o demo_sift1M_vectodb_go demo_sift1M_vectodb.go && go build -o demo_vectodblite_go demo_vectodblite.go && popd')
 
 env.Command('cmd/vectodblite_cluster/vectodblite_cluster', glob.glob('cmd/vectodblite_cluster/*.go') + ['demos/demo_sift1M_vectodb_go'], 'pushd cmd/vectodblite_cluster && go build . && popd')
 
