@@ -11,7 +11,7 @@ pragma_omp = re.compile('^\s*#pragma omp')
 
 def remove_pragma_fp(fp):
     '''Return whether the file contains OMP pragma.'''
-    print(fp)
+    # print(fp)
     lines = []
     omp_continue = False  # is inside an pragma block?
     found_omp = False
@@ -21,7 +21,7 @@ def remove_pragma_fp(fp):
             lines.append(line)
             continue
         found_omp = True
-        print(line, end='')
+        # print(line, end='')
         line = line.rstrip()
         if line.endswith("\\"):
             omp_continue = True
@@ -45,10 +45,10 @@ def remove_pragma(dir_path):
         if omp:
             omp_files.append(dir_path)
         return omp_files
-    for root, dirs, files in os.walk(dir_path, followlinks=True):
+    for root, dirs, files in os.walk(dir_path):
         # print(root)
         for fn in files:
-            # print(fn)
+            # print(fp)
             ext = os.path.splitext(fn)[1]
             if extpatt.match(ext) is None:
                 continue
@@ -68,7 +68,10 @@ def main():
     roots = sorted(args.root)
     # print(roots)
     for root in roots:
-        remove_pragma(root)
+        omp_files = remove_pragma(root)
+        if(omp_files):
+            print('modified following files in place:' + '*'*30)
+            print('\n'.join(omp_files))
 
 
 if __name__ == '__main__':
