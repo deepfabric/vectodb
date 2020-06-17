@@ -13,8 +13,11 @@ var searchData=
   ['hammingcomputerm4',['HammingComputerM4',['../structfaiss_1_1HammingComputerM4.html',1,'faiss']]],
   ['hammingcomputerm8',['HammingComputerM8',['../structfaiss_1_1HammingComputerM8.html',1,'faiss']]],
   ['hammings',['hammings',['../namespacefaiss.html#a0832c5ab58f4d1a340b0bde273c5b501',1,'faiss']]],
-  ['hammings_5fknn',['hammings_knn',['../namespacefaiss.html#ac0b4dc73a8470d61f510396dc460ca18',1,'faiss']]],
-  ['hasnewfatalfailurehelper',['HasNewFatalFailureHelper',['../classtesting_1_1internal_1_1HasNewFatalFailureHelper.html',1,'testing::internal']]],
+  ['hammings_5fknn_5fhc',['hammings_knn_hc',['../namespacefaiss.html#aef2e95991f435b0103db0efe07edff81',1,'faiss']]],
+  ['hammings_5fknn_5fmc',['hammings_knn_mc',['../namespacefaiss.html#aa9ac586642ba474949a007546ab05592',1,'faiss']]],
+  ['handleexceptions',['handleExceptions',['../namespacefaiss.html#a542cf4d499962a3d7a0db924424d8870',1,'faiss']]],
+  ['hash_5fbytes',['hash_bytes',['../namespacefaiss.html#abefd45801bab63d2eb71005ad7a51d32',1,'faiss']]],
+  ['hcounterstate',['HCounterState',['../structfaiss_1_1HCounterState.html',1,'faiss']]],
   ['head_5f',['head_',['../structfaiss_1_1gpu_1_1StackDeviceMemory_1_1Stack.html#a140d3dc4577883704708ecca493813ff',1,'faiss::gpu::StackDeviceMemory::Stack']]],
   ['heap_5fpop',['heap_pop',['../namespacefaiss.html#a1d40aec5723474516de576263cc03048',1,'faiss']]],
   ['heap_5fpush',['heap_push',['../namespacefaiss.html#acbe85976d4f73309622f6b62c4d7af2b',1,'faiss']]],
@@ -26,5 +29,7 @@ var searchData=
   ['hnsw',['HNSW',['../structfaiss_1_1HNSW.html',1,'faiss']]],
   ['hnswstats',['HNSWStats',['../structfaiss_1_1HNSWStats.html',1,'faiss']]],
   ['hosttensor',['HostTensor',['../classfaiss_1_1gpu_1_1HostTensor.html#a8e7c2b93a26a168a7adcb1c49492e165',1,'faiss::gpu::HostTensor::HostTensor()'],['../classfaiss_1_1gpu_1_1HostTensor.html#a6aa9dc08df68655ff666a8b24aa0c2f4',1,'faiss::gpu::HostTensor::HostTensor(const IndexT sizes[Dim])'],['../classfaiss_1_1gpu_1_1HostTensor.html#a2b703685aea24d432f4d7ccf535e3ca6',1,'faiss::gpu::HostTensor::HostTensor(DataPtrType data, const IndexT sizes[Dim])'],['../classfaiss_1_1gpu_1_1HostTensor.html#a05a4f8a8b45c865f1bcf40ff7e3c95a1',1,'faiss::gpu::HostTensor::HostTensor(DataPtrType data, const IndexT sizes[Dim], const IndexT strides[Dim])'],['../classfaiss_1_1gpu_1_1HostTensor.html#a5a55bceb878e941192f8fc7bf400208a',1,'faiss::gpu::HostTensor::HostTensor(Tensor&lt; T, Dim, InnerContig, IndexT, PtrTraits &gt; &amp;t, cudaStream_t stream)']]],
-  ['hosttensor',['HostTensor',['../classfaiss_1_1gpu_1_1HostTensor.html',1,'faiss::gpu']]]
+  ['hosttensor',['HostTensor',['../classfaiss_1_1gpu_1_1HostTensor.html',1,'faiss::gpu']]],
+  ['hstackinvertedlists',['HStackInvertedLists',['../structfaiss_1_1HStackInvertedLists.html',1,'faiss']]],
+  ['hstackinvertedlists',['HStackInvertedLists',['../structfaiss_1_1HStackInvertedLists.html#a882d2fde7902129f3ee2473efc4442da',1,'faiss::HStackInvertedLists']]]
 ];

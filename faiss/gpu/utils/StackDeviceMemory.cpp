@@ -1,17 +1,16 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
-#include "StackDeviceMemory.h"
-#include "DeviceUtils.h"
-#include "StaticUtils.h"
-#include "../../FaissAssert.h"
+#include <faiss/gpu/utils/StackDeviceMemory.h>
+#include <faiss/gpu/utils/DeviceUtils.h>
+#include <faiss/gpu/utils/MemorySpace.h>
+#include <faiss/gpu/utils/StaticUtils.h>
+#include <faiss/impl/FaissAssert.h>
 #include <stdio.h>
 #include <sstream>
 
@@ -26,11 +25,11 @@ StackDeviceMemory::Stack::Stack(int d, size_t sz)
       head_(nullptr),
       mallocCurrent_(0),
       highWaterMemoryUsed_(0),
-      highWaterMalloc_(0) {
+      highWaterMalloc_(0),
+      cudaMallocWarning_(true) {
   DeviceScope s(device_);
 
-  cudaError_t err = cudaMalloc(&start_, size_);
-  FAISS_ASSERT(err == cudaSuccess);
+  allocMemorySpace(MemorySpace::Device, &start_, size_);
 
   head_ = start_;
   end_ = start_ + size_;
@@ -42,15 +41,18 @@ StackDeviceMemory::Stack::Stack(int d, void* p, size_t sz, bool isOwner)
       start_((char*) p),
       end_(((char*) p) + sz),
       size_(sz),
-      head_((char*) p) {
+      head_((char*) p),
+      mallocCurrent_(0),
+      highWaterMemoryUsed_(0),
+      highWaterMalloc_(0),
+      cudaMallocWarning_(true) {
 }
 
 StackDeviceMemory::Stack::~Stack() {
   if (isOwner_) {
     DeviceScope s(device_);
 
-    cudaError_t err = cudaFree(start_);
-    FAISS_ASSERT(err == cudaSuccess);
+    freeMemorySpace(MemorySpace::Device, start_);
   }
 }
 
@@ -60,21 +62,21 @@ StackDeviceMemory::Stack::getSizeAvailable() const {
 }
 
 char*
-StackDeviceMemory::Stack::getAlloc(size_t size, cudaStream_t stream) {
+StackDeviceMemory::Stack::getAlloc(size_t size,
+                                   cudaStream_t stream) {
   if (size > (end_ - head_)) {
     // Too large for our stack
     DeviceScope s(device_);
 
-    // Print our requested size before we attempt the allocation
-    fprintf(stderr, "WARN: increase temp memory to avoid cudaMalloc, "
-            "or decrease query/add size (alloc %zu B, highwater %zu B)\n",
-            size, highWaterMalloc_);
+    if (cudaMallocWarning_) {
+      // Print our requested size before we attempt the allocation
+      fprintf(stderr, "WARN: increase temp memory to avoid cudaMalloc, "
+              "or decrease query/add size (alloc %zu B, highwater %zu B)\n",
+              size, highWaterMalloc_);
+    }
 
     char* p = nullptr;
-    auto err = cudaMalloc(&p, size);
-    FAISS_ASSERT_FMT(err == cudaSuccess,
-                     "cudaMalloc error %d on alloc size %zu",
-                     (int) err, size);
+    allocMemorySpace(MemorySpace::Device, &p, size);
 
     mallocCurrent_ += size;
     highWaterMalloc_ = std::max(highWaterMalloc_, mallocCurrent_);
@@ -134,10 +136,7 @@ StackDeviceMemory::Stack::returnAlloc(char* p,
     // This is not on our stack; it was a one-off allocation
     DeviceScope s(device_);
 
-    auto err = cudaFree(p);
-    FAISS_ASSERT_FMT(err == cudaSuccess,
-                     "cudaFree error %d (addr %p size %zu)",
-                     (int) err, p, size);
+    freeMemorySpace(MemorySpace::Device, p);
 
     FAISS_ASSERT(mallocCurrent_ >= size);
     mallocCurrent_ -= size;
@@ -148,7 +147,7 @@ StackDeviceMemory::Stack::returnAlloc(char* p,
 
     head_ = p;
     lastUsers_.push_back(Range(p, p + size, stream));
-   }
+  }
 }
 
 std::string
@@ -189,6 +188,11 @@ StackDeviceMemory::StackDeviceMemory(int device,
 }
 
 StackDeviceMemory::~StackDeviceMemory() {
+}
+
+void
+StackDeviceMemory::setCudaMallocWarning(bool b) {
+  stack_.cudaMallocWarning_ = b;
 }
 
 int

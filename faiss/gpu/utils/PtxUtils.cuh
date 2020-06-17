@@ -1,12 +1,10 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
 #pragma once
 
@@ -39,7 +37,7 @@ unsigned int setBitfield(unsigned int val,
 
 __device__ __forceinline__ int getLaneId() {
   int laneId;
-  asm("mov.s32 %0, %laneid;" : "=r"(laneId) );
+  asm("mov.u32 %0, %laneid;" : "=r"(laneId) );
   return laneId;
 }
 
@@ -73,15 +71,6 @@ __device__ __forceinline__ void namedBarrierWait(int name, int numThreads) {
 
 __device__ __forceinline__ void namedBarrierArrived(int name, int numThreads) {
   asm volatile("bar.arrive %0, %1;" : : "r"(name), "r"(numThreads) : "memory");
-}
-
-// FIXME: prefetch does nothing (in SASS) on Maxwell
-__device__ __forceinline__ void prefetchL2(const void *p) {
-  asm volatile("prefetch.global.L2 [%0];" : : "l"(p));
-}
-
-__device__ __forceinline__ void prefetchL1(const void *p) {
-  asm volatile("prefetch.global.L1 [%0];" : : "l"(p));
 }
 
 } } // namespace

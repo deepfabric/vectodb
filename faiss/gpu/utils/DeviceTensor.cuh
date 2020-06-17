@@ -1,18 +1,16 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
 #pragma once
 
-#include "Tensor.cuh"
-#include "DeviceMemory.h"
-#include "MemorySpace.h"
+#include <faiss/gpu/utils/Tensor.cuh>
+#include <faiss/gpu/utils/DeviceMemory.h>
+#include <faiss/gpu/utils/MemorySpace.h>
 
 namespace faiss { namespace gpu {
 
@@ -112,4 +110,4 @@ class DeviceTensor : public Tensor<T, Dim, InnerContig, IndexT, PtrTraits> {
 
 } } // namespace
 
-#include "DeviceTensor-inl.cuh"
+#include <faiss/gpu/utils/DeviceTensor-inl.cuh>

@@ -1,8 +1,7 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
@@ -23,7 +22,7 @@ FAISS_DECLARE_CLASS(GpuClonerOptions)
 
 FAISS_DECLARE_DESTRUCTOR(GpuClonerOptions)
 
-// Default constructor for GpuClonerOptions
+/// Default constructor for GpuClonerOptions
 int faiss_GpuClonerOptions_new(FaissGpuClonerOptions**);
 
 /// how should indices be stored on index types that support indices
@@ -50,6 +49,11 @@ FAISS_DECLARE_GETTER_SETTER(GpuClonerOptions, int, storeTransposed)
 FAISS_DECLARE_GETTER_SETTER(GpuClonerOptions, int, verbose)
 
 FAISS_DECLARE_CLASS_INHERITED(GpuMultipleClonerOptions, GpuClonerOptions)
+
+FAISS_DECLARE_DESTRUCTOR(GpuMultipleClonerOptions)
+
+/// Default constructor for GpuMultipleClonerOptions
+int faiss_GpuMultipleClonerOptions_new(FaissGpuMultipleClonerOptions**);
 
 /// (boolean) Whether to shard the index across GPUs, versus replication
 /// across GPUs

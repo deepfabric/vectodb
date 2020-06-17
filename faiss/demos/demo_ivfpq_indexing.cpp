@@ -1,12 +1,10 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved
 
 
 #include <cmath>
@@ -16,9 +14,9 @@
 #include <sys/time.h>
 
 
-#include "../IndexIVFPQ.h"
-#include "../IndexFlat.h"
-#include "../index_io.h"
+#include <faiss/IndexIVFPQ.h>
+#include <faiss/IndexFlat.h>
+#include <faiss/index_io.h>
 
 double elapsed ()
 {
@@ -98,7 +96,7 @@ int main ()
         index.add (nb, database.data());
 
         printf ("[%.3f s] imbalance factor: %g\n",
-                elapsed() - t0, index.imbalance_factor ());
+                elapsed() - t0, index.invlists->imbalance_factor ());
 
         // remember a few elements from the database as queries
         int i0 = 1234;

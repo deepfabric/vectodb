@@ -1,19 +1,18 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
 #pragma once
 
-#include "../GpuIndicesOptions.h"
-#include "../utils/DeviceVector.cuh"
-#include "../utils/DeviceTensor.cuh"
-#include "../utils/MemorySpace.h"
+#include <faiss/MetricType.h>
+#include <faiss/gpu/GpuIndicesOptions.h>
+#include <faiss/gpu/utils/DeviceVector.cuh>
+#include <faiss/gpu/utils/DeviceTensor.cuh>
+#include <faiss/gpu/utils/MemorySpace.h>
 #include <memory>
 #include <thrust/device_vector.h>
 #include <vector>
@@ -27,6 +26,8 @@ struct FlatIndex;
 class IVFBase {
  public:
   IVFBase(GpuResources* resources,
+          faiss::MetricType metric,
+          float metricArg,
           /// We do not own this reference
           FlatIndex* quantizer,
           int bytesPerVector,
@@ -59,6 +60,9 @@ class IVFBase {
   /// Return the list indices of a particular list back to the CPU
   std::vector<long> getListIndices(int listId) const;
 
+  /// Return the encoded vectors of a particular list back to the CPU
+  std::vector<unsigned char> getListVectors(int listId) const;
+
  protected:
   /// Reclaim memory consumed on the device for our inverted lists
   /// `exact` means we trim exactly to the memory needed
@@ -80,6 +84,12 @@ class IVFBase {
  protected:
   /// Collection of GPU resources that we use
   GpuResources* resources_;
+
+  /// Metric type of the index
+  faiss::MetricType metric_;
+
+  /// Metric arg
+  float metricArg_;
 
   /// Quantizer object
   FlatIndex* quantizer_;

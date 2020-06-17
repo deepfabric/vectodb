@@ -1,19 +1,17 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
 #pragma once
 
-#include "GpuIndex.h"
-#include "GpuIndexFlat.h"
-#include "GpuIndicesOptions.h"
-#include "../Clustering.h"
+#include <faiss/gpu/GpuIndex.h>
+#include <faiss/gpu/GpuIndexFlat.h>
+#include <faiss/gpu/GpuIndicesOptions.h>
+#include <faiss/Clustering.h>
 
 namespace faiss { struct IndexIVF; }
 
@@ -39,6 +37,7 @@ class GpuIndexIVF : public GpuIndex {
   GpuIndexIVF(GpuResources* resources,
               int dims,
               faiss::MetricType metric,
+              float metricArg,
               int nlist,
               GpuIndexIVFConfig config = GpuIndexIVFConfig());
 
@@ -67,31 +66,25 @@ class GpuIndexIVF : public GpuIndex {
   /// Returns our current number of list probes per query
   int getNumProbes() const;
 
-  /// `x` can be resident on the CPU or any GPU; the proper copies are
-  /// performed
-  /// Forwards to add_with_ids; assigns IDs as needed
-  /// FIXME: remove override for C++03 compatibility
-  void add(Index::idx_t n, const float* x) override;
-
  protected:
+  bool addImplRequiresIDs_() const override;
   void trainQuantizer_(faiss::Index::idx_t n, const float* x);
 
  public:
-  /// Exposed as IndexIVF does to allow overriding clustering
-  /// parameters
+  /// Exposing this like the CPU version for manipulation
   ClusteringParameters cp;
+
+  /// Exposing this like the CPU version for query
+  int nlist;
+
+  /// Exposing this like the CPU version for manipulation
+  int nprobe;
+
+  /// Exposeing this like the CPU version for query
+  GpuIndexFlat* quantizer;
 
  protected:
   GpuIndexIVFConfig ivfConfig_;
-
-  /// Number of inverted lists that we manage
-  int nlist_;
-
-  /// Number of inverted list probes per query
-  int nprobe_;
-
-  /// Quantizer for inverted lists
-  GpuIndexFlat* quantizer_;
 };
 
 } } // namespace

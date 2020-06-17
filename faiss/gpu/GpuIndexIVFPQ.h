@@ -1,16 +1,14 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
 #pragma once
 
-#include "GpuIndexIVF.h"
+#include <faiss/gpu/GpuIndexIVF.h>
 #include <vector>
 
 namespace faiss { struct IndexIVFPQ; }
@@ -109,18 +107,16 @@ class GpuIndexIVFPQ : public GpuIndexIVF {
 
  protected:
   /// Called from GpuIndex for add/add_with_ids
-  void addImpl_(
-      faiss::Index::idx_t n,
-      const float* x,
-      const faiss::Index::idx_t* ids) override;
+  void addImpl_(int n,
+                const float* x,
+                const Index::idx_t* ids) override;
 
   /// Called from GpuIndex for search
-  void searchImpl_(
-      faiss::Index::idx_t n,
-      const float* x,
-      faiss::Index::idx_t k,
-      float* distances,
-      faiss::Index::idx_t* labels) const override;
+  void searchImpl_(int n,
+                   const float* x,
+                   int k,
+                   float* distances,
+                   Index::idx_t* labels) const override;
 
  private:
   void verifySettings_() const;

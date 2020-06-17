@@ -1,8 +1,7 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
@@ -37,7 +36,7 @@ int faiss_Index_add(FaissIndex* index, idx_t n, const float* x) {
     } CATCH_AND_HANDLE
 }
 
-int faiss_Index_add_with_ids(FaissIndex* index, idx_t n, const float* x, const long* xids) {
+int faiss_Index_add_with_ids(FaissIndex* index, idx_t n, const float* x, const idx_t* xids) {
     try {
         reinterpret_cast<faiss::Index*>(index)->add_with_ids(n, x, xids);
     } CATCH_AND_HANDLE
@@ -70,10 +69,10 @@ int faiss_Index_reset(FaissIndex* index) {
     } CATCH_AND_HANDLE
 }
 
-int faiss_Index_remove_ids(FaissIndex* index, const FaissIDSelector* sel, long* n_removed) {
+int faiss_Index_remove_ids(FaissIndex* index, const FaissIDSelector* sel, size_t* n_removed) {
     try {
-        long n = reinterpret_cast<faiss::Index*>(index)->remove_ids(
-            *reinterpret_cast<const faiss::IDSelector*>(sel));
+        size_t n {reinterpret_cast<faiss::Index*>(index)->remove_ids(
+            *reinterpret_cast<const faiss::IDSelector*>(sel))};
         if (n_removed) {
             *n_removed = n;
         }
@@ -98,10 +97,9 @@ int faiss_Index_compute_residual(const FaissIndex* index, const float* x, float*
     } CATCH_AND_HANDLE
 }
 
-int faiss_Index_display(const FaissIndex* index) {
+int faiss_Index_compute_residual_n(const FaissIndex* index, idx_t n, const float* x, float* residuals, const idx_t* keys) {
     try {
-        reinterpret_cast<const faiss::Index*>(index)->display();
+        reinterpret_cast<const faiss::Index *>(index)->compute_residual_n(n, x, residuals, keys);
     } CATCH_AND_HANDLE
 }
-
 }

@@ -1,17 +1,17 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
 #pragma once
 
-#include "../GpuIndicesOptions.h"
-#include "../utils/Tensor.cuh"
+#include <faiss/MetricType.h>
+#include <faiss/gpu/GpuIndicesOptions.h>
+#include <faiss/gpu/impl/GpuScalarQuantizer.cuh>
+#include <faiss/gpu/utils/Tensor.cuh>
 #include <thrust/device_vector.h>
 
 namespace faiss { namespace gpu {
@@ -26,8 +26,10 @@ void runIVFFlatScan(Tensor<float, 2, true>& queries,
                     thrust::device_vector<int>& listLengths,
                     int maxListLength,
                     int k,
-                    bool l2Distance,
-                    bool useFloat16,
+                    faiss::MetricType metric,
+                    bool useResidual,
+                    Tensor<float, 3, true>& residualBase,
+                    GpuScalarQuantizer* scalarQ,
                     // output
                     Tensor<float, 2, true>& outDistances,
                     // output

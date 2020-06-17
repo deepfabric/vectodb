@@ -1,8 +1,7 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
@@ -14,9 +13,11 @@
 #include <time.h>
 
 #include "error_c.h"
+#include "index_io_c.h"
 #include "Index_c.h"
 #include "IndexFlat_c.h"
 #include "AutoTune_c.h"
+#include "clone_index_c.h"
 
 #define FAISS_TRY(C)                                       \
     {                                                      \
@@ -26,7 +27,7 @@
         }                                                  \
     }
 
-inline double drand() {
+double drand() {
     return (double)rand() / (double)RAND_MAX;
 }
 
@@ -61,7 +62,7 @@ int main() {
     int k = 5;
 
     {       // sanity check: search 5 first vectors of xb
-        long *I = malloc(k * 5 * sizeof(long));
+        idx_t *I = malloc(k * 5 * sizeof(idx_t));
         float *D = malloc(k * 5 * sizeof(float));
         FAISS_TRY(faiss_Index_search(index, 5, xb, k, D, I));
         printf("I=\n");
@@ -73,7 +74,7 @@ int main() {
         free(D);
     }
     {       // search xq
-        long *I = malloc(k * nq * sizeof(long));
+        idx_t *I = malloc(k * nq * sizeof(idx_t));
         float *D = malloc(k * nq * sizeof(float));
         FAISS_TRY(faiss_Index_search(index, 5, xb, k, D, I));
         printf("I=\n");
@@ -84,6 +85,9 @@ int main() {
         free(I);
         free(D);
     }
+
+    printf("Saving index to disk...\n");
+    FAISS_TRY(faiss_write_index_fname(index, "example.index"));
 
     printf("Freeing index...\n");
     faiss_Index_free(index);

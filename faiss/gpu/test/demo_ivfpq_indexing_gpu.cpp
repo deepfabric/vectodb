@@ -1,8 +1,7 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
@@ -16,11 +15,11 @@
 #include <sys/time.h>
 
 
-#include "../StandardGpuResources.h"
-#include "../GpuIndexIVFPQ.h"
+#include <faiss/gpu/StandardGpuResources.h>
+#include <faiss/gpu/GpuIndexIVFPQ.h>
 
-#include "../GpuAutoTune.h"
-#include "../../index_io.h"
+#include <faiss/gpu/GpuAutoTune.h>
+#include <faiss/index_io.h>
 
 double elapsed ()
 {

@@ -1,21 +1,19 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
-#include "IVFBase.cuh"
-#include "../GpuResources.h"
-#include "FlatIndex.cuh"
-#include "InvertedListAppend.cuh"
-#include "RemapIndices.h"
-#include "../utils/DeviceDefs.cuh"
-#include "../utils/DeviceUtils.h"
-#include "../utils/HostTensor.cuh"
+#include <faiss/gpu/impl/IVFBase.cuh>
+#include <faiss/gpu/GpuResources.h>
+#include <faiss/gpu/impl/FlatIndex.cuh>
+#include <faiss/gpu/impl/IVFAppend.cuh>
+#include <faiss/gpu/impl/RemapIndices.h>
+#include <faiss/gpu/utils/DeviceDefs.cuh>
+#include <faiss/gpu/utils/DeviceUtils.h>
+#include <faiss/gpu/utils/HostTensor.cuh>
 #include <limits>
 #include <thrust/host_vector.h>
 #include <unordered_map>
@@ -23,11 +21,15 @@
 namespace faiss { namespace gpu {
 
 IVFBase::IVFBase(GpuResources* resources,
+                 faiss::MetricType metric,
+                 float metricArg,
                  FlatIndex* quantizer,
                  int bytesPerVector,
                  IndicesOptions indicesOptions,
                  MemorySpace space) :
     resources_(resources),
+    metric_(metric),
+    metricArg_(metricArg),
     quantizer_(quantizer),
     bytesPerVector_(bytesPerVector),
     indicesOptions_(indicesOptions),
@@ -239,6 +241,15 @@ IVFBase::getListIndices(int listId) const {
     FAISS_ASSERT(false);
     return std::vector<long>();
   }
+}
+
+std::vector<unsigned char>
+IVFBase::getListVectors(int listId) const {
+  FAISS_ASSERT(listId < deviceListData_.size());
+  auto& list = *deviceListData_[listId];
+  auto stream = resources_->getDefaultStreamCurrentDevice();
+
+  return list.copyToHost<unsigned char>(stream);
 }
 
 void

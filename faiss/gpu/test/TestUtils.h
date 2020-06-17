@@ -1,17 +1,15 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
 #pragma once
 
-#include "../../FaissAssert.h"
-#include "../../Index.h"
+#include <faiss/impl/FaissAssert.h>
+#include <faiss/Index.h>
 #include <initializer_list>
 #include <memory>
 #include <string>
@@ -55,6 +53,9 @@ T randSelect(std::initializer_list<T> vals) {
 
 /// Generates a collection of random vectors in the range [0, 1]
 std::vector<float> randVecs(size_t num, size_t dim);
+
+/// Generates a collection of random bit vectors
+std::vector<unsigned char> randBinaryVecs(size_t num, size_t dim);
 
 /// Compare two indices via query for similarity, with a user-specified set of
 /// query vectors

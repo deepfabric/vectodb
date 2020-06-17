@@ -1,23 +1,22 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
-#include "L2Select.cuh"
-#include "../../FaissAssert.h"
+#include <faiss/gpu/impl/L2Select.cuh>
+#include <faiss/impl/FaissAssert.h>
 
-#include "../utils/DeviceUtils.h"
-#include "../utils/MathOperators.cuh"
-#include "../utils/Pair.cuh"
-#include "../utils/Reductions.cuh"
-#include "../utils/Select.cuh"
-#include "../utils/Tensor.cuh"
-#include "../utils/StaticUtils.h"
+#include <faiss/gpu/utils/DeviceDefs.cuh>
+#include <faiss/gpu/utils/DeviceUtils.h>
+#include <faiss/gpu/utils/MathOperators.cuh>
+#include <faiss/gpu/utils/Pair.cuh>
+#include <faiss/gpu/utils/Reductions.cuh>
+#include <faiss/gpu/utils/Select.cuh>
+#include <faiss/gpu/utils/Tensor.cuh>
+#include <faiss/gpu/utils/StaticUtils.h>
 
 namespace faiss { namespace gpu {
 
@@ -66,8 +65,8 @@ __global__ void l2SelectMin1(Tensor<T, 2, true> productDistances,
 
       // Reduce within the block
       threadMin[0] =
-        blockReduceAll<Pair<T, int>, Min<Pair<T, int> >, false, false>(
-        threadMin[0], Min<Pair<T, int> >(), blockMin);
+        blockReduceAll<Pair<T, int>, Min<Pair<T, int>>, false, false>(
+        threadMin[0], Min<Pair<T, int>>(), blockMin);
 
       if (threadIdx.x == 0) {
         outDistances[row][0] = threadMin[0].k;
@@ -105,8 +104,13 @@ __global__ void l2SelectMin1(Tensor<T, 2, true> productDistances,
     }
 
     // Reduce within the block
-    blockReduceAll<kRowsPerBlock, Pair<T, int>, Min<Pair<T, int> >, false, false>(
-      threadMin, Min<Pair<T, int> >(), blockMin);
+    blockReduceAll<kRowsPerBlock,
+                   Pair<T, int>,
+                   Min<Pair<T, int> >,
+                   false,
+                   false>(threadMin,
+                          Min<Pair<T, int> >(),
+                          blockMin);
 
     if (threadIdx.x == 0) {
 #pragma unroll
@@ -160,7 +164,6 @@ __global__ void l2SelectMinK(Tensor<T, 2, true> productDistances,
   }
 }
 
-// FIXME: no TVec specialization
 template <typename T>
 void runL2SelectMin(Tensor<T, 2, true>& productDistances,
                     Tensor<T, 1, true>& centroidDistances,
@@ -173,7 +176,7 @@ void runL2SelectMin(Tensor<T, 2, true>& productDistances,
   FAISS_ASSERT(centroidDistances.getSize(0) == productDistances.getSize(1));
   FAISS_ASSERT(outDistances.getSize(1) == k);
   FAISS_ASSERT(outIndices.getSize(1) == k);
-  FAISS_ASSERT(k <= 1024);
+  FAISS_ASSERT(k <= GPU_MAX_SELECTION_K);
 
   if (k == 1) {
     constexpr int kThreadsPerBlock = 256;
@@ -186,31 +189,36 @@ void runL2SelectMin(Tensor<T, 2, true>& productDistances,
       <<<grid, block, 0, stream>>>(productDistances, centroidDistances,
                                    outDistances, outIndices);
   } else {
-    constexpr int kThreadsPerBlock = 128;
-
-    auto block = dim3(kThreadsPerBlock);
     auto grid = dim3(outDistances.getSize(0));
 
-#define RUN_L2_SELECT(NUM_WARP_Q, NUM_THREAD_Q)                         \
+#define RUN_L2_SELECT(BLOCK, NUM_WARP_Q, NUM_THREAD_Q)                  \
     do {                                                                \
-      l2SelectMinK<T, NUM_WARP_Q, NUM_THREAD_Q, kThreadsPerBlock>       \
-        <<<grid, block, 0, stream>>>(productDistances, centroidDistances, \
+      l2SelectMinK<T, NUM_WARP_Q, NUM_THREAD_Q, BLOCK>                  \
+        <<<grid, BLOCK, 0, stream>>>(productDistances, centroidDistances, \
                                      outDistances, outIndices,          \
                                      k, Limits<T>::getMax());           \
     } while (0)
 
+    // block size 128 for everything <= 1024
     if (k <= 32) {
-      RUN_L2_SELECT(32, 2);
+      RUN_L2_SELECT(128, 32, 2);
     } else if (k <= 64) {
-      RUN_L2_SELECT(64, 3);
+      RUN_L2_SELECT(128, 64, 3);
     } else if (k <= 128) {
-      RUN_L2_SELECT(128, 3);
+      RUN_L2_SELECT(128, 128, 3);
     } else if (k <= 256) {
-      RUN_L2_SELECT(256, 4);
+      RUN_L2_SELECT(128, 256, 4);
     } else if (k <= 512) {
-      RUN_L2_SELECT(512, 8);
+      RUN_L2_SELECT(128, 512, 8);
     } else if (k <= 1024) {
-      RUN_L2_SELECT(1024, 8);
+      RUN_L2_SELECT(128, 1024, 8);
+
+#if GPU_MAX_SELECTION_K >= 2048
+    } else if (k <= 2048) {
+      // smaller block for less shared memory
+      RUN_L2_SELECT(64, 2048, 8);
+#endif
+
     } else {
       FAISS_ASSERT(false);
     }
@@ -232,21 +240,5 @@ void runL2SelectMin(Tensor<float, 2, true>& productDistances,
                         k,
                         stream);
 }
-
-#ifdef FAISS_USE_FLOAT16
-void runL2SelectMin(Tensor<half, 2, true>& productDistances,
-                    Tensor<half, 1, true>& centroidDistances,
-                    Tensor<half, 2, true>& outDistances,
-                    Tensor<int, 2, true>& outIndices,
-                    int k,
-                    cudaStream_t stream) {
-  runL2SelectMin<half>(productDistances,
-                       centroidDistances,
-                       outDistances,
-                       outIndices,
-                       k,
-                       stream);
-}
-#endif
 
 } } // namespace

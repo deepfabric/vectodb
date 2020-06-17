@@ -1,23 +1,23 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
+// -*- c++ -*-
 
-#include "IndexLSH.h"
+#include <faiss/IndexLSH.h>
 
 #include <cstdio>
 #include <cstring>
 
 #include <algorithm>
 
-#include "utils.h"
-#include "hamming.h"
-#include "FaissAssert.h"
+#include <faiss/utils/utils.h>
+#include <faiss/utils/hamming.h>
+#include <faiss/impl/FaissAssert.h>
+
 
 namespace faiss {
 
@@ -55,6 +55,7 @@ const float * IndexLSH::apply_preprocess (idx_t n, const float *x) const
         // also applies bias if exists
         xt = rrot.apply (n, x);
     } else if (d != nbits) {
+        assert (nbits < d);
         xt = new float [nbits * n];
         float *xp = xt;
         for (idx_t i = 0; i < n; i++) {
@@ -116,11 +117,10 @@ void IndexLSH::train (idx_t n, const float *x)
 void IndexLSH::add (idx_t n, const float *x)
 {
     FAISS_THROW_IF_NOT (is_trained);
-    const float *xt = apply_preprocess (n, x);
-    ScopeDeleter<float> del (xt == x ? nullptr : xt);
-
     codes.resize ((ntotal + n) * bytes_per_vec);
-    fvecs2bitvecs (xt, &codes[ntotal * bytes_per_vec], nbits, n);
+
+    sa_encode (n, x, &codes[ntotal * bytes_per_vec]);
+
     ntotal += n;
 }
 
@@ -146,8 +146,8 @@ void IndexLSH::search (
 
     int_maxheap_array_t res = { size_t(n), size_t(k), labels, idistances};
 
-    hammings_knn (&res, qcodes, codes.data(),
-                  ntotal, bytes_per_vec, true);
+    hammings_knn_hc (&res, qcodes, codes.data(),
+                     ntotal, bytes_per_vec, true);
 
 
     // convert distances to floats
@@ -173,6 +173,51 @@ void IndexLSH::transfer_thresholds (LinearTransform *vt) {
 void IndexLSH::reset() {
     codes.clear();
     ntotal = 0;
+}
+
+
+size_t IndexLSH::sa_code_size () const
+{
+    return bytes_per_vec;
+}
+
+void IndexLSH::sa_encode (idx_t n, const float *x,
+                                uint8_t *bytes) const
+{
+    FAISS_THROW_IF_NOT (is_trained);
+    const float *xt = apply_preprocess (n, x);
+    ScopeDeleter<float> del (xt == x ? nullptr : xt);
+    fvecs2bitvecs (xt, bytes, nbits, n);
+}
+
+void IndexLSH::sa_decode (idx_t n, const uint8_t *bytes,
+                                  float *x) const
+{
+    float *xt = x;
+    ScopeDeleter<float> del;
+    if (rotate_data || nbits != d) {
+        xt = new float [n * nbits];
+        del.set(xt);
+    }
+    bitvecs2fvecs (bytes, xt, nbits, n);
+
+    if (train_thresholds) {
+        float *xp = xt;
+        for (idx_t i = 0; i < n; i++) {
+            for (int j = 0; j < nbits; j++) {
+                *xp++ += thresholds [j];
+            }
+        }
+    }
+
+    if (rotate_data) {
+        rrot.reverse_transform (n, xt, x);
+    } else if (nbits != d) {
+        for (idx_t i = 0; i < n; i++) {
+            memcpy (x + i * d, xt + i * nbits,
+                    nbits * sizeof(xt[0]));
+        }
+    }
 }
 
 

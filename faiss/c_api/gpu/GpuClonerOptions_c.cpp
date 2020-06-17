@@ -1,8 +1,7 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
@@ -23,7 +22,14 @@ int faiss_GpuClonerOptions_new(FaissGpuClonerOptions** p) {
     } CATCH_AND_HANDLE
 }
 
+int faiss_GpuMultipleClonerOptions_new(FaissGpuMultipleClonerOptions** p) {
+    try {
+        *p = reinterpret_cast<FaissGpuMultipleClonerOptions*>(new GpuMultipleClonerOptions());
+    } CATCH_AND_HANDLE
+}
+
 DEFINE_DESTRUCTOR(GpuClonerOptions)
+DEFINE_DESTRUCTOR(GpuMultipleClonerOptions)
 
 DEFINE_GETTER(GpuClonerOptions, FaissIndicesOptions, indicesOptions)
 DEFINE_GETTER(GpuClonerOptions, int, useFloat16CoarseQuantizer)

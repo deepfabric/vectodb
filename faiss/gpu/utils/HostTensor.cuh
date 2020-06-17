@@ -1,16 +1,14 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
 #pragma once
 
-#include "Tensor.cuh"
+#include <faiss/gpu/utils/Tensor.cuh>
 
 namespace faiss { namespace gpu {
 
@@ -29,6 +27,13 @@ class HostTensor : public Tensor<T, Dim, InnerContig, IndexT, PtrTraits> {
 
   /// Destructor
   __host__ ~HostTensor();
+
+  /// Move constructor
+  __host__ HostTensor(HostTensor<T, Dim, InnerContig, IndexT, PtrTraits>&& t);
+
+  /// Move assignment
+  __host__ HostTensor<T, Dim, InnerContig, IndexT, PtrTraits>&
+  operator=(HostTensor<T, Dim, InnerContig, IndexT, PtrTraits>&& t);
 
   /// Constructs a tensor of the given size, allocating memory for it
   /// locally
@@ -83,4 +88,4 @@ class HostTensor : public Tensor<T, Dim, InnerContig, IndexT, PtrTraits> {
 
 } } // namespace
 
-#include "HostTensor-inl.cuh"
+#include <faiss/gpu/utils/HostTensor-inl.cuh>

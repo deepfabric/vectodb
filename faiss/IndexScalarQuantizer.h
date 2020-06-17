@@ -1,21 +1,20 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
+
+// -*- c++ -*-
 
 #ifndef FAISS_INDEX_SCALAR_QUANTIZER_H
 #define FAISS_INDEX_SCALAR_QUANTIZER_H
 
 #include <stdint.h>
-
-
 #include <vector>
 
-
-#include "IndexIVF.h"
+#include <faiss/IndexIVF.h>
+#include <faiss/impl/ScalarQuantizer.h>
 
 
 namespace faiss {
@@ -27,73 +26,6 @@ namespace faiss {
  */
 
 
-struct ScalarQuantizer {
-
-    enum QuantizerType {
-        QT_8bit,             ///< 8 bits per component
-        QT_4bit,             ///< 4 bits per component
-        QT_8bit_uniform,     ///< same, shared range for all dimensions
-        QT_4bit_uniform,
-    };
-
-    QuantizerType qtype;
-
-    /** The uniform encoder can estimate the range of representable
-     * values of the unform encoder using different statistics. Here
-     * rs = rangestat_arg */
-
-    // rangestat_arg.
-    enum RangeStat {
-        RS_minmax,           ///< [min - rs*(max-min), max + rs*(max-min)]
-        RS_meanstd,          ///< [mean - std * rs, mean + std * rs]
-        RS_quantiles,        ///< [Q(rs), Q(1-rs)]
-        RS_optim,            ///< alternate optimization of reconstruction error
-    };
-
-    RangeStat rangestat;
-    float rangestat_arg;
-
-    /// dimension of input vectors
-    size_t d;
-
-    /// bytes per vector
-    size_t code_size;
-
-    /// trained values (including the range)
-    std::vector<float> trained;
-
-    ScalarQuantizer (size_t d, QuantizerType qtype);
-    ScalarQuantizer ();
-
-    void train (size_t n, const float *x);
-
-
-    /// same as compute_code for several vectors
-    void compute_codes (const float * x,
-                        uint8_t * codes,
-                        size_t n) const ;
-
-    /// decode a vector from a given code (or n vectors if third argument)
-    void decode (const uint8_t *code, float *x, size_t n) const;
-
-    // fast, non thread-safe way of computing vector-to-code and
-    // code-to-code distances.
-    struct DistanceComputer {
-
-        /// vector-to-code distance computation
-        virtual float compute_distance (const float *x,
-                                        const uint8_t *code) = 0;
-
-        /// code-to-code distance computation
-        virtual float compute_code_distance (const uint8_t *code1,
-                                             const uint8_t *code2) = 0;
-        virtual ~DistanceComputer () {}
-    };
-
-    DistanceComputer *get_distance_computer (MetricType metric = METRIC_L2)
-        const;
-
-};
 
 
 struct IndexScalarQuantizer: Index {
@@ -134,6 +66,18 @@ struct IndexScalarQuantizer: Index {
 
     void reconstruct(idx_t key, float* recons) const override;
 
+    DistanceComputer *get_distance_computer () const override;
+
+    /* standalone codec interface */
+    size_t sa_code_size () const override;
+
+    void sa_encode (idx_t n, const float *x,
+                          uint8_t *bytes) const override;
+
+    void sa_decode (idx_t n, const uint8_t *bytes,
+                            float *x) const override;
+
+
 };
 
 
@@ -145,25 +89,34 @@ struct IndexScalarQuantizer: Index {
 
 struct IndexIVFScalarQuantizer: IndexIVF {
     ScalarQuantizer sq;
+    bool by_residual;
 
     IndexIVFScalarQuantizer(Index *quantizer, size_t d, size_t nlist,
                             ScalarQuantizer::QuantizerType qtype,
-                            MetricType metric = METRIC_L2);
+                            MetricType metric = METRIC_L2,
+                            bool encode_residual = true);
 
     IndexIVFScalarQuantizer();
 
     void train_residual(idx_t n, const float* x) override;
 
-    void add_with_ids(idx_t n, const float* x, const long* xids) override;
+    void encode_vectors(idx_t n, const float* x,
+                        const idx_t *list_nos,
+                        uint8_t * codes,
+                        bool include_listnos=false) const override;
 
-    void search_preassigned (idx_t n, const float *x, idx_t k,
-                             const idx_t *assign,
-                             const float *centroid_dis,
-                             float *distances, idx_t *labels,
-                             bool store_pairs) const override;
+    void add_with_ids(idx_t n, const float* x, const idx_t* xids) override;
 
-    void reconstruct_from_offset (long list_no, long offset,
+    InvertedListScanner *get_InvertedListScanner (bool store_pairs)
+        const override;
+
+
+    void reconstruct_from_offset (int64_t list_no, int64_t offset,
                                   float* recons) const override;
+
+    /* standalone codec interface */
+    void sa_decode (idx_t n, const uint8_t *bytes,
+                            float *x) const override;
 
 };
 

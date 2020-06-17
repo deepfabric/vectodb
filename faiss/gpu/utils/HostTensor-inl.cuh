@@ -1,12 +1,10 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
 namespace faiss { namespace gpu {
 
@@ -27,6 +25,36 @@ HostTensor<T, Dim, InnerContig, IndexT, PtrTraits>::~HostTensor() {
     delete[] this->data_;
     this->data_ = nullptr;
   }
+}
+
+template <typename T, int Dim, bool InnerContig,
+          typename IndexT, template <typename U> class PtrTraits>
+__host__
+HostTensor<T, Dim, InnerContig, IndexT, PtrTraits>::HostTensor(
+  HostTensor<T, Dim, InnerContig, IndexT, PtrTraits>&& t) :
+    Tensor<T, Dim, InnerContig, IndexT, PtrTraits>(),
+    state_(AllocState::NotOwner) {
+  this->operator=(std::move(t));
+}
+
+template <typename T, int Dim, bool InnerContig,
+          typename IndexT, template <typename U> class PtrTraits>
+__host__
+HostTensor<T, Dim, InnerContig, IndexT, PtrTraits>&
+HostTensor<T, Dim, InnerContig, IndexT, PtrTraits>::operator=(
+  HostTensor<T, Dim, InnerContig, IndexT, PtrTraits>&& t) {
+  if (this->state_ == AllocState::Owner) {
+    FAISS_ASSERT(this->data_ != nullptr);
+    delete[] this->data_;
+    this->data_ = nullptr;
+  }
+
+  this->Tensor<T, Dim, InnerContig, IndexT, PtrTraits>::operator=(
+    std::move(t));
+
+  this->state_ = t.state_; t.state_ = AllocState::NotOwner;
+
+  return *this;
 }
 
 template <typename T, int Dim, bool InnerContig,

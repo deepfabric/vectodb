@@ -1,44 +1,27 @@
-# Copyright (c) 2015-present, Facebook, Inc.
-# All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
 #
-# This source code is licensed under the BSD+Patents license found in the
+# This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-#! /usr/bin/env python2
-
 """this is a basic test script for simple indices work"""
+from __future__ import absolute_import, division, print_function
+# no unicode_literals because it messes up in py2
 
 import numpy as np
 import unittest
 import faiss
 import tempfile
 import os
+import re
+import warnings
 
+from common import get_dataset, get_dataset_2
 
-def get_dataset(d, nb, nt, nq):
-    rs = np.random.RandomState(123)
-    xb = rs.rand(nb, d).astype('float32')
-    xt = rs.rand(nt, d).astype('float32')
-    xq = rs.rand(nq, d).astype('float32')
+class TestModuleInterface(unittest.TestCase):
 
-    return (xt, xb, xq)
-
-
-def get_dataset_2(d, nb, nt, nq):
-    """A dataset that is not completely random but still challenging to
-    index
-    """
-    d1 = 10     # intrinsic dimension (more or less)
-    n = nb + nt + nq
-    rs = np.random.RandomState(1234)
-    x = rs.normal(size=(n, d1))
-    x = np.dot(x, rs.rand(d1, d))
-    # now we have a d1-dim ellipsoid in d-dimensional space
-    # higher factor (>4) -> higher frequency -> less linear
-    x = x * (rs.rand(d) * 4 + 0.1)
-    x = np.sin(x)
-    x = x.astype('float32')
-    return x[:nt], x[nt:-nq], x[-nq:]
+    def test_version_attribute(self):
+        assert hasattr(faiss, '__version__')
+        assert re.match('^\\d+\\.\\d+\\.\\d+$', faiss.__version__)
 
 
 class EvalIVFPQAccuracy(unittest.TestCase):
@@ -49,7 +32,7 @@ class EvalIVFPQAccuracy(unittest.TestCase):
         nt = 1500
         nq = 200
 
-        (xt, xb, xq) = get_dataset_2(d, nb, nt, nq)
+        (xt, xb, xq) = get_dataset_2(d, nt, nb, nq)
         d = xt.shape[1]
 
         gt_index = faiss.IndexFlatL2(d)
@@ -89,7 +72,7 @@ class EvalIVFPQAccuracy(unittest.TestCase):
         nt = 1500
         nq = 200
 
-        (xt, xb, xq) = get_dataset_2(d, nb, nt, nq)
+        (xt, xb, xq) = get_dataset_2(d, nt, nb, nq)
         d = xt.shape[1]
 
         gt_index = faiss.IndexFlatL2(d)
@@ -106,8 +89,8 @@ class EvalIVFPQAccuracy(unittest.TestCase):
         D, nns = index.search(xq, 10)
         n_ok = (nns == gt_nns).sum()
 
-        # should return 170
-        self.assertGreater(n_ok, 169)
+        # Should return 166 on mac, and 170 on linux.
+        self.assertGreater(n_ok, 165)
 
         ############# replace with explicit assignment indexes
         nbits = 5
@@ -132,7 +115,7 @@ class EvalIVFPQAccuracy(unittest.TestCase):
         n_ok = (nns == gt_nns).sum()
 
         # should return the same result
-        self.assertGreater(n_ok, 169)
+        self.assertGreater(n_ok, 165)
 
 
     def test_IMI_2(self):
@@ -141,7 +124,7 @@ class EvalIVFPQAccuracy(unittest.TestCase):
         nt = 1500
         nq = 200
 
-        (xt, xb, xq) = get_dataset_2(d, nb, nt, nq)
+        (xt, xb, xq) = get_dataset_2(d, nt, nb, nq)
         d = xt.shape[1]
 
         gt_index = faiss.IndexFlatL2(d)
@@ -163,8 +146,7 @@ class EvalIVFPQAccuracy(unittest.TestCase):
         n_ok = (nns == gt_nns).sum()
 
         # should return the same result
-        self.assertGreater(n_ok, 169)
-
+        self.assertGreater(n_ok, 165)
 
 
 
@@ -203,7 +185,7 @@ class TestScalarQuantizer(unittest.TestCase):
         nq = 400
         nb = 5000
 
-        (xt, xb, xq) = get_dataset_2(d, nb, nt, nq)
+        (xt, xb, xq) = get_dataset_2(d, nt, nb, nq)
 
         # common quantizer
         quantizer = faiss.IndexFlatL2(d)
@@ -225,7 +207,7 @@ class TestScalarQuantizer(unittest.TestCase):
         D, I = index.search(xq, 10)
         nok['flat'] = (I[:, 0] == I_ref[:, 0]).sum()
 
-        for qname in "QT_4bit QT_4bit_uniform QT_8bit QT_8bit_uniform".split():
+        for qname in "QT_4bit QT_4bit_uniform QT_8bit QT_8bit_uniform QT_fp16".split():
             qtype = getattr(faiss.ScalarQuantizer, qname)
             index = faiss.IndexIVFScalarQuantizer(quantizer, d, ncent,
                                                   qtype, faiss.METRIC_L2)
@@ -237,6 +219,7 @@ class TestScalarQuantizer(unittest.TestCase):
 
             nok[qname] = (I[:, 0] == I_ref[:, 0]).sum()
         print(nok, nq)
+
         self.assertGreaterEqual(nok['flat'], nq * 0.6)
         # The tests below are a bit fragile, it happens that the
         # ordering between uniform and non-uniform are reverted,
@@ -246,6 +229,7 @@ class TestScalarQuantizer(unittest.TestCase):
         self.assertGreaterEqual(nok['QT_8bit'], nok['QT_4bit'])
         self.assertGreaterEqual(nok['QT_8bit'], nok['QT_8bit_uniform'])
         self.assertGreaterEqual(nok['QT_4bit'], nok['QT_4bit_uniform'])
+        self.assertGreaterEqual(nok['QT_fp16'], nok['QT_8bit'])
 
     def test_4variants(self):
         d = 32
@@ -261,20 +245,21 @@ class TestScalarQuantizer(unittest.TestCase):
 
         nok = {}
 
-        for qname in "QT_4bit QT_4bit_uniform QT_8bit QT_8bit_uniform".split():
+        for qname in "QT_4bit QT_4bit_uniform QT_8bit QT_8bit_uniform QT_fp16".split():
             qtype = getattr(faiss.ScalarQuantizer, qname)
             index = faiss.IndexScalarQuantizer(d, qtype, faiss.METRIC_L2)
             index.train(xt)
             index.add(xb)
-
             D, I = index.search(xq, 10)
-
             nok[qname] = (I[:, 0] == I_ref[:, 0]).sum()
+
+        print(nok, nq)
 
         self.assertGreaterEqual(nok['QT_8bit'], nq * 0.9)
         self.assertGreaterEqual(nok['QT_8bit'], nok['QT_4bit'])
         self.assertGreaterEqual(nok['QT_8bit'], nok['QT_8bit_uniform'])
         self.assertGreaterEqual(nok['QT_4bit'], nok['QT_4bit_uniform'])
+        self.assertGreaterEqual(nok['QT_fp16'], nok['QT_8bit'])
 
 
 class TestRangeSearch(unittest.TestCase):
@@ -430,7 +415,7 @@ class TestHNSW(unittest.TestCase):
         nb = 1500
         nq = 500
 
-        (_, self.xb, self.xq) = get_dataset_2(d, nb, nt, nq)
+        (_, self.xb, self.xq) = get_dataset_2(d, nt, nb, nq)
         index = faiss.IndexFlatL2(d)
         index.add(self.xb)
         Dref, Iref = index.search(self.xq, 1)
@@ -441,6 +426,18 @@ class TestHNSW(unittest.TestCase):
 
         index = faiss.IndexHNSWFlat(d, 16)
         index.add(self.xb)
+        Dhnsw, Ihnsw = index.search(self.xq, 1)
+
+        self.assertGreaterEqual((self.Iref == Ihnsw).sum(), 460)
+
+        self.io_and_retest(index, Dhnsw, Ihnsw)
+
+    def test_hnsw_unbounded_queue(self):
+        d = self.xq.shape[1]
+
+        index = faiss.IndexHNSWFlat(d, 16)
+        index.add(self.xb)
+        index.search_bounded_queue = False
         Dhnsw, Ihnsw = index.search(self.xq, 1)
 
         self.assertGreaterEqual((self.Iref == Ihnsw).sum(), 460)
@@ -461,6 +458,14 @@ class TestHNSW(unittest.TestCase):
         self.assertTrue(np.all(Dhnsw2 == Dhnsw))
         self.assertTrue(np.all(Ihnsw2 == Ihnsw))
 
+        # also test clone
+        index3 = faiss.clone_index(index)
+        Dhnsw3, Ihnsw3 = index3.search(self.xq, 1)
+
+        self.assertTrue(np.all(Dhnsw3 == Dhnsw))
+        self.assertTrue(np.all(Ihnsw3 == Ihnsw))
+
+
     def test_hnsw_2level(self):
         d = self.xq.shape[1]
 
@@ -475,79 +480,160 @@ class TestHNSW(unittest.TestCase):
 
         self.io_and_retest(index, Dhnsw, Ihnsw)
 
+    def test_add_0_vecs(self):
+        index = faiss.IndexHNSWFlat(10, 16)
+        zero_vecs = np.zeros((0, 10), dtype='float32')
+        # infinite loop
+        index.add(zero_vecs)
 
-def make_binary_dataset(d, nb, nt, nq):
-    assert d % 8 == 0
-    x = np.random.randint(256, size=(nb + nq + nt, int(d / 8))).astype('uint8')
-    return x[:nt], x[nt:-nq], x[-nq:]
+    def test_hnsw_IP(self):
+        d = self.xq.shape[1]
+
+        index_IP = faiss.IndexFlatIP(d)
+        index_IP.add(self.xb)
+        Dref, Iref = index_IP.search(self.xq, 1)
+
+        index = faiss.IndexHNSWFlat(d, 16, faiss.METRIC_INNER_PRODUCT)
+        index.add(self.xb)
+        Dhnsw, Ihnsw = index.search(self.xq, 1)
+
+        print('nb equal: ', (Iref == Ihnsw).sum())
+
+        self.assertGreaterEqual((Iref == Ihnsw).sum(), 480)
+
+        mask = Iref[:, 0] == Ihnsw[:, 0]
+        assert np.allclose(Dref[mask, 0], Dhnsw[mask, 0])
 
 
-def binary_to_float(x):
-    n, d = x.shape
-    x8 = x.reshape(n * d, -1)
-    c8 = 2 * ((x8 >> np.arange(8)) & 1).astype('int8') - 1
-    return c8.astype('float32').reshape(n, d * 8)
 
 
-def binary_dis(x, y):
-    return sum([faiss.popcount64(int(xi ^ yi)) for xi, yi in zip(x, y)])
+class TestDistancesPositive(unittest.TestCase):
+
+    def test_l2_pos(self):
+        """
+        roundoff errors occur only with the L2 decomposition used
+        with BLAS, ie. in IndexFlatL2 and with
+        n > distance_compute_blas_threshold = 20
+        """
+
+        d = 128
+        n = 100
+
+        rs = np.random.RandomState(1234)
+        x = rs.rand(n, d).astype('float32')
+
+        index = faiss.IndexFlatL2(d)
+        index.add(x)
+
+        D, I = index.search(x, 10)
+
+        assert np.all(D >= 0)
 
 
-class TestBinaryPQ(unittest.TestCase):
-    """ Use a PQ that mimicks a binary encoder """
+class TestReconsException(unittest.TestCase):
 
-    def test_encode_to_binary(self):
-        d = 256
-        nt = 256
-        nb = 1500
-        nq = 500
-        (xt, xb, xq) = make_binary_dataset(d, nb, nt, nq)
-        pq = faiss.ProductQuantizer(d, int(d / 8), 8)
+    def test_recons_exception(self):
 
-        centroids = binary_to_float(
-            np.tile(np.arange(256), int(d / 8)).astype('uint8').reshape(-1, 1))
+        d = 64                           # dimension
+        nb = 1000
+        rs = np.random.RandomState(1234)
+        xb = rs.rand(nb, d).astype('float32')
+        nlist = 10
+        quantizer = faiss.IndexFlatL2(d)  # the other index
+        index = faiss.IndexIVFFlat(quantizer, d, nlist)
+        index.train(xb)
+        index.add(xb)
+        index.make_direct_map()
 
-        faiss.copy_array_to_vector(centroids.ravel(), pq.centroids)
-        pq.is_trained = True
+        index.reconstruct(9)
 
-        codes = pq.compute_codes(binary_to_float(xb))
+        self.assertRaises(
+            RuntimeError,
+            index.reconstruct, 100001
+        )
 
-        assert np.all(codes == xb)
+    def test_reconstuct_after_add(self):
+        index = faiss.index_factory(10, 'IVF5,SQfp16')
+        index.train(faiss.randn((100, 10), 123))
+        index.add(faiss.randn((100, 10), 345))
+        index.make_direct_map()
+        index.add(faiss.randn((100, 10), 678))
 
-        indexpq = faiss.IndexPQ(d, int(d / 8), 8)
-        indexpq.pq = pq
-        indexpq.is_trained = True
+        # should not raise an exception
+        index.reconstruct(5)
+        print(index.ntotal)
+        index.reconstruct(150)
 
-        indexpq.add(binary_to_float(xb))
-        D, I = indexpq.search(binary_to_float(xq), 3)
 
-        for i in range(nq):
-            for j, dj in zip(I[i], D[i]):
-                ref_dis = binary_dis(xq[i], xb[j])
-                assert 4 * ref_dis == dj
+class TestReconsHash(unittest.TestCase):
 
-        nlist = 32
-        quantizer = faiss.IndexFlatL2(d)
-        # pretext class for training
-        iflat = faiss.IndexIVFFlat(quantizer, d, nlist)
-        iflat.train(binary_to_float(xt))
+    def do_test(self, index_key):
+        d = 32
+        index = faiss.index_factory(d, index_key)
+        index.train(faiss.randn((100, d), 123))
 
-        indexivfpq = faiss.IndexIVFPQ(quantizer, d, nlist, int(d / 8), 8)
+        # reference reconstruction
+        index.add(faiss.randn((100, d), 345))
+        index.add(faiss.randn((100, d), 678))
+        ref_recons = index.reconstruct_n(0, 200)
 
-        indexivfpq.pq = pq
-        indexivfpq.is_trained = True
-        indexivfpq.by_residual = False
+        # with lookup
+        index.reset()
+        rs = np.random.RandomState(123)
+        ids = rs.choice(10000, size=200, replace=False)
+        index.add_with_ids(faiss.randn((100, d), 345), ids[:100])
+        index.set_direct_map_type(faiss.DirectMap.Hashtable)
+        index.add_with_ids(faiss.randn((100, d), 678), ids[100:])
 
-        indexivfpq.add(binary_to_float(xb))
-        indexivfpq.nprobe = 4
+        # compare
+        for i in range(0, 200, 13):
+            recons = index.reconstruct(int(ids[i]))
+            self.assertTrue(np.all(recons == ref_recons[i]))
 
-        D, I = indexivfpq.search(binary_to_float(xq), 3)
+        # test I/O
+        buf = faiss.serialize_index(index)
+        index2 = faiss.deserialize_index(buf)
 
-        for i in range(nq):
-            for j, dj in zip(I[i], D[i]):
-                ref_dis = binary_dis(xq[i], xb[j])
-                assert 4 * ref_dis == dj
+        # compare
+        for i in range(0, 200, 13):
+            recons = index2.reconstruct(int(ids[i]))
+            self.assertTrue(np.all(recons == ref_recons[i]))
 
+        # remove
+        toremove = np.ascontiguousarray(ids[0:200:3])
+
+        sel = faiss.IDSelectorArray(50, faiss.swig_ptr(toremove[:50]))
+
+        # test both ways of removing elements
+        nremove = index2.remove_ids(sel)
+        nremove += index2.remove_ids(toremove[50:])
+
+        self.assertEqual(nremove, len(toremove))
+
+        for i in range(0, 200, 13):
+            if i % 3 == 0:
+                self.assertRaises(
+                    RuntimeError,
+                    index2.reconstruct, int(ids[i])
+                )
+            else:
+                recons = index2.reconstruct(int(ids[i]))
+                self.assertTrue(np.all(recons == ref_recons[i]))
+
+        # index error should raise
+        self.assertRaises(
+            RuntimeError,
+            index.reconstruct, 20000
+        )
+
+    def test_IVFFlat(self):
+        self.do_test("IVF5,Flat")
+
+    def test_IVFSQ(self):
+        self.do_test("IVF5,SQfp16")
+
+    def test_IVFPQ(self):
+        self.do_test("IVF5,PQ4x4np")
 
 if __name__ == '__main__':
     unittest.main()

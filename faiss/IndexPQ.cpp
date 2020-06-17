@@ -1,16 +1,13 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-/* Copyright 2004-present Facebook. All Rights Reserved.
-   Index based on product quantiztion.
-*/
+// -*- c++ -*-
 
-#include "IndexPQ.h"
+#include <faiss/IndexPQ.h>
 
 
 #include <cstddef>
@@ -20,9 +17,9 @@
 
 #include <algorithm>
 
-#include "FaissAssert.h"
-#include "AuxIndexStructures.h"
-#include "hamming.h"
+#include <faiss/impl/FaissAssert.h>
+#include <faiss/impl/AuxIndexStructures.h>
+#include <faiss/utils/hamming.h>
 
 namespace faiss {
 
@@ -85,7 +82,7 @@ void IndexPQ::add (idx_t n, const float *x)
 }
 
 
-long IndexPQ::remove_ids (const IDSelector & sel)
+size_t IndexPQ::remove_ids (const IDSelector & sel)
 {
     idx_t j = 0;
     for (idx_t i = 0; i < ntotal; i++) {
@@ -98,7 +95,7 @@ long IndexPQ::remove_ids (const IDSelector & sel)
             j++;
         }
     }
-    long nremove = ntotal - j;
+    size_t nremove = ntotal - j;
     if (nremove > 0) {
         ntotal = j;
         codes.resize (ntotal * pq.code_size);
@@ -130,9 +127,72 @@ void IndexPQ::reconstruct (idx_t key, float * recons) const
 }
 
 
+namespace {
 
 
+struct PQDis: DistanceComputer {
+    size_t d;
+    Index::idx_t nb;
+    const uint8_t *codes;
+    size_t code_size;
+    const ProductQuantizer & pq;
+    const float *sdc;
+    std::vector<float> precomputed_table;
+    size_t ndis;
 
+    float operator () (idx_t i) override
+    {
+        const uint8_t *code = codes + i * code_size;
+        const float *dt = precomputed_table.data();
+        float accu = 0;
+        for (int j = 0; j < pq.M; j++) {
+            accu += dt[*code++];
+            dt += 256;
+        }
+        ndis++;
+        return accu;
+    }
+
+    float symmetric_dis(idx_t i, idx_t j) override
+    {
+        const float * sdci = sdc;
+        float accu = 0;
+        const uint8_t *codei = codes + i * code_size;
+        const uint8_t *codej = codes + j * code_size;
+
+        for (int l = 0; l < pq.M; l++) {
+            accu += sdci[(*codei++) + (*codej++) * 256];
+            sdci += 256 * 256;
+        }
+        return accu;
+    }
+
+    explicit PQDis(const IndexPQ& storage, const float* /*q*/ = nullptr)
+        : pq(storage.pq) {
+        precomputed_table.resize(pq.M * pq.ksub);
+        nb = storage.ntotal;
+        d = storage.d;
+        codes = storage.codes.data();
+        code_size = pq.code_size;
+        FAISS_ASSERT(pq.ksub == 256);
+        FAISS_ASSERT(pq.sdc_table.size() == pq.ksub * pq.ksub * pq.M);
+        sdc = pq.sdc_table.data();
+        ndis = 0;
+    }
+
+    void set_query(const float *x) override {
+        pq.compute_distance_table(x, precomputed_table.data());
+    }
+};
+
+
+}  // namespace
+
+
+DistanceComputer * IndexPQ::get_distance_computer() const {
+    FAISS_THROW_IF_NOT(pq.nbits == 8);
+    return new PQDis(*this);
+}
 
 
 /*****************************************
@@ -203,13 +263,13 @@ void IndexPQ::search (idx_t n, const float *x, idx_t k,
 
             if (search_type == ST_HE) {
 
-                hammings_knn (&res, q_codes, codes.data(),
-                              ntotal, pq.code_size, true);
+                hammings_knn_hc (&res, q_codes, codes.data(),
+                                 ntotal, pq.code_size, true);
 
             } else if (search_type == ST_generalized_HE) {
 
-                generalized_hammings_knn (&res, q_codes, codes.data(),
-                                          ntotal, pq.code_size, true);
+                generalized_hammings_knn_hc (&res, q_codes, codes.data(),
+                                             ntotal, pq.code_size, true);
             }
 
             // convert distances to floats
@@ -240,7 +300,7 @@ template <class HammingComputer>
 static size_t polysemous_inner_loop (
         const IndexPQ & index,
         const float *dis_table_qi, const uint8_t *q_code,
-        size_t k, float *heap_dis, long *heap_ids)
+        size_t k, float *heap_dis, int64_t *heap_ids)
 {
 
     int M = index.pq.M;
@@ -255,7 +315,7 @@ static size_t polysemous_inner_loop (
 
     HammingComputer hc (q_code, code_size);
 
-    for (long bi = 0; bi < ntotal; bi++) {
+    for (int64_t bi = 0; bi < ntotal; bi++) {
         int hd = hc.hamming (b_code);
 
         if (hd < ht) {
@@ -282,7 +342,7 @@ static size_t polysemous_inner_loop (
 void IndexPQ::search_core_polysemous (idx_t n, const float *x, idx_t k,
                                           float *distances, idx_t *labels) const
 {
-    FAISS_THROW_IF_NOT (pq.byte_per_idx == 1);
+    FAISS_THROW_IF_NOT (pq.nbits == 8);
 
     // PQ distance tables
     float * dis_tables = new float [n * pq.ksub * pq.M];
@@ -310,7 +370,7 @@ void IndexPQ::search_core_polysemous (idx_t n, const float *x, idx_t k,
 
         const float * dis_table_qi = dis_tables + qi * pq.M * pq.ksub;
 
-        long * heap_ids = labels + qi * k;
+        int64_t * heap_ids = labels + qi * k;
         float *heap_dis = distances + qi * k;
         maxheap_heapify (k, heap_dis, heap_ids);
 
@@ -388,6 +448,23 @@ void IndexPQ::search_core_polysemous (idx_t n, const float *x, idx_t k,
 }
 
 
+/* The standalone codec interface (just remaps to the PQ functions) */
+size_t IndexPQ::sa_code_size () const
+{
+    return pq.code_size;
+}
+
+void IndexPQ::sa_encode (idx_t n, const float *x, uint8_t *bytes) const
+{
+    pq.compute_codes (x, bytes, n);
+}
+
+void IndexPQ::sa_decode (idx_t n, const uint8_t *bytes, float *x) const
+{
+    pq.decode (bytes, x, n);
+}
+
+
 
 
 /*****************************************
@@ -411,11 +488,11 @@ void IndexPQ::hamming_distance_table (idx_t n, const float *x,
 
 void IndexPQ::hamming_distance_histogram (idx_t n, const float *x,
                                           idx_t nb, const float *xb,
-                                          long *hist)
+                                          int64_t *hist)
 {
     FAISS_THROW_IF_NOT (metric_type == METRIC_L2);
     FAISS_THROW_IF_NOT (pq.code_size % 8 == 0);
-    FAISS_THROW_IF_NOT (pq.byte_per_idx == 1);
+    FAISS_THROW_IF_NOT (pq.nbits == 8);
 
     // Hamming embedding queries
     uint8_t * q_codes = new uint8_t [n * pq.code_size];
@@ -438,7 +515,7 @@ void IndexPQ::hamming_distance_histogram (idx_t n, const float *x,
     size_t bs = 256;
 
     {
-        std::vector<long> histi (nbits + 1);
+        std::vector<int64_t> histi (nbits + 1);
         hamdis_t *distances = new hamdis_t [nb * bs];
         ScopeDeleter<hamdis_t> del (distances);
         for (size_t q0 = 0; q0 < n; q0 += bs) {
@@ -699,10 +776,10 @@ struct MinSumK {
      * We use a heap to maintain a queue of sums, with the associated
      * terms involved in the sum.
      */
-    typedef CMin<T, long> HC;
+    typedef CMin<T, int64_t> HC;
     size_t heap_capacity, heap_size;
     T *bh_val;
-    long *bh_ids;
+    int64_t *bh_ids;
 
     std::vector <SSA> ssx;
 
@@ -719,10 +796,10 @@ struct MinSumK {
 
         // we'll do k steps, each step pushes at most M vals
         bh_val = new T[heap_capacity];
-        bh_ids = new long[heap_capacity];
+        bh_ids = new int64_t[heap_capacity];
 
         if (use_seen) {
-            long n_ids = weight(M);
+            int64_t n_ids = weight(M);
             seen.resize ((n_ids + 7) / 8);
         }
 
@@ -731,21 +808,21 @@ struct MinSumK {
 
     }
 
-    long weight (int i) {
+    int64_t weight (int i) {
         return 1 << (i * nbit);
     }
 
-    bool is_seen (long i) {
+    bool is_seen (int64_t i) {
         return (seen[i >> 3] >> (i & 7)) & 1;
     }
 
-    void mark_seen (long i) {
+    void mark_seen (int64_t i) {
         if (use_seen)
             seen [i >> 3] |= 1 << (i & 7);
     }
 
-    void run (const T *x, long ldx,
-              T * sums, long * terms) {
+    void run (const T *x, int64_t ldx,
+              T * sums, int64_t * terms) {
         heap_size = 0;
 
         for (int m = 0; m < M; m++) {
@@ -779,7 +856,7 @@ struct MinSumK {
             assert (heap_size > 0);
 
             T sum = sums[k] = bh_val[0];
-            long ti = terms[k] = bh_ids[0];
+            int64_t ti = terms[k] = bh_ids[0];
 
             if (use_seen) {
                 mark_seen (ti);
@@ -791,9 +868,9 @@ struct MinSumK {
             }
 
             // enqueue followers
-            long ii = ti;
+            int64_t ii = ti;
             for (int m = 0; m < M; m++) {
-                long n = ii & ((1 << nbit) - 1);
+                int64_t n = ii & ((1L << nbit) - 1);
                 ii >>= nbit;
                 if (n + 1 >= N) continue;
 
@@ -809,15 +886,15 @@ struct MinSumK {
 
         // convert indices by applying permutation
         for (int k = 0; k < K; k++) {
-            long ii = terms[k];
+            int64_t ii = terms[k];
             if (use_seen) {
                 // clear seen for reuse at next loop
                 seen[ii >> 3] = 0;
             }
-            long ti = 0;
+            int64_t ti = 0;
             for (int m = 0; m < M; m++) {
-                long n = ii & ((1 << nbit) - 1);
-                ti += ssx[m].get_ord(n) << (nbit * m);
+                int64_t n = ii & ((1L << nbit) - 1);
+                ti += int64_t(ssx[m].get_ord(n)) << (nbit * m);
                 ii >>= nbit;
             }
             terms[k] = ti;
@@ -825,9 +902,9 @@ struct MinSumK {
     }
 
 
-    void enqueue_follower (long ti, int m, int n, T sum) {
+    void enqueue_follower (int64_t ti, int m, int n, T sum) {
         T next_sum = sum + ssx[m].get_diff(n + 1);
-        long next_ti = ti + weight(m);
+        int64_t next_ti = ti + weight(m);
         heap_push<HC> (++heap_size, bh_val, bh_ids, next_sum, next_ti);
     }
 
@@ -866,6 +943,22 @@ void MultiIndexQuantizer::train(idx_t n, const float *x)
 void MultiIndexQuantizer::search (idx_t n, const float *x, idx_t k,
                                   float *distances, idx_t *labels) const {
     if (n == 0) return;
+
+    // the allocation just below can be severe...
+    idx_t bs = 32768;
+    if (n > bs) {
+        for (idx_t i0 = 0; i0 < n; i0 += bs) {
+            idx_t i1 = std::min(i0 + bs, n);
+            if (verbose) {
+                printf("MultiIndexQuantizer::search: %ld:%ld / %ld\n",
+                       i0, i1, n);
+            }
+            search (i1 - i0, x + i0 * d, k,
+                    distances + i0 * k,
+                    labels + i0 * k);
+        }
+        return;
+    }
 
     float * dis_tables = new float [n * pq.ksub * pq.M];
     ScopeDeleter<float> del (dis_tables);
@@ -919,9 +1012,9 @@ void MultiIndexQuantizer::search (idx_t n, const float *x, idx_t k,
 void MultiIndexQuantizer::reconstruct (idx_t key, float * recons) const
 {
 
-    long jj = key;
+    int64_t jj = key;
     for (int m = 0; m < pq.M; m++) {
-        long n = jj & ((1L << pq.nbits) - 1);
+        int64_t n = jj & ((1L << pq.nbits) - 1);
         jj >>= pq.nbits;
         memcpy(recons, pq.get_centroids(m, n), sizeof(recons[0]) * pq.dsub);
         recons += pq.dsub;
@@ -1003,10 +1096,10 @@ void MultiIndexQuantizer2::search(
 
     if (n == 0) return;
 
-    int k2 = std::min(K, long(pq.ksub));
+    int k2 = std::min(K, int64_t(pq.ksub));
 
-    long M = pq.M;
-    long dsub = pq.dsub, ksub = pq.ksub;
+    int64_t M = pq.M;
+    int64_t dsub = pq.dsub, ksub = pq.ksub;
 
     // size (M, n, k2)
     std::vector<idx_t> sub_ids(n * M * k2);
@@ -1059,16 +1152,16 @@ void MultiIndexQuantizer2::search(
                 // remap ids
 
                 const idx_t *idmap0 = sub_ids.data() + i * k2;
-                long ld_idmap = k2 * n;
-                long mask1 = ksub - 1L;
+                int64_t ld_idmap = k2 * n;
+                int64_t mask1 = ksub - 1L;
 
                 for (int k = 0; k < K; k++) {
                     const idx_t *idmap = idmap0;
-                    long vin = li[k];
-                    long vout = 0;
+                    int64_t vin = li[k];
+                    int64_t vout = 0;
                     int bs = 0;
                     for (int m = 0; m < M; m++) {
-                        long s = vin & mask1;
+                        int64_t s = vin & mask1;
                         vin >>= pq.nbits;
                         vout |= idmap[s] << bs;
                         bs += pq.nbits;
@@ -1082,5 +1175,4 @@ void MultiIndexQuantizer2::search(
 }
 
 
-
-} // END namespace faiss
+} // namespace faiss

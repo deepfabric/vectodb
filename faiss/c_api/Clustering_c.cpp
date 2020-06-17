@@ -1,8 +1,7 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
@@ -20,6 +19,7 @@ extern "C" {
 using faiss::Clustering;
 using faiss::ClusteringParameters;
 using faiss::Index;
+using faiss::ClusteringIterationStats;
 
 DEFINE_GETTER(Clustering, int, niter)
 DEFINE_GETTER(Clustering, int, nredo)
@@ -38,6 +38,12 @@ DEFINE_GETTER(Clustering, size_t, d)
 
 /// getter for k
 DEFINE_GETTER(Clustering, size_t, k)
+
+DEFINE_GETTER(ClusteringIterationStats, float, obj)
+DEFINE_GETTER(ClusteringIterationStats, double, time)
+DEFINE_GETTER(ClusteringIterationStats, double, time_search)
+DEFINE_GETTER(ClusteringIterationStats, double, imbalance_factor)
+DEFINE_GETTER(ClusteringIterationStats, int, nsplit)
 
 void faiss_ClusteringParameters_init(FaissClusteringParameters* params) {
     ClusteringParameters d;
@@ -79,13 +85,12 @@ void faiss_Clustering_centroids(
     }
 }
 
-/// getter for objective values (sum of distances reported by index)
-/// over iterations
-void faiss_Clustering_obj(
-    FaissClustering* clustering, float** obj, size_t* size) {
-    std::vector<float>& v = reinterpret_cast<Clustering*>(clustering)->obj;
-    if (obj) {
-        *obj = v.data();
+/// getter for iteration stats
+void faiss_Clustering_iteration_stats(
+    FaissClustering* clustering, FaissClusteringIterationStats** iteration_stats, size_t* size) {
+    std::vector<ClusteringIterationStats>& v = reinterpret_cast<Clustering*>(clustering)->iteration_stats;
+    if (iteration_stats) {
+        *iteration_stats = reinterpret_cast<FaissClusteringIterationStats*>(v.data());
     }
     if (size) {
         *size = v.size();

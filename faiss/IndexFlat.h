@@ -1,12 +1,10 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved
 // -*- c++ -*-
 
 #ifndef INDEX_FLAT_H
@@ -14,17 +12,18 @@
 
 #include <vector>
 
-#include "Index.h"
+#include <faiss/Index.h>
 
 
 namespace faiss {
 
 /** Index that stores the full vectors and performs exhaustive search */
 struct IndexFlat: Index {
+
     /// database vectors, size ntotal * d
     std::vector<float> xb;
 
-    explicit IndexFlat (idx_t d, MetricType metric = METRIC_INNER_PRODUCT);
+    explicit IndexFlat (idx_t d, MetricType metric = METRIC_L2);
 
     void add(idx_t n, const float* x) override;
 
@@ -61,11 +60,23 @@ struct IndexFlat: Index {
             const idx_t *labels) const;
 
     /** remove some ids. NB that Because of the structure of the
-     * indexing structre, the semantics of this operation are
+     * indexing structure, the semantics of this operation are
      * different from the usual ones: the new ids are shifted */
-    long remove_ids(const IDSelector& sel) override;
+    size_t remove_ids(const IDSelector& sel) override;
 
     IndexFlat () {}
+
+    DistanceComputer * get_distance_computer() const override;
+
+    /* The stanadlone codec interface (just memcopies in this case) */
+    size_t sa_code_size () const override;
+
+    void sa_encode (idx_t n, const float *x,
+                          uint8_t *bytes) const override;
+
+    void sa_decode (idx_t n, const uint8_t *bytes,
+                            float *x) const override;
+
 };
 
 
@@ -134,7 +145,7 @@ struct IndexRefineFlat: Index {
 };
 
 
-/// optimized version for 1D "vectors"
+/// optimized version for 1D "vectors".
 struct IndexFlat1D:IndexFlatL2 {
     bool continuous_update; ///< is the permutation updated continuously?
 

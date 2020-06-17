@@ -1,23 +1,24 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved
 // -*- c++ -*-
 
-#include "VectorTransform.h"
+#include <faiss/VectorTransform.h>
 
 #include <cstdio>
 #include <cmath>
 #include <cstring>
+#include <memory>
 
-#include "utils.h"
-#include "FaissAssert.h"
-#include "IndexPQ.h"
+#include <faiss/utils/distances.h>
+#include <faiss/utils/random.h>
+#include <faiss/utils/utils.h>
+#include <faiss/impl/FaissAssert.h>
+#include <faiss/IndexPQ.h>
 
 using namespace faiss;
 
@@ -38,6 +39,13 @@ int sgemm_ (
         FINTEGER *lda, const float *b,
         FINTEGER *ldb, float *beta,
         float *c, FINTEGER *ldc);
+
+int dgemm_ (
+        const char *transa, const char *transb, FINTEGER *m, FINTEGER *
+        n, FINTEGER *k, const double *alpha, const double *a,
+        FINTEGER *lda, const double *b,
+        FINTEGER *ldb, double *beta,
+        double *c, FINTEGER *ldc);
 
 int ssyrk_ (
         const char *uplo, const char *trans, FINTEGER *n, FINTEGER *k,
@@ -60,6 +68,12 @@ int sgesvd_(
         const char *jobu, const char *jobvt, FINTEGER *m, FINTEGER *n,
         float *a, FINTEGER *lda, float *s, float *u, FINTEGER *ldu, float *vt,
         FINTEGER *ldvt, float *work, FINTEGER *lwork, FINTEGER *info);
+
+
+int dgesvd_(
+     const char *jobu, const char *jobvt, FINTEGER *m, FINTEGER *n,
+     double *a, FINTEGER *lda, double *s, double *u, FINTEGER *ldu, double *vt,
+     FINTEGER *ldvt, double *work, FINTEGER *lwork, FINTEGER *info);
 
 }
 
@@ -101,7 +115,9 @@ LinearTransform::LinearTransform (int d_in, int d_out,
                                   bool have_bias):
     VectorTransform (d_in, d_out), have_bias (have_bias),
     is_orthonormal (false), verbose (false)
-{}
+{
+    is_trained = false; // will be trained when A and b are initialized
+}
 
 void LinearTransform::apply_noalloc (Index::idx_t n, const float * x,
                                float * xt) const
@@ -207,6 +223,21 @@ void LinearTransform::reverse_transform (idx_t n, const float * xt,
 }
 
 
+void LinearTransform::print_if_verbose (
+         const char*name, const std::vector<double> &mat,
+         int n, int d) const
+{
+    if (!verbose) return;
+    printf("matrix %s: %d*%d [\n", name, n, d);
+    FAISS_THROW_IF_NOT (mat.size() >= n * d);
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < d; j++) {
+            printf("%10.5g ", mat[i * d + j]);
+        }
+        printf("\n");
+    }
+    printf("]\n");
+}
 
 /*********************************************
  * RandomRotationMatrix
@@ -221,6 +252,7 @@ void RandomRotationMatrix::init (int seed)
         float_randn(q, d_out * d_in, seed);
         matrix_qr(d_in, d_out, q);
     } else {
+        // use tight-frame transformation
         A.resize (d_out * d_out);
         float *q = A.data();
         float_randn(q, d_out * d_out, seed);
@@ -235,7 +267,15 @@ void RandomRotationMatrix::init (int seed)
         A.resize(d_in * d_out);
     }
     is_orthonormal = true;
+    is_trained = true;
 }
+
+void RandomRotationMatrix::train (Index::idx_t /*n*/, const float */*x*/)
+{
+    // initialize with some arbitrary seed
+    init (12345);
+}
+
 
 /*********************************************
  * PCAMatrix
@@ -567,6 +607,214 @@ void PCAMatrix::prepare_Ab ()
 }
 
 /*********************************************
+ * ITQMatrix
+ *********************************************/
+
+ITQMatrix::ITQMatrix (int d):
+    LinearTransform(d, d, false),
+    max_iter (50),
+    seed (123)
+{
+}
+
+
+/** translated from fbcode/deeplearning/catalyzer/catalyzer/quantizers.py */
+void ITQMatrix::train (Index::idx_t n, const float* xf)
+{
+    size_t d = d_in;
+    std::vector<double> rotation (d * d);
+
+    if (init_rotation.size() == d * d) {
+        memcpy (rotation.data(), init_rotation.data(),
+                d * d * sizeof(rotation[0]));
+    } else {
+        RandomRotationMatrix rrot (d, d);
+        rrot.init (seed);
+        for (size_t i = 0; i < d * d; i++) {
+            rotation[i] = rrot.A[i];
+        }
+    }
+
+    std::vector<double> x (n * d);
+
+    for (size_t i = 0; i < n * d; i++) {
+        x[i] = xf[i];
+    }
+
+    std::vector<double> rotated_x (n * d), cov_mat (d * d);
+    std::vector<double> u (d * d), vt (d * d), singvals (d);
+
+    for (int i = 0; i < max_iter; i++) {
+        print_if_verbose ("rotation", rotation, d, d);
+        { // rotated_data = np.dot(training_data, rotation)
+            FINTEGER di = d, ni = n;
+            double one = 1, zero = 0;
+            dgemm_ ("N", "N", &di, &ni, &di,
+                    &one, rotation.data(), &di, x.data(), &di,
+                    &zero, rotated_x.data(), &di);
+        }
+        print_if_verbose ("rotated_x", rotated_x, n, d);
+        // binarize
+        for (size_t j = 0; j < n * d; j++) {
+            rotated_x[j] = rotated_x[j] < 0 ? -1 : 1;
+        }
+        // covariance matrix
+        { // rotated_data = np.dot(training_data, rotation)
+            FINTEGER di = d, ni = n;
+            double one = 1, zero = 0;
+            dgemm_ ("N", "T", &di, &di, &ni,
+                    &one, rotated_x.data(), &di, x.data(), &di,
+                    &zero, cov_mat.data(), &di);
+        }
+        print_if_verbose ("cov_mat", cov_mat, d, d);
+        // SVD
+        {
+
+            FINTEGER di = d;
+            FINTEGER lwork = -1, info;
+            double lwork1;
+
+            // workspace query
+            dgesvd_ ("A", "A", &di, &di, cov_mat.data(), &di,
+                     singvals.data(), u.data(), &di,
+                     vt.data(), &di,
+                     &lwork1, &lwork, &info);
+
+            FAISS_THROW_IF_NOT (info == 0);
+            lwork = size_t (lwork1);
+            std::vector<double> work (lwork);
+            dgesvd_ ("A", "A", &di, &di, cov_mat.data(), &di,
+                     singvals.data(), u.data(), &di,
+                     vt.data(), &di,
+                     work.data(), &lwork, &info);
+            FAISS_THROW_IF_NOT_FMT (info == 0, "sgesvd returned info=%d", info);
+
+        }
+        print_if_verbose ("u", u, d, d);
+        print_if_verbose ("vt", vt, d, d);
+        // update rotation
+        {
+            FINTEGER di = d;
+            double one = 1, zero = 0;
+            dgemm_ ("N", "T", &di, &di, &di,
+                    &one, u.data(), &di, vt.data(), &di,
+                    &zero, rotation.data(), &di);
+        }
+        print_if_verbose ("final rot", rotation, d, d);
+
+    }
+    A.resize (d * d);
+    for (size_t i = 0; i < d; i++) {
+        for (size_t j = 0; j < d; j++) {
+            A[i + d * j] = rotation[j + d * i];
+        }
+    }
+    is_trained = true;
+
+}
+
+ITQTransform::ITQTransform (int d_in, int d_out, bool do_pca):
+    VectorTransform (d_in, d_out),
+    do_pca (do_pca),
+    itq (d_out),
+    pca_then_itq (d_in, d_out, false)
+{
+    if (!do_pca) {
+        FAISS_THROW_IF_NOT (d_in == d_out);
+    }
+    max_train_per_dim = 10;
+    is_trained = false;
+}
+
+
+
+
+void ITQTransform::train (idx_t n, const float *x)
+{
+    FAISS_THROW_IF_NOT (!is_trained);
+
+    const float * x_in = x;
+    size_t max_train_points = std::max(d_in * max_train_per_dim, 32768);
+    x = fvecs_maybe_subsample (d_in, (size_t*)&n, max_train_points, x);
+
+    ScopeDeleter<float> del_x (x != x_in ? x : nullptr);
+
+    std::unique_ptr<float []> x_norm(new float[n * d_in]);
+    { // normalize
+        int d = d_in;
+
+        mean.resize (d, 0);
+        for (idx_t i = 0; i < n; i++) {
+            for (idx_t j = 0; j < d; j++) {
+                mean[j] += x[i * d + j];
+            }
+        }
+        for (idx_t j = 0; j < d; j++) {
+            mean[j] /= n;
+        }
+        for (idx_t i = 0; i < n; i++) {
+            for (idx_t j = 0; j < d; j++) {
+            x_norm[i * d + j] = x[i * d + j] - mean[j];
+            }
+        }
+        fvec_renorm_L2 (d_in, n, x_norm.get());
+    }
+
+    // train PCA
+
+    PCAMatrix pca (d_in, d_out);
+    float *x_pca;
+    std::unique_ptr<float []> x_pca_del;
+    if (do_pca) {
+        pca.have_bias = false;  // for consistency with reference implem
+        pca.train (n, x_norm.get());
+        x_pca = pca.apply (n, x_norm.get());
+        x_pca_del.reset(x_pca);
+    } else {
+        x_pca = x_norm.get();
+    }
+
+    // train ITQ
+    itq.train (n, x_pca);
+
+    // merge PCA and ITQ
+    if (do_pca) {
+        FINTEGER di = d_out, dini = d_in;
+        float one = 1, zero = 0;
+        pca_then_itq.A.resize(d_in * d_out);
+        sgemm_ ("N", "N", &dini, &di, &di,
+                &one, pca.A.data(), &dini,
+                itq.A.data(), &di,
+                &zero, pca_then_itq.A.data(), &dini);
+    } else {
+        pca_then_itq.A = itq.A;
+    }
+    pca_then_itq.is_trained = true;
+    is_trained = true;
+}
+
+void ITQTransform::apply_noalloc (Index::idx_t n, const float * x,
+                               float * xt) const
+{
+    FAISS_THROW_IF_NOT_MSG(is_trained, "Transformation not trained yet");
+
+    std::unique_ptr<float []> x_norm(new float[n * d_in]);
+    { // normalize
+        int d = d_in;
+        for (idx_t i = 0; i < n; i++) {
+            for (idx_t j = 0; j < d; j++) {
+                x_norm[i * d + j] = x[i * d + j] - mean[j];
+            }
+        }
+        // this is not really useful if we are going to binarize right
+        // afterwards but OK
+        fvec_renorm_L2 (d_in, n, x_norm.get());
+    }
+
+    pca_then_itq.apply_noalloc (n, x_norm.get(), xt);
+}
+
+/*********************************************
  * OPQMatrix
  *********************************************/
 
@@ -662,11 +910,11 @@ void OPQMatrix::train (Index::idx_t n, const float *x)
         xproj (d2 * n), pq_recons (d2 * n), xxr (d * n),
         tmp(d * d * 4);
 
-    std::vector<uint8_t> codes (M * n);
 
     ProductQuantizer pq_default (d2, M, 8);
-    ProductQuantizer &pq_regular =
-        pq ? *pq : pq_default;
+    ProductQuantizer &pq_regular = pq ? *pq : pq_default;
+    std::vector<uint8_t> codes (pq_regular.code_size * n);
+
     double t0 = getmillisecs();
     for (int iter = 0; iter < niter; iter++) {
 
@@ -682,10 +930,18 @@ void OPQMatrix::train (Index::idx_t n, const float *x)
 
         pq_regular.cp.max_points_per_centroid = 1000;
         pq_regular.cp.niter = iter == 0 ? niter_pq_0 : niter_pq;
-        pq_regular.cp.verbose = verbose;
+        pq_regular.verbose = verbose;
         pq_regular.train (n, xproj.data());
 
-        pq_regular.compute_codes (xproj.data(), codes.data(), n);
+        if (verbose) {
+            printf("    encode / decode\n");
+        }
+        if (pq_regular.assign_index) {
+            pq_regular.compute_codes_with_assign_index
+                (xproj.data(), codes.data(), n);
+        } else {
+            pq_regular.compute_codes (xproj.data(), codes.data(), n);
+        }
         pq_regular.decode (codes.data(), pq_recons.data(), n);
 
         float pq_err = fvec_L2sqr (pq_recons.data(), xproj.data(), n * d2) / n;
@@ -701,6 +957,9 @@ void OPQMatrix::train (Index::idx_t n, const float *x)
             FINTEGER di = d, d2i = d2, ni = n;
             float one = 1, zero = 0;
 
+            if (verbose) {
+                printf("    X * recons\n");
+            }
             // torch.mm(xtrain:t(), pq_recons)
             sgemm_ ("Not", "Transposed",
                     &d2i, &di, &ni,
@@ -780,226 +1039,58 @@ void NormalizationTransform::reverse_transform (idx_t n, const float* xt,
 }
 
 /*********************************************
- * IndexPreTransform
+ * CenteringTransform
  *********************************************/
 
-IndexPreTransform::IndexPreTransform ():
-    index(nullptr), own_fields (false)
+CenteringTransform::CenteringTransform (int d):
+    VectorTransform (d, d)
 {
+    is_trained = false;
 }
 
-
-IndexPreTransform::IndexPreTransform (
-        Index * index):
-    Index (index->d, index->metric_type),
-    index (index), own_fields (false)
-{
-    is_trained = index->is_trained;
-}
-
-
-IndexPreTransform::IndexPreTransform (
-        VectorTransform * ltrans,
-        Index * index):
-    Index (index->d, index->metric_type),
-    index (index), own_fields (false)
-{
-    is_trained = index->is_trained;
-    prepend_transform (ltrans);
-}
-
-void IndexPreTransform::prepend_transform (VectorTransform *ltrans)
-{
-    FAISS_THROW_IF_NOT (ltrans->d_out == d);
-    is_trained = is_trained && ltrans->is_trained;
-    chain.insert (chain.begin(), ltrans);
-    d = ltrans->d_in;
-}
-
-
-IndexPreTransform::~IndexPreTransform ()
-{
-    if (own_fields) {
-        for (int i = 0; i < chain.size(); i++)
-            delete chain[i];
-        delete index;
-    }
-}
-
-
-
-
-void IndexPreTransform::train (idx_t n, const float *x)
-{
-    int last_untrained = 0;
-    if (!index->is_trained) {
-        last_untrained = chain.size();
-    } else {
-        for (int i = chain.size() - 1; i >= 0; i--) {
-            if (!chain[i]->is_trained) {
-                last_untrained = i;
-                break;
-            }
+void CenteringTransform::train(Index::idx_t n, const float *x) {
+    FAISS_THROW_IF_NOT_MSG(n > 0, "need at least one training vector");
+    mean.resize (d_in, 0);
+    for (idx_t i = 0; i < n; i++) {
+        for (size_t j = 0; j < d_in; j++) {
+            mean[j] += *x++;
         }
     }
-    const float *prev_x = x;
-    ScopeDeleter<float> del;
 
-    if (verbose) {
-        printf("IndexPreTransform::train: training chain 0 to %d\n",
-               last_untrained);
+    for (size_t j = 0; j < d_in; j++) {
+        mean[j] /= n;
     }
-
-    for (int i = 0; i <= last_untrained; i++) {
-
-        if (i < chain.size()) {
-            VectorTransform *ltrans = chain [i];
-            if (!ltrans->is_trained) {
-                if (verbose) {
-                    printf("   Training chain component %d/%zd\n",
-                           i, chain.size());
-                    if (OPQMatrix *opqm = dynamic_cast<OPQMatrix*>(ltrans)) {
-                        opqm->verbose = true;
-                    }
-                }
-                ltrans->train (n, prev_x);
-            }
-        } else {
-            if (verbose) {
-                printf("   Training sub-index\n");
-            }
-            index->train (n, prev_x);
-        }
-        if (i == last_untrained) break;
-        if (verbose) {
-            printf("   Applying transform %d/%zd\n",
-                   i, chain.size());
-        }
-
-        float * xt = chain[i]->apply (n, prev_x);
-
-        if (prev_x != x) delete [] prev_x;
-        prev_x = xt;
-        del.set(xt);
-    }
-
     is_trained = true;
 }
 
 
-const float *IndexPreTransform::apply_chain (idx_t n, const float *x) const
+void CenteringTransform::apply_noalloc
+      (idx_t n, const float* x, float* xt) const
 {
-    const float *prev_x = x;
-    ScopeDeleter<float> del;
+    FAISS_THROW_IF_NOT (is_trained);
 
-    for (int i = 0; i < chain.size(); i++) {
-        float * xt = chain[i]->apply (n, prev_x);
-        ScopeDeleter<float> del2 (xt);
-        del2.swap (del);
-        prev_x = xt;
-    }
-    del.release ();
-    return prev_x;
-}
-
-void IndexPreTransform::reverse_chain (idx_t n, const float* xt, float* x) const
-{
-    const float* next_x = xt;
-    ScopeDeleter<float> del;
-
-    for (int i = chain.size() - 1; i >= 0; i--) {
-        float* prev_x = (i == 0) ? x : new float [n * chain[i]->d_in];
-        ScopeDeleter<float> del2 ((prev_x == x) ? nullptr : prev_x);
-        chain [i]->reverse_transform (n, next_x, prev_x);
-        del2.swap (del);
-        next_x = prev_x;
+    for (idx_t i = 0; i < n; i++) {
+        for (size_t j = 0; j < d_in; j++) {
+            *xt++ = *x++ - mean[j];
+        }
     }
 }
 
-void IndexPreTransform::add (idx_t n, const float *x)
-{
-    FAISS_THROW_IF_NOT (is_trained);
-    const float *xt = apply_chain (n, x);
-    ScopeDeleter<float> del(xt == x ? nullptr : xt);
-    index->add (n, xt);
-    ntotal = index->ntotal;
-}
-
-void IndexPreTransform::add_with_ids (idx_t n, const float * x,
-                                      const long *xids)
-{
-    FAISS_THROW_IF_NOT (is_trained);
-    const float *xt = apply_chain (n, x);
-    ScopeDeleter<float> del(xt == x ? nullptr : xt);
-    index->add_with_ids (n, xt, xids);
-    ntotal = index->ntotal;
-}
-
-
-
-
-void IndexPreTransform::search (idx_t n, const float *x, idx_t k,
-                               float *distances, idx_t *labels) const
-{
-    FAISS_THROW_IF_NOT (is_trained);
-    const float *xt = apply_chain (n, x);
-    ScopeDeleter<float> del(xt == x ? nullptr : xt);
-    index->search (n, xt, k, distances, labels);
-}
-
-
-void IndexPreTransform::reset () {
-    index->reset();
-    ntotal = 0;
-}
-
-long IndexPreTransform::remove_ids (const IDSelector & sel) {
-    long nremove = index->remove_ids (sel);
-    ntotal = index->ntotal;
-    return nremove;
-}
-
-
-void IndexPreTransform::reconstruct (idx_t key, float * recons) const
-{
-    float *x = chain.empty() ? recons : new float [index->d];
-    ScopeDeleter<float> del (recons == x ? nullptr : x);
-    // Initial reconstruction
-    index->reconstruct (key, x);
-
-    // Revert transformations from last to first
-    reverse_chain (1, x, recons);
-}
-
-
-void IndexPreTransform::reconstruct_n (idx_t i0, idx_t ni, float *recons) const
-{
-    float *x = chain.empty() ? recons : new float [ni * index->d];
-    ScopeDeleter<float> del (recons == x ? nullptr : x);
-    // Initial reconstruction
-    index->reconstruct_n (i0, ni, x);
-
-    // Revert transformations from last to first
-    reverse_chain (ni, x, recons);
-}
-
-
-void IndexPreTransform::search_and_reconstruct (
-      idx_t n, const float *x, idx_t k,
-      float *distances, idx_t *labels, float* recons) const
+void CenteringTransform::reverse_transform (idx_t n, const float* xt,
+                                                float* x) const
 {
     FAISS_THROW_IF_NOT (is_trained);
 
-    const float* xt = apply_chain (n, x);
-    ScopeDeleter<float> del ((xt == x) ? nullptr : xt);
+    for (idx_t i = 0; i < n; i++) {
+        for (size_t j = 0; j < d_in; j++) {
+            *x++ = *xt++ + mean[j];
+        }
+    }
 
-    float* recons_temp = chain.empty() ? recons : new float [n * k * index->d];
-    ScopeDeleter<float> del2 ((recons_temp == recons) ? nullptr : recons_temp);
-    index->search_and_reconstruct (n, xt, k, distances, labels, recons_temp);
-
-    // Revert transformations from last to first
-    reverse_chain (n * k, recons_temp, recons);
 }
+
+
+
 
 
 /*********************************************

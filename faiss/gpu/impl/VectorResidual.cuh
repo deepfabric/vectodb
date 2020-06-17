@@ -1,17 +1,14 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
 #pragma once
 
-#include "../utils/Tensor.cuh"
-#include "../utils/Float16.cuh"
+#include <faiss/gpu/utils/Tensor.cuh>
 
 namespace faiss { namespace gpu {
 
@@ -22,12 +19,21 @@ void runCalcResidual(Tensor<float, 2, true>& vecs,
                      Tensor<float, 2, true>& residuals,
                      cudaStream_t stream);
 
-#ifdef FAISS_USE_FLOAT16
 void runCalcResidual(Tensor<float, 2, true>& vecs,
                      Tensor<half, 2, true>& centroids,
                      Tensor<int, 1, true>& vecToCentroid,
                      Tensor<float, 2, true>& residuals,
                      cudaStream_t stream);
-#endif
+
+// Gather vectors
+void runReconstruct(Tensor<int, 1, true>& listIds,
+                    Tensor<float, 2, true>& vecs,
+                    Tensor<float, 2, true>& out,
+                    cudaStream_t stream);
+
+void runReconstruct(Tensor<int, 1, true>& listIds,
+                    Tensor<half, 2, true>& vecs,
+                    Tensor<float, 2, true>& out,
+                    cudaStream_t stream);
 
 } } // namespace

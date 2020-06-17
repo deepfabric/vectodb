@@ -1,20 +1,18 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
-#include "../../utils.h"
-#include "../../Clustering.h"
-#include "../GpuIndexFlat.h"
-#include "../StandardGpuResources.h"
-#include "IndexWrapper.h"
-#include "../utils/DeviceUtils.h"
-#include "../utils/Timer.h"
+#include <faiss/utils/random.h>
+#include <faiss/Clustering.h>
+#include <faiss/gpu/GpuIndexFlat.h>
+#include <faiss/gpu/StandardGpuResources.h>
+#include <faiss/gpu/perf/IndexWrapper.h>
+#include <faiss/gpu/utils/DeviceUtils.h>
+#include <faiss/gpu/utils/Timer.h>
 #include <gflags/gflags.h>
 #include <memory>
 #include <vector>

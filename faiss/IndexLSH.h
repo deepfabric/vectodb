@@ -1,12 +1,10 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 // -*- c++ -*-
 
 #ifndef INDEX_LSH_H
@@ -14,8 +12,8 @@
 
 #include <vector>
 
-#include "Index.h"
-#include "VectorTransform.h"
+#include <faiss/Index.h>
+#include <faiss/VectorTransform.h>
 
 namespace faiss {
 
@@ -70,15 +68,23 @@ struct IndexLSH:Index {
     ~IndexLSH() override {}
 
     IndexLSH ();
+
+    /* standalone codec interface.
+     *
+     * The vectors are decoded to +/- 1 (not 0, 1) */
+
+    size_t sa_code_size () const override;
+
+    void sa_encode (idx_t n, const float *x,
+                          uint8_t *bytes) const override;
+
+    void sa_decode (idx_t n, const uint8_t *bytes,
+                            float *x) const override;
+
 };
 
 
-
 }
-
-
-
-
 
 
 #endif

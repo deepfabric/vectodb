@@ -1,15 +1,13 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
-#include "../test/TestUtils.h"
-#include "../../utils.h"
+#include <faiss/gpu/test/TestUtils.h>
+#include <faiss/utils/random.h>
 #include <cmath>
 #include <gtest/gtest.h>
 #include <set>
@@ -54,7 +52,6 @@ bool randBool() {
 
 std::vector<float> randVecs(size_t num, size_t dim) {
   std::vector<float> v(num * dim);
-  static bool first = true;
 
   faiss::float_rand(v.data(), v.size(), s_seed);
   // unfortunately we generate separate sets of vectors, and don't
@@ -64,14 +61,28 @@ std::vector<float> randVecs(size_t num, size_t dim) {
   return v;
 }
 
-void compareIndices(const std::vector<float>& queryVecs,
-                    faiss::Index& refIndex,
-                    faiss::Index& testIndex,
-                    int numQuery, int dim, int k,
-                    const std::string& configMsg,
-                    float maxRelativeError,
-                    float pctMaxDiff1,
-                    float pctMaxDiffN) {
+std::vector<unsigned char> randBinaryVecs(size_t num, size_t dim) {
+  std::vector<unsigned char> v(num * (dim / 8));
+
+  faiss::byte_rand(v.data(), v.size(), s_seed);
+  // unfortunately we generate separate sets of vectors, and don't
+  // want the same values
+  ++s_seed;
+
+  return v;
+}
+
+void compareIndices(
+    const std::vector<float>& queryVecs,
+    faiss::Index& refIndex,
+    faiss::Index& testIndex,
+    int numQuery,
+    int /*dim*/,
+    int k,
+    const std::string& configMsg,
+    float maxRelativeError,
+    float pctMaxDiff1,
+    float pctMaxDiffN) {
   // Compare
   std::vector<float> refDistance(numQuery * k, 0);
   std::vector<faiss::Index::idx_t> refIndices(numQuery * k, -1);
@@ -170,39 +181,46 @@ void compareLists(const float* refDist,
       auto t = lookup(testInd, query, result, dim1, dim2);
 
       // All indices reported within a query should be unique; this is
-      // a serious error if is otherwise the case
-      bool uniqueIndex = uniqueIndices.count(t) == 0;
-      if (assertOnErr) {
-        EXPECT_TRUE(uniqueIndex) << configMsg
-                                 << " " << query
-                                 << " " << result
-                                 << " " << t;
-      }
-
-      if (!uniqueIndex) {
-        ++nonUniqueIndices;
+      // a serious error if is otherwise the case.
+      // If -1 is reported (no result due to IVF partitioning or not enough
+      // entries in the index), then duplicates are allowed, but both the
+      // reference and test must have -1 in the same position.
+      if (t == -1) {
+        EXPECT_EQ(lookup(refInd, query, result, dim1, dim2), t);
       } else {
-        uniqueIndices.insert(t);
-      }
-
-      auto it = indices.find(t);
-      if (it != indices.end()) {
-        int diff = std::abs(result - it->second);
-        diffs.push_back(diff);
-
-        if (diff == 1) {
-          ++diff1;
-          maxDiff = std::max(diff, maxDiff);
-        } else if (diff > 1) {
-          ++diffN;
-          maxDiff = std::max(diff, maxDiff);
+        bool uniqueIndex = uniqueIndices.count(t) == 0;
+        if (assertOnErr) {
+          EXPECT_TRUE(uniqueIndex) << configMsg
+                                   << " " << query
+                                   << " " << result
+                                   << " " << t;
         }
 
-        avgDiff += (double) diff;
-      } else {
-        ++diffInf;
-        diffs.push_back(-1);
-        // don't count this for maxDiff
+        if (!uniqueIndex) {
+          ++nonUniqueIndices;
+        } else {
+          uniqueIndices.insert(t);
+        }
+
+        auto it = indices.find(t);
+        if (it != indices.end()) {
+          int diff = std::abs(result - it->second);
+          diffs.push_back(diff);
+
+          if (diff == 1) {
+            ++diff1;
+            maxDiff = std::max(diff, maxDiff);
+          } else if (diff > 1) {
+            ++diffN;
+            maxDiff = std::max(diff, maxDiff);
+          }
+
+          avgDiff += (double) diff;
+        } else {
+          ++diffInf;
+          diffs.push_back(-1);
+          // don't count this for maxDiff
+        }
       }
 
       auto refD = lookup(refDist, query, result, dim1, dim2);

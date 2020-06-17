@@ -1,20 +1,21 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 // -*- c++ -*-
 
 #ifndef FAISS_AUTO_TUNE_H
 #define FAISS_AUTO_TUNE_H
 
 #include <vector>
+#include <unordered_map>
+#include <stdint.h>
 
-#include "Index.h"
+#include <faiss/Index.h>
+#include <faiss/IndexBinary.h>
 
 namespace faiss {
 
@@ -27,7 +28,7 @@ struct AutoTuneCriterion {
     typedef Index::idx_t idx_t;
     idx_t nq;  ///< nb of queries this criterion is evaluated on
     idx_t nnn; ///< nb of NNs that the query should request
-    idx_t gt_nnn; ///< nb of GT NNs required to evaluate crterion
+    idx_t gt_nnn; ///< nb of GT NNs required to evaluate criterion
 
     std::vector<float> gt_D;  ///< Ground-truth distances (size nq * gt_nnn)
     std::vector<idx_t> gt_I;  ///< Ground-truth indexes (size nq * gt_nnn)
@@ -87,7 +88,7 @@ struct OperatingPoint {
     double perf;     ///< performance measure (output of a Criterion)
     double t;        ///< corresponding execution time (ms)
     std::string key; ///< key that identifies this op pt
-    long cno;        ///< integer identifer
+    int64_t cno;        ///< integer identifer
 };
 
 struct OperatingPoints {
@@ -148,6 +149,10 @@ struct ParameterSpace {
     /// independent single-searches)
     bool thread_over_batches;
 
+    /// run tests several times until they reach at least this
+    /// duration (to avoid jittering in MT mode)
+    double min_test_duration;
+
     ParameterSpace ();
 
     /// nb of combinations, = product of values sizes
@@ -188,7 +193,7 @@ struct ParameterSpace {
      * @param index   index to run on
      * @param xq      query vectors (size nq * index.d)
      * @param crit    selection criterion
-     * @param ops     resutling operating points
+     * @param ops     resulting operating points
      */
     void explore (Index *index,
                   size_t nq, const float *xq,
@@ -197,11 +202,6 @@ struct ParameterSpace {
 
     virtual ~ParameterSpace () {}
 };
-
-/** Build and index with the sequence of processing steps described in
- *  the string. */
-Index *index_factory (int d, const char *description,
-                      MetricType metric = METRIC_L2);
 
 
 

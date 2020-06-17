@@ -1,16 +1,14 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
 #pragma once
 
-#include "Float16.cuh"
+#include <faiss/gpu/utils/Float16.cuh>
 
 #ifndef __HALF2_TO_UI
 // cuda_fp16.hpp doesn't export this
@@ -36,8 +34,6 @@ struct LoadStore {
     *((T*) p) = v;
   }
 };
-
-#ifdef FAISS_USE_FLOAT16
 
 template <>
 struct LoadStore<Half4> {
@@ -90,7 +86,5 @@ struct LoadStore<Half8> {
 #endif
   }
 };
-
-#endif // FAISS_USE_FLOAT16
 
 } } // namespace

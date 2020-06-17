@@ -1,18 +1,16 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
-#include "../../IndexFlat.h"
-#include "../GpuIndexFlat.h"
-#include "../StandardGpuResources.h"
-#include "../utils/DeviceUtils.h"
-#include "../test/TestUtils.h"
+#include <faiss/IndexFlat.h>
+#include <faiss/gpu/GpuIndexFlat.h>
+#include <faiss/gpu/StandardGpuResources.h>
+#include <faiss/gpu/utils/DeviceUtils.h>
+#include <faiss/gpu/test/TestUtils.h>
 #include <gtest/gtest.h>
 #include <sstream>
 #include <vector>
@@ -23,26 +21,32 @@ constexpr float kF32MaxRelErr = 6e-3f;
 
 struct TestFlatOptions {
   TestFlatOptions()
-      : useL2(true),
+      : metric(faiss::MetricType::METRIC_L2),
+        metricArg(0),
         useFloat16(false),
         useTransposed(false),
         numVecsOverride(-1),
         numQueriesOverride(-1),
-        kOverride(-1) {
+        kOverride(-1),
+        dimOverride(-1) {
   }
 
-  bool useL2;
+  faiss::MetricType metric;
+  float metricArg;
+
   bool useFloat16;
   bool useTransposed;
   int numVecsOverride;
   int numQueriesOverride;
   int kOverride;
+  int dimOverride;
 };
 
 void testFlat(const TestFlatOptions& opt) {
   int numVecs = opt.numVecsOverride > 0 ?
-    opt.numVecsOverride : faiss::gpu::randVal(1000, 20000);
-  int dim = faiss::gpu::randVal(50, 800);
+    opt.numVecsOverride : faiss::gpu::randVal(1000, 5000);
+  int dim = opt.dimOverride > 0 ?
+    opt.dimOverride : faiss::gpu::randVal(50, 800);
   int numQuery = opt.numQueriesOverride > 0 ?
     opt.numQueriesOverride : faiss::gpu::randVal(1, 512);
 
@@ -51,17 +55,13 @@ void testFlat(const TestFlatOptions& opt) {
   // fairly small `k` for float16
   int k = opt.useFloat16 ?
     std::min(faiss::gpu::randVal(1, 50), numVecs) :
-    std::min(faiss::gpu::randVal(1, 1024), numVecs);
+    std::min(faiss::gpu::randVal(1, faiss::gpu::getMaxKSelection()), numVecs);
   if (opt.kOverride > 0) {
     k = opt.kOverride;
   }
 
-  faiss::IndexFlatIP cpuIndexIP(dim);
-  faiss::IndexFlatL2 cpuIndexL2(dim);
-
-  faiss::IndexFlat* cpuIndex =
-    opt.useL2 ? (faiss::IndexFlat*) &cpuIndexL2 :
-    (faiss::IndexFlat*) &cpuIndexIP;
+  faiss::IndexFlat cpuIndex(dim, opt.metric);
+  cpuIndex.metric_arg = opt.metricArg;
 
   // Construct on a random device to test multi-device, if we have
   // multiple devices
@@ -70,25 +70,22 @@ void testFlat(const TestFlatOptions& opt) {
   faiss::gpu::StandardGpuResources res;
   res.noTempMemory();
 
-
   faiss::gpu::GpuIndexFlatConfig config;
   config.device = device;
   config.useFloat16 = opt.useFloat16;
   config.storeTransposed = opt.useTransposed;
 
-  faiss::gpu::GpuIndexFlatIP gpuIndexIP(&res, dim, config);
-  faiss::gpu::GpuIndexFlatL2 gpuIndexL2(&res, dim, config);
-
-  faiss::gpu::GpuIndexFlat* gpuIndex =
-    opt.useL2 ? (faiss::gpu::GpuIndexFlat*) &gpuIndexL2 :
-    (faiss::gpu::GpuIndexFlat*) &gpuIndexIP;
+  faiss::gpu::GpuIndexFlat gpuIndex(&res, dim, opt.metric, config);
+  gpuIndex.metric_arg = opt.metricArg;
 
   std::vector<float> vecs = faiss::gpu::randVecs(numVecs, dim);
-  cpuIndex->add(numVecs, vecs.data());
-  gpuIndex->add(numVecs, vecs.data());
+  cpuIndex.add(numVecs, vecs.data());
+  gpuIndex.add(numVecs, vecs.data());
 
   std::stringstream str;
-  str << (opt.useL2 ? "L2" : "IP") << " numVecs " << numVecs
+  str << "metric " << opt.metric
+      << " marg " << opt.metricArg
+      << " numVecs " << numVecs
       << " dim " << dim
       << " useFloat16 " << opt.useFloat16
       << " transposed " << opt.useTransposed
@@ -97,7 +94,7 @@ void testFlat(const TestFlatOptions& opt) {
 
   // To some extent, we depend upon the relative error for the test
   // for float16
-  faiss::gpu::compareIndices(*cpuIndex, *gpuIndex, numQuery, dim, k, str.str(),
+  faiss::gpu::compareIndices(cpuIndex, gpuIndex, numQuery, dim, k, str.str(),
                              opt.useFloat16 ? kF16MaxRelErr : kF32MaxRelErr,
                              // FIXME: the fp16 bounds are
                              // useless when math (the accumulator) is
@@ -107,11 +104,9 @@ void testFlat(const TestFlatOptions& opt) {
 }
 
 TEST(TestGpuIndexFlat, IP_Float32) {
-  for (int tries = 0; tries < 5; ++tries) {
-    faiss::gpu::newTestSeed();
-
+  for (int tries = 0; tries < 3; ++tries) {
     TestFlatOptions opt;
-    opt.useL2 = false;
+    opt.metric = faiss::MetricType::METRIC_INNER_PRODUCT;
     opt.useFloat16 = false;
     opt.useTransposed = false;
 
@@ -122,12 +117,36 @@ TEST(TestGpuIndexFlat, IP_Float32) {
   }
 }
 
-TEST(TestGpuIndexFlat, L2_Float32) {
-  for (int tries = 0; tries < 5; ++tries) {
-    faiss::gpu::newTestSeed();
+TEST(TestGpuIndexFlat, L1_Float32) {
+  TestFlatOptions opt;
+  opt.metric = faiss::MetricType::METRIC_L1;
+  opt.useFloat16 = false;
+  opt.useTransposed = false;
 
+  testFlat(opt);
+
+  opt.useTransposed = true;
+  testFlat(opt);
+}
+
+TEST(TestGpuIndexFlat, Lp_Float32) {
+  TestFlatOptions opt;
+  opt.metric = faiss::MetricType::METRIC_Lp;
+  opt.metricArg = 5;
+  opt.useFloat16 = false;
+  opt.useTransposed = false;
+
+  testFlat(opt);
+
+  // Don't bother testing the transposed version, the L1 test should be good
+  // enough for that
+}
+
+TEST(TestGpuIndexFlat, L2_Float32) {
+  for (int tries = 0; tries < 3; ++tries) {
     TestFlatOptions opt;
-    opt.useL2 = true;
+    opt.metric = faiss::MetricType::METRIC_L2;
+
     opt.useFloat16 = false;
     opt.useTransposed = false;
 
@@ -140,11 +159,9 @@ TEST(TestGpuIndexFlat, L2_Float32) {
 
 // test specialized k == 1 codepath
 TEST(TestGpuIndexFlat, L2_Float32_K1) {
-  for (int tries = 0; tries < 5; ++tries) {
-    faiss::gpu::newTestSeed();
-
+  for (int tries = 0; tries < 3; ++tries) {
     TestFlatOptions opt;
-    opt.useL2 = true;
+    opt.metric = faiss::MetricType::METRIC_L2;
     opt.useFloat16 = false;
     opt.useTransposed = false;
     opt.kOverride = 1;
@@ -154,11 +171,9 @@ TEST(TestGpuIndexFlat, L2_Float32_K1) {
 }
 
 TEST(TestGpuIndexFlat, IP_Float16) {
-  for (int tries = 0; tries < 5; ++tries) {
-    faiss::gpu::newTestSeed();
-
+  for (int tries = 0; tries < 3; ++tries) {
     TestFlatOptions opt;
-    opt.useL2 = false;
+    opt.metric = faiss::MetricType::METRIC_INNER_PRODUCT;
     opt.useFloat16 = true;
     opt.useTransposed = false;
 
@@ -170,11 +185,9 @@ TEST(TestGpuIndexFlat, IP_Float16) {
 }
 
 TEST(TestGpuIndexFlat, L2_Float16) {
-  for (int tries = 0; tries < 5; ++tries) {
-    faiss::gpu::newTestSeed();
-
+  for (int tries = 0; tries < 3; ++tries) {
     TestFlatOptions opt;
-    opt.useL2 = true;
+    opt.metric = faiss::MetricType::METRIC_L2;
     opt.useFloat16 = true;
     opt.useTransposed = false;
 
@@ -187,11 +200,9 @@ TEST(TestGpuIndexFlat, L2_Float16) {
 
 // test specialized k == 1 codepath
 TEST(TestGpuIndexFlat, L2_Float16_K1) {
-  for (int tries = 0; tries < 5; ++tries) {
-    faiss::gpu::newTestSeed();
-
+  for (int tries = 0; tries < 3; ++tries) {
     TestFlatOptions opt;
-    opt.useL2 = true;
+    opt.metric = faiss::MetricType::METRIC_L2;
     opt.useFloat16 = true;
     opt.useTransposed = false;
     opt.kOverride = 1;
@@ -202,19 +213,18 @@ TEST(TestGpuIndexFlat, L2_Float16_K1) {
 
 // test tiling along a huge vector set
 TEST(TestGpuIndexFlat, L2_Tiling) {
-  for (int tries = 0; tries < 3; ++tries) {
-    faiss::gpu::newTestSeed();
-
+  for (int tries = 0; tries < 2; ++tries) {
     TestFlatOptions opt;
-    opt.useL2 = true;
+    opt.metric = faiss::MetricType::METRIC_L2;
     opt.useFloat16 = false;
     opt.useTransposed = false;
     opt.numVecsOverride = 1000000;
-    opt.numQueriesOverride = 8;
 
-    testFlat(opt);
+    // keep the rest of the problem reasonably small
+    opt.numQueriesOverride = 4;
+    opt.dimOverride = 64;
+    opt.kOverride = 64;
 
-    opt.useTransposed = true;
     testFlat(opt);
   }
 }
@@ -252,8 +262,6 @@ TEST(TestGpuIndexFlat, QueryEmpty) {
 }
 
 TEST(TestGpuIndexFlat, CopyFrom) {
-  faiss::gpu::newTestSeed();
-
   int numVecs = faiss::gpu::randVal(100, 200);
   int dim = faiss::gpu::randVal(1, 1000);
 
@@ -269,7 +277,7 @@ TEST(TestGpuIndexFlat, CopyFrom) {
   int device = faiss::gpu::randVal(0, faiss::gpu::getNumDevices() - 1);
 
   faiss::gpu::GpuIndexFlatConfig config;
-  config.device = 0;
+  config.device = device;
   config.useFloat16 = false;
   config.storeTransposed = false;
 
@@ -294,8 +302,6 @@ TEST(TestGpuIndexFlat, CopyFrom) {
 }
 
 TEST(TestGpuIndexFlat, CopyTo) {
-  faiss::gpu::newTestSeed();
-
   faiss::gpu::StandardGpuResources res;
   res.noTempMemory();
 
@@ -375,4 +381,13 @@ TEST(TestGpuIndexFlat, UnifiedMemory) {
                              kF32MaxRelErr,
                              0.1f,
                              0.015f);
+}
+
+int main(int argc, char** argv) {
+  testing::InitGoogleTest(&argc, argv);
+
+  // just run with a fixed test seed
+  faiss::gpu::setTestSeed(100);
+
+  return RUN_ALL_TESTS();
 }

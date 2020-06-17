@@ -1,12 +1,10 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
- // Copyright 2004-present Facebook. All Rights Reserved
 
 
 #include <cmath>
@@ -21,8 +19,8 @@
 
 #include <sys/time.h>
 
-#include "../AutoTune.h"
-
+#include <faiss/AutoTune.h>
+#include <faiss/index_factory.h>
 
 /**
  * To run this demo, please download the ANN_SIFT1M dataset from

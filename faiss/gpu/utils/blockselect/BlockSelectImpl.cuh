@@ -1,16 +1,14 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 #pragma once
 
-#include "../BlockSelectKernel.cuh"
-#include "../Limits.cuh"
+#include <faiss/gpu/utils/BlockSelectKernel.cuh>
+#include <faiss/gpu/utils/Limits.cuh>
 
 #define BLOCK_SELECT_DECL(TYPE, DIR, WARP_Q)                            \
   extern void runBlockSelect_ ## TYPE ## _ ## DIR ## _ ## WARP_Q ## _(  \
@@ -45,7 +43,7 @@
                                                                         \
     auto grid = dim3(in.getSize(0));                                    \
                                                                         \
-    constexpr int kBlockSelectNumThreads = 128;                         \
+    constexpr int kBlockSelectNumThreads = (WARP_Q <= 1024) ? 128 : 64; \
     auto block = dim3(kBlockSelectNumThreads);                          \
                                                                         \
     FAISS_ASSERT(k <= WARP_Q);                                          \
@@ -72,7 +70,7 @@
                                                                         \
     auto grid = dim3(inK.getSize(0));                                   \
                                                                         \
-    constexpr int kBlockSelectNumThreads = 128;                         \
+    constexpr int kBlockSelectNumThreads = (WARP_Q <= 1024) ? 128 : 64; \
     auto block = dim3(kBlockSelectNumThreads);                          \
                                                                         \
     FAISS_ASSERT(k <= WARP_Q);                                          \

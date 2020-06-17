@@ -1,12 +1,10 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 // -*- c++ -*-
 
 #ifndef FAISS_INDEX_PQ_H
@@ -16,9 +14,9 @@
 
 #include <vector>
 
-#include "Index.h"
-#include "ProductQuantizer.h"
-#include "PolysemousTraining.h"
+#include <faiss/Index.h>
+#include <faiss/impl/ProductQuantizer.h>
+#include <faiss/impl/PolysemousTraining.h>
 
 namespace faiss {
 
@@ -63,6 +61,20 @@ struct IndexPQ: Index {
 
     void reconstruct(idx_t key, float* recons) const override;
 
+    size_t remove_ids(const IDSelector& sel) override;
+
+    /* The standalone codec interface */
+    size_t sa_code_size () const override;
+
+    void sa_encode (idx_t n, const float *x,
+                          uint8_t *bytes) const override;
+
+    void sa_decode (idx_t n, const uint8_t *bytes,
+                            float *x) const override;
+
+
+    DistanceComputer * get_distance_computer() const override;
+
     /******************************************************
      * Polysemous codes implementation
      ******************************************************/
@@ -83,11 +95,6 @@ struct IndexPQ: Index {
 
     Search_type_t search_type;
 
-    /** remove some ids. NB that Because of the structure of the
-     * indexing structre, the semantics of this operation are
-     * different from the usual ones: the new ids are shifted */
-    long remove_ids(const IDSelector& sel) override;
-
     // just encode the sign of the components, instead of using the PQ encoder
     // used only for the queries
     bool encode_signs;
@@ -105,7 +112,7 @@ struct IndexPQ: Index {
     /// @param dist_histogram (M * nbits + 1)
     void hamming_distance_histogram (idx_t n, const float *x,
                                      idx_t nb, const float *xb,
-                                     long *dist_histogram);
+                                     int64_t *dist_histogram);
 
     /** compute pairwise distances between queries and database
      *
@@ -187,7 +194,6 @@ struct MultiIndexQuantizer2: MultiIndexQuantizer {
 
 
 } // namespace faiss
-
 
 
 #endif

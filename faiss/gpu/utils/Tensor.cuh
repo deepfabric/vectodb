@@ -1,12 +1,10 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
 #pragma once
 
@@ -279,6 +277,11 @@ class Tensor {
   __host__ __device__ Tensor<T, Dim, InnerContig, IndexT, PtrTraits>
   transpose(int dim1, int dim2) const;
 
+  /// Transpose a tensor, exchanging a non-innermost dimension with the
+  /// innermost dimension, returning a no longer innermost contiguous tensor
+  __host__ __device__ Tensor<T, Dim, false, IndexT, PtrTraits>
+  transposeInnermost(int dim1) const;
+
   /// Upcast a tensor of dimension `D` to some tensor of dimension
   /// D' > D by padding the leading dimensions by 1
   /// e.g., upcasting a 2-d tensor `[2][3]` to a 4-d tensor `[1][1][2][3]`
@@ -360,7 +363,7 @@ bool canUseIndexType() {
 
 template <typename IndexType, typename T, typename... U>
 bool canUseIndexType(const T& arg, const U&... args) {
-  return arg.canUseIndexType<IndexType>() &&
+  return arg.template canUseIndexType() &&
     canUseIndexType(args...);
 }
 
@@ -650,4 +653,4 @@ const detail::SubTensor<Tensor<T, Dim, InnerContig, IndexT, PtrTraits>,
 
 } } // namespace
 
-#include "Tensor-inl.cuh"
+#include <faiss/gpu/utils/Tensor-inl.cuh>

@@ -1,8 +1,7 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
@@ -44,7 +43,7 @@ void faiss_IndexFlat_xb(FaissIndexFlat* index, float** p_xb, size_t* p_size);
  * @param index opaque pointer to index object
  * @return the same pointer if the index is a flat index, NULL otherwise
  */
-FaissIndexFlat* faiss_IndexFlat_cast(FaissIndex* index);
+FAISS_DECLARE_INDEX_DOWNCAST(IndexFlat)
 
 FAISS_DECLARE_DESTRUCTOR(IndexFlat)
 

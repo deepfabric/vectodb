@@ -1,15 +1,14 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
 #pragma once
 
+#include <faiss/gpu/utils/MemorySpace.h>
 #include <cuda.h>
 #include <unordered_set>
 
@@ -27,6 +26,11 @@ class GpuResourcesThrustAllocator {
   }
 
   ~GpuResourcesThrustAllocator() {
+    // In the case of an exception being thrown, we may not have called
+    // deallocate on all of our sub-allocations. Free them here
+    for (auto p : mallocAllocs_) {
+      freeMemorySpace(MemorySpace::Device, p);
+    }
   }
 
   char* allocate(std::ptrdiff_t size) {
@@ -38,7 +42,7 @@ class GpuResourcesThrustAllocator {
       return p;
     } else {
       char* p = nullptr;
-      CUDA_VERIFY(cudaMalloc(&p, size));
+      allocMemorySpace(MemorySpace::Device, &p, size);
       mallocAllocs_.insert(p);
       return p;
     }
@@ -49,7 +53,7 @@ class GpuResourcesThrustAllocator {
     // didn't cudaMalloc
     auto it = mallocAllocs_.find(p);
     if (it != mallocAllocs_.end()) {
-      CUDA_VERIFY(cudaFree(p));
+      freeMemorySpace(MemorySpace::Device, p);
       mallocAllocs_.erase(it);
     }
   }

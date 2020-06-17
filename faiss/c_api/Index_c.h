@@ -1,8 +1,7 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
@@ -12,7 +11,7 @@
 #ifndef FAISS_INDEX_C_H
 #define FAISS_INDEX_C_H
 
-#include <stdio.h>
+#include <stddef.h>
 #include "faiss_c.h"
 
 #ifdef __cplusplus
@@ -27,8 +26,16 @@ typedef struct FaissIDSelector_H FaissIDSelector;
 
 /// Some algorithms support both an inner product version and a L2 search version.
 typedef enum FaissMetricType {
-    METRIC_INNER_PRODUCT = 0,
-    METRIC_L2 = 1,
+    METRIC_INNER_PRODUCT = 0,  ///< maximum inner product search
+    METRIC_L2 = 1,             ///< squared L2 search
+    METRIC_L1,                 ///< L1 (aka cityblock)
+    METRIC_Linf,               ///< infinity distance
+    METRIC_Lp,                 ///< L_p distance, p is given by metric_arg
+
+    /// some additional metrics defined in scipy.spatial.distance
+    METRIC_Canberra = 20,
+    METRIC_BrayCurtis,
+    METRIC_JensenShannon,    
 } FaissMetricType;
 
 /// Opaque type for referencing to an index object
@@ -73,7 +80,7 @@ int faiss_Index_add(FaissIndex* index, idx_t n, const float* x);
  * @param index  opaque pointer to index object
  * @param xids   if non-null, ids to store for the vectors (size n)
  */
-int faiss_Index_add_with_ids(FaissIndex* index, idx_t n, const float* x, const long* xids);
+int faiss_Index_add_with_ids(FaissIndex* index, idx_t n, const float* x, const idx_t* xids);
 
 /** query n vectors of dimension d to the index.
  *
@@ -120,7 +127,7 @@ int faiss_Index_reset(FaissIndex* index);
  * @param index       opaque pointer to index object
  * @param nremove     output for the number of IDs removed
  */
-int faiss_Index_remove_ids(FaissIndex* index, const FaissIDSelector* sel, long* n_removed);
+int faiss_Index_remove_ids(FaissIndex* index, const FaissIDSelector* sel, size_t* n_removed);
 
 /** Reconstruct a stored vector (or an approximation if lossy coding)
  *
@@ -153,10 +160,21 @@ int faiss_Index_reconstruct_n (const FaissIndex* index, idx_t i0, idx_t ni, floa
  */
 int faiss_Index_compute_residual(const FaissIndex* index, const float* x, float* residual, idx_t key);
 
-/** Display the actual class name and some more info
+/** Computes a residual vector after indexing encoding.
+ *
+ * The residual vector is the difference between a vector and the
+ * reconstruction that can be decoded from its representation in
+ * the index. The residual can be used for multiple-stage indexing
+ * methods, like IndexIVF's methods.
+ *
  * @param index       opaque pointer to index object
+ * @param n           number of vectors
+ * @param x           input vector, size (n x d)
+ * @param residuals    output residual vectors, size (n x d)
+ * @param keys         encoded index, as returned by search and assign
  */
-int faiss_Index_display(const FaissIndex* index);
+int faiss_Index_compute_residual_n(const FaissIndex* index, idx_t n, const float* x, float* residuals, const idx_t* keys);
+
 
 #ifdef __cplusplus
 }

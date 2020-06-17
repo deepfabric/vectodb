@@ -1,11 +1,11 @@
-# Copyright (c) 2015-present, Facebook, Inc.
-# All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
 #
-# This source code is licensed under the BSD+Patents license found in the
+# This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
 #!/usr/bin/env python2
 
+from __future__ import print_function
 import os
 import time
 import numpy as np
@@ -25,14 +25,9 @@ import faiss
 #################################################################
 
 def ivecs_read(fname):
-    f = open(fname)
-    d, = np.fromfile(f, count = 1, dtype = 'int32')
-    sz = os.stat(fname).st_size
-    assert sz % (4 * (d + 1)) == 0
-    n = sz / (4 * (d + 1))
-    f.seek(0)
-    a = np.fromfile(f, count = n * (d +1), dtype = 'int32').reshape(n, d + 1)
-    return a[:, 1:].copy()
+    a = np.fromfile(fname, dtype="int32")
+    d = a[0]
+    return a.reshape(-1, d + 1)[:, 1:].copy()
 
 def fvecs_read(fname):
     return ivecs_read(fname).view('float32')
@@ -41,8 +36,8 @@ def fvecs_read(fname):
 def plot_OperatingPoints(ops, nq, **kwargs):
     ops = ops.optimal_pts
     n = ops.size() * 2 - 1
-    pyplot.plot([ops.at( i      / 2).perf for i in range(n)],
-                [ops.at((i + 1) / 2).t / nq * 1000 for i in range(n)],
+    pyplot.plot([ops.at( i      // 2).perf for i in range(n)],
+                [ops.at((i + 1) // 2).t / nq * 1000 for i in range(n)],
                 **kwargs)
 
 
@@ -54,7 +49,7 @@ def plot_OperatingPoints(ops, nq, **kwargs):
 
 t0 = time.time()
 
-print "load data"
+print("load data")
 
 xt = fvecs_read("sift1M/sift_learn.fvecs")
 xb = fvecs_read("sift1M/sift_base.fvecs")
@@ -62,13 +57,13 @@ xq = fvecs_read("sift1M/sift_query.fvecs")
 
 d = xt.shape[1]
 
-print "load GT"
+print("load GT")
 
 gt = ivecs_read("sift1M/sift_groundtruth.ivecs")
 gt = gt.astype('int64')
 k = gt.shape[1]
 
-print "prepare criterion"
+print("prepare criterion")
 
 # criterion = 1-recall at 1
 crit = faiss.OneRecallAtRCriterion(xq.shape[0], 1)
@@ -122,7 +117,7 @@ op = faiss.OperatingPoints()
 
 for index_key in keys_to_test:
 
-    print "============ key", index_key
+    print("============ key", index_key)
 
     # make the index described by the key
     index = faiss.index_factory(d, index_key)
@@ -137,17 +132,17 @@ for index_key in keys_to_test:
 
     params.initialize(index)
 
-    print "[%.3f s] train & add" % (time.time() - t0)
+    print("[%.3f s] train & add" % (time.time() - t0))
 
     index.train(xt)
     index.add(xb)
 
-    print "[%.3f s] explore op points" % (time.time() - t0)
+    print("[%.3f s] explore op points" % (time.time() - t0))
 
     # find operating points for this index
     opi = params.explore(index, xq, crit)
 
-    print "[%.3f s] result operating points:" % (time.time() - t0)
+    print("[%.3f s] result operating points:" % (time.time() - t0))
     opi.display()
 
     # update best operating points so far
@@ -170,6 +165,6 @@ for index_key in keys_to_test:
         fig.savefig('tmp/demo_auto_tune.png')
 
 
-print "[%.3f s] final result:" % (time.time() - t0)
+print("[%.3f s] final result:" % (time.time() - t0))
 
 op.display()

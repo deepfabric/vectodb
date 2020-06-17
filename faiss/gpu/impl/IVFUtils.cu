@@ -1,18 +1,16 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
-#include "IVFUtils.cuh"
-#include "../utils/DeviceUtils.h"
-#include "../utils/StaticUtils.h"
-#include "../utils/Tensor.cuh"
-#include "../utils/ThrustAllocator.cuh"
+#include <faiss/gpu/impl/IVFUtils.cuh>
+#include <faiss/gpu/utils/DeviceUtils.h>
+#include <faiss/gpu/utils/StaticUtils.h>
+#include <faiss/gpu/utils/Tensor.cuh>
+#include <faiss/gpu/utils/ThrustAllocator.cuh>
 #include <thrust/scan.h>
 #include <thrust/execution_policy.h>
 

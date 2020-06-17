@@ -1,147 +1,97 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 // -*- c++ -*-
 
 #ifndef META_INDEXES_H
 #define META_INDEXES_H
 
-
 #include <vector>
 #include <unordered_map>
-
-
-#include "Index.h"
-
+#include <faiss/Index.h>
+#include <faiss/IndexShards.h>
+#include <faiss/IndexReplicas.h>
 
 namespace faiss {
 
 /** Index that translates search results to ids */
-struct IndexIDMap : Index {
-    Index * index;            ///! the sub-index
+template <typename IndexT>
+struct IndexIDMapTemplate : IndexT {
+    using idx_t = typename IndexT::idx_t;
+    using component_t = typename IndexT::component_t;
+    using distance_t = typename IndexT::distance_t;
+
+    IndexT * index;           ///! the sub-index
     bool own_fields;          ///! whether pointers are deleted in destructo
-    std::vector<long> id_map;
+    std::vector<idx_t> id_map;
 
-    explicit IndexIDMap (Index *index);
+    explicit IndexIDMapTemplate (IndexT *index);
 
-    /// Same as add_core, but stores xids instead of sequential ids
     /// @param xids if non-null, ids to store for the vectors (size n)
-    void add_with_ids(idx_t n, const float* x, const long* xids) override;
+    void add_with_ids(idx_t n, const component_t* x, const idx_t* xids) override;
 
     /// this will fail. Use add_with_ids
-    void add(idx_t n, const float* x) override;
+    void add(idx_t n, const component_t* x) override;
 
     void search(
-        idx_t n,
-        const float* x,
-        idx_t k,
-        float* distances,
+        idx_t n, const component_t* x, idx_t k,
+        distance_t* distances,
         idx_t* labels) const override;
 
-    void train(idx_t n, const float* x) override;
+    void train(idx_t n, const component_t* x) override;
 
     void reset() override;
 
     /// remove ids adapted to IndexFlat
-    long remove_ids(const IDSelector& sel) override;
+    size_t remove_ids(const IDSelector& sel) override;
 
-    void range_search (idx_t n, const float *x, float radius,
+    void range_search (idx_t n, const component_t *x, distance_t radius,
                        RangeSearchResult *result) const override;
 
-    ~IndexIDMap() override;
-    IndexIDMap () {own_fields=false; index=nullptr; }
+    ~IndexIDMapTemplate () override;
+    IndexIDMapTemplate () {own_fields=false; index=nullptr; }
 };
 
+using IndexIDMap = IndexIDMapTemplate<Index>;
+using IndexBinaryIDMap = IndexIDMapTemplate<IndexBinary>;
+
+
 /** same as IndexIDMap but also provides an efficient reconstruction
-    implementation via a 2-way index */
-struct IndexIDMap2 : IndexIDMap {
+ *  implementation via a 2-way index */
+template <typename IndexT>
+struct IndexIDMap2Template : IndexIDMapTemplate<IndexT> {
+    using idx_t = typename IndexT::idx_t;
+    using component_t = typename IndexT::component_t;
+    using distance_t = typename IndexT::distance_t;
 
     std::unordered_map<idx_t, idx_t> rev_map;
 
-    explicit IndexIDMap2 (Index *index);
+    explicit IndexIDMap2Template (IndexT *index);
 
     /// make the rev_map from scratch
     void construct_rev_map ();
 
-    void add_with_ids(idx_t n, const float* x, const long* xids) override;
+    void add_with_ids(idx_t n, const component_t* x, const idx_t* xids) override;
 
-    long remove_ids(const IDSelector& sel) override;
+    size_t remove_ids(const IDSelector& sel) override;
 
-    void reconstruct (idx_t key, float * recons) const override;
+    void reconstruct (idx_t key, component_t * recons) const override;
 
-    ~IndexIDMap2() override {}
-    IndexIDMap2 () {}
+    ~IndexIDMap2Template() override {}
+    IndexIDMap2Template () {}
 };
 
+using IndexIDMap2 = IndexIDMap2Template<Index>;
+using IndexBinaryIDMap2 = IndexIDMap2Template<IndexBinary>;
 
-/** Index that concatenates the results from several sub-indexes
- *
- */
-struct IndexShards : Index {
-
-    std::vector<Index*> shard_indexes;
-    bool own_fields;      /// should the sub-indexes be deleted along with this?
-    bool threaded;
-    bool successive_ids;
-
-    /**
-     * @param threaded     do we use one thread per sub_index or do
-     *                     queries sequentially?
-     * @param successive_ids should we shift the returned ids by
-     *                     the size of each sub-index or return them
-     *                     as they are?
-     */
-    explicit IndexShards (idx_t d, bool threaded = false,
-                         bool successive_ids = true);
-
-    void add_shard (Index *);
-
-    // update metric_type and ntotal. Call if you changes something in
-    // the shard indexes.
-    void sync_with_shard_indexes ();
-
-    Index *at(int i) {return shard_indexes[i]; }
-
-    /// supported only for sub-indices that implement add_with_ids
-    void add(idx_t n, const float* x) override;
-
-    /**
-     * Cases (successive_ids, xids):
-     * - true, non-NULL       ERROR: it makes no sense to pass in ids and
-     *                        request them to be shifted
-     * - true, NULL           OK, but should be called only once (calls add()
-     *                        on sub-indexes).
-     * - false, non-NULL      OK: will call add_with_ids with passed in xids
-     *                        distributed evenly over shards
-     * - false, NULL          OK: will call add_with_ids on each sub-index,
-     *                        starting at ntotal
-     */
-    void add_with_ids(idx_t n, const float* x, const long* xids) override;
-
-    void search(
-        idx_t n,
-        const float* x,
-        idx_t k,
-        float* distances,
-        idx_t* labels) const override;
-
-    void train(idx_t n, const float* x) override;
-
-    void reset() override;
-
-    ~IndexShards() override;
-};
 
 /** splits input vectors in segments and assigns each segment to a sub-index
  * used to distribute a MultiIndexQuantizer
  */
-
 struct IndexSplitVectors: Index {
     bool own_fields;
     bool threaded;
@@ -170,8 +120,7 @@ struct IndexSplitVectors: Index {
 };
 
 
-
-}
+} // namespace faiss
 
 
 #endif

@@ -1,8 +1,7 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
@@ -19,10 +18,11 @@
 #include <faiss/OnDiskInvertedLists.h>
 #include <faiss/IndexIVFFlat.h>
 #include <faiss/IndexFlat.h>
-#include <faiss/utils.h>
+#include <faiss/utils/random.h>
 #include <faiss/index_io.h>
 
 
+namespace {
 
 struct Tempfilename {
 
@@ -32,7 +32,9 @@ struct Tempfilename {
 
     Tempfilename (const char *prefix = nullptr) {
         pthread_mutex_lock (&mutex);
-        filename = tempnam (nullptr, prefix);
+        char *cfname = tempnam (nullptr, prefix);
+        filename = cfname;
+        free(cfname);
         pthread_mutex_unlock (&mutex);
     }
 
@@ -49,6 +51,8 @@ struct Tempfilename {
 };
 
 pthread_mutex_t Tempfilename::mutex = PTHREAD_MUTEX_INITIALIZER;
+
+}  // namespace
 
 
 TEST(ONDISK, make_invlists) {
@@ -79,10 +83,10 @@ TEST(ONDISK, make_invlists) {
     int ntot = 0;
     for (int i = 0; i < nlist; i++) {
         int size = ivf.list_size(i);
-        const long *ids = ivf.get_ids (i);
+        const faiss::Index::idx_t *ids = ivf.get_ids (i);
         const uint8_t *codes = ivf.get_codes (i);
         for (int j = 0; j < size; j++) {
-            long id = ids[j];
+            faiss::Index::idx_t id = ids[j];
             const int * ar = (const int*)&codes[code_size * j];
             EXPECT_EQ (ar[0], id);
             EXPECT_EQ (ar[1], i);
@@ -170,7 +174,6 @@ TEST(ONDISK, make_invlists_threaded) {
     int nlist = 100;
     int code_size = 32;
     int nadd = 1000000;
-    int nt = 20;
 
     Tempfilename filename;
 
@@ -199,10 +202,10 @@ TEST(ONDISK, make_invlists_threaded) {
     int ntot = 0;
     for (int i = 0; i < nlist; i++) {
         int size = ivf.list_size(i);
-        const long *ids = ivf.get_ids (i);
+        const faiss::Index::idx_t *ids = ivf.get_ids (i);
         const uint8_t *codes = ivf.get_codes (i);
         for (int j = 0; j < size; j++) {
-            long id = ids[j];
+            faiss::Index::idx_t id = ids[j];
             const int * ar = (const int*)&codes[code_size * j];
             EXPECT_EQ (ar[0], id);
             EXPECT_EQ (ar[1], i);

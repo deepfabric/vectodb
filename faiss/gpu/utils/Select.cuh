@@ -1,22 +1,20 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 #pragma once
 
-#include "Comparators.cuh"
-#include "DeviceDefs.cuh"
-#include "MergeNetworkBlock.cuh"
-#include "MergeNetworkWarp.cuh"
-#include "PtxUtils.cuh"
-#include "Reductions.cuh"
-#include "ReductionOperators.cuh"
-#include "Tensor.cuh"
+#include <faiss/gpu/utils/Comparators.cuh>
+#include <faiss/gpu/utils/DeviceDefs.cuh>
+#include <faiss/gpu/utils/MergeNetworkBlock.cuh>
+#include <faiss/gpu/utils/MergeNetworkWarp.cuh>
+#include <faiss/gpu/utils/PtxUtils.cuh>
+#include <faiss/gpu/utils/Reductions.cuh>
+#include <faiss/gpu/utils/ReductionOperators.cuh>
+#include <faiss/gpu/utils/Tensor.cuh>
 
 namespace faiss { namespace gpu {
 

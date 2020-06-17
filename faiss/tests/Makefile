@@ -1,26 +1,27 @@
-MAKEFILE_INC=../makefile.inc
+# Copyright (c) Facebook, Inc. and its affiliates.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
 
--include $(MAKEFILE_INC)
+-include ../makefile.inc
 
-CC_TESTS = test_ivfpq_indexing test_ivfpq_codec test_merge test_ondisk_ivf test_pairs_decoding
+TESTS_SRC = $(wildcard *.cpp)
+TESTS_OBJ = $(TESTS_SRC:.cpp=.o)
 
-all: $(CC_TESTS) ../py
 
-run: all
-	./run_tests.sh
+all: run
 
-%: %.cpp  ../libfaiss.a gtest/make/gtest_main.a
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(BLASLDFLAGS) \
-	-Igtest/include -I../..
+run: tests
+	./tests
 
-../libfaiss.a:
-	cd ../ && make libfaiss.a
+tests: $(TESTS_OBJ) ../libfaiss.a gtest/make/gtest_main.a
+	$(CXX) -o $@ $^ $(LDFLAGS) $(LIBS)
 
-../py:
-	cd ../ && make py
+%.o: %.cpp gtest
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(CPUFLAGS) -c -o $@ $< -Igtest/include -I..
 
 gtest/make/gtest_main.a: gtest
-	cd gtest/make && make CXX=$(CC) gtest_main.a
+	$(MAKE) -C gtest/make CXX="$(CXX)" CXXFLAGS="$(CXXFLAGS)" gtest_main.a
 
 gtest:
 	curl -L https://github.com/google/googletest/archive/release-1.8.0.tar.gz | tar xz && \
@@ -28,4 +29,9 @@ gtest:
 	rm -rf googletest-release-1.8.0
 
 clean:
-	rm -rf $(CC_TESTS) gtest
+	rm -f tests
+	rm -f $(TESTS_OBJ)
+	rm -rf gtest
+
+
+.PHONY: all clean run

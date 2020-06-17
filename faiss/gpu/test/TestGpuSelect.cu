@@ -1,29 +1,23 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-// Copyright 2004-present Facebook. All Rights Reserved.
 
-#include "../utils/DeviceUtils.h"
-#include "../utils/BlockSelectKernel.cuh"
-#include "../utils/WarpSelectKernel.cuh"
-#include "../utils/HostTensor.cuh"
-#include "../utils/DeviceTensor.cuh"
-#include "../test/TestUtils.h"
+#include <faiss/gpu/test/TestUtils.h>
+#include <faiss/gpu/utils/BlockSelectKernel.cuh>
+#include <faiss/gpu/utils/DeviceDefs.cuh>
+#include <faiss/gpu/utils/DeviceTensor.cuh>
+#include <faiss/gpu/utils/DeviceUtils.h>
+#include <faiss/gpu/utils/HostTensor.cuh>
+#include <faiss/gpu/utils/WarpSelectKernel.cuh>
 #include <algorithm>
 #include <gtest/gtest.h>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
-
-int main(int argc, char** argv) {
-  testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
 
 void testForSize(int rows, int cols, int k, bool dir, bool warp) {
   std::vector<float> v = faiss::gpu::randVecs(rows, cols);
@@ -121,7 +115,7 @@ TEST(TestGpuSelect, test) {
   for (int i = 0; i < 10; ++i) {
     int rows = faiss::gpu::randVal(10, 100);
     int cols = faiss::gpu::randVal(1, 30000);
-    int k = std::min(cols, faiss::gpu::randVal(1, 1024));
+    int k = std::min(cols, faiss::gpu::randVal(1, GPU_MAX_SELECTION_K));
     bool dir = faiss::gpu::randBool();
 
     testForSize(rows, cols, k, dir, false);
@@ -144,7 +138,7 @@ TEST(TestGpuSelect, test1) {
 TEST(TestGpuSelect, testExact) {
   for (int i = 0; i < 5; ++i) {
     int rows = faiss::gpu::randVal(10, 100);
-    int cols = faiss::gpu::randVal(1, 1024);
+    int cols = faiss::gpu::randVal(1, GPU_MAX_SELECTION_K);
     bool dir = faiss::gpu::randBool();
 
     testForSize(rows, cols, cols, dir, false);
@@ -156,7 +150,7 @@ TEST(TestGpuSelect, testWarp) {
   for (int i = 0; i < 10; ++i) {
     int rows = faiss::gpu::randVal(10, 100);
     int cols = faiss::gpu::randVal(1, 30000);
-    int k = std::min(cols, faiss::gpu::randVal(1, 1024));
+    int k = std::min(cols, faiss::gpu::randVal(1, GPU_MAX_SELECTION_K));
     bool dir = faiss::gpu::randBool();
 
     testForSize(rows, cols, k, dir, true);
@@ -179,9 +173,18 @@ TEST(TestGpuSelect, test1Warp) {
 TEST(TestGpuSelect, testExactWarp) {
   for (int i = 0; i < 5; ++i) {
     int rows = faiss::gpu::randVal(10, 100);
-    int cols = faiss::gpu::randVal(1, 1024);
+    int cols = faiss::gpu::randVal(1, GPU_MAX_SELECTION_K);
     bool dir = faiss::gpu::randBool();
 
     testForSize(rows, cols, cols, dir, true);
   }
+}
+
+int main(int argc, char** argv) {
+  testing::InitGoogleTest(&argc, argv);
+
+  // just run with a fixed test seed
+  faiss::gpu::setTestSeed(100);
+
+  return RUN_ALL_TESTS();
 }

@@ -1,19 +1,18 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD+Patents license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
 #pragma once
 
-#include "DeviceDefs.cuh"
-#include "MergeNetworkUtils.cuh"
-#include "PtxUtils.cuh"
-#include "StaticUtils.h"
-#include "WarpShuffles.cuh"
-#include "../../FaissAssert.h"
+#include <faiss/gpu/utils/DeviceDefs.cuh>
+#include <faiss/gpu/utils/MergeNetworkUtils.cuh>
+#include <faiss/gpu/utils/PtxUtils.cuh>
+#include <faiss/gpu/utils/StaticUtils.h>
+#include <faiss/gpu/utils/WarpShuffles.cuh>
+#include <faiss/impl/FaissAssert.h>
 #include <cuda.h>
 
 namespace faiss { namespace gpu {
@@ -22,7 +21,9 @@ namespace faiss { namespace gpu {
 template <int NumThreads,
           typename K,
           typename V,
+          int N,
           int L,
+          bool AllThreads,
           bool Dir,
           typename Comp,
           bool FullMerge>
@@ -47,15 +48,30 @@ inline __device__ void blockMergeSmall(K* listK, V* listV) {
   int pos = L - 1 - tid;
   int stride = 2 * tid + 1;
 
-  K& ka = listK[pos];
-  K& kb = listK[pos + stride];
+  if (AllThreads || (threadIdx.x < N * L)) {
+    K ka = listK[pos];
+    K kb = listK[pos + stride];
 
-  bool s = Dir ? Comp::gt(ka, kb) : Comp::lt(ka, kb);
-  swap(s, ka, kb);
+    bool swap = Dir ? Comp::gt(ka, kb) : Comp::lt(ka, kb);
+    listK[pos] = swap ? kb : ka;
+    listK[pos + stride] = swap ? ka : kb;
 
-  V& va = listV[pos];
-  V& vb = listV[pos + stride];
-  swap(s, va, vb);
+    V va = listV[pos];
+    V vb = listV[pos + stride];
+    listV[pos] = swap ? vb : va;
+    listV[pos + stride] = swap ? va : vb;
+
+    // FIXME: is this a CUDA 9 compiler bug?
+    // K& ka = listK[pos];
+    // K& kb = listK[pos + stride];
+
+    // bool s = Dir ? Comp::gt(ka, kb) : Comp::lt(ka, kb);
+    // swap(s, ka, kb);
+
+    // V& va = listV[pos];
+    // V& vb = listV[pos + stride];
+    // swap(s, va, vb);
+  }
 
   __syncthreads();
 
@@ -63,15 +79,30 @@ inline __device__ void blockMergeSmall(K* listK, V* listV) {
   for (int stride = L / 2; stride > 0; stride /= 2) {
     int pos = 2 * tid - (tid & (stride - 1));
 
-    K& ka = listK[pos];
-    K& kb = listK[pos + stride];
+    if (AllThreads || (threadIdx.x < N * L)) {
+      K ka = listK[pos];
+      K kb = listK[pos + stride];
 
-    bool s = Dir ? Comp::gt(ka, kb) : Comp::lt(ka, kb);
-    swap(s, ka, kb);
+      bool swap = Dir ? Comp::gt(ka, kb) : Comp::lt(ka, kb);
+      listK[pos] = swap ? kb : ka;
+      listK[pos + stride] = swap ? ka : kb;
 
-    V& va = listV[pos];
-    V& vb = listV[pos + stride];
-    swap(s, va, vb);
+      V va = listV[pos];
+      V vb = listV[pos + stride];
+      listV[pos] = swap ? vb : va;
+      listV[pos + stride] = swap ? va : vb;
+
+      // FIXME: is this a CUDA 9 compiler bug?
+      // K& ka = listK[pos];
+      // K& kb = listK[pos + stride];
+
+      // bool s = Dir ? Comp::gt(ka, kb) : Comp::lt(ka, kb);
+      // swap(s, ka, kb);
+
+      // V& va = listV[pos];
+      // V& vb = listV[pos + stride];
+      // swap(s, va, vb);
+    }
 
     __syncthreads();
   }
@@ -104,15 +135,28 @@ inline __device__ void blockMergeLarge(K* listK, V* listV) {
     int pos = L - 1 - tid;
     int stride = 2 * tid + 1;
 
-    K& ka = listK[pos];
-    K& kb = listK[pos + stride];
+   K ka = listK[pos];
+    K kb = listK[pos + stride];
 
-    bool s = Dir ? Comp::gt(ka, kb) : Comp::lt(ka, kb);
-    swap(s, ka, kb);
+    bool swap = Dir ? Comp::gt(ka, kb) : Comp::lt(ka, kb);
+    listK[pos] = swap ? kb : ka;
+    listK[pos + stride] = swap ? ka : kb;
 
-    V& va = listV[pos];
-    V& vb = listV[pos + stride];
-    swap(s, va, vb);
+    V va = listV[pos];
+    V vb = listV[pos + stride];
+    listV[pos] = swap ? vb : va;
+    listV[pos + stride] = swap ? va : vb;
+
+    // FIXME: is this a CUDA 9 compiler bug?
+    // K& ka = listK[pos];
+    // K& kb = listK[pos + stride];
+
+    // bool s = Dir ? Comp::gt(ka, kb) : Comp::lt(ka, kb);
+    // swap(s, ka, kb);
+
+    // V& va = listV[pos];
+    // V& vb = listV[pos + stride];
+    // swap(s, va, vb);
   }
 
   __syncthreads();
@@ -127,15 +171,28 @@ inline __device__ void blockMergeLarge(K* listK, V* listV) {
       int tid = loop * NumThreads + threadIdx.x;
       int pos = 2 * tid - (tid & (stride - 1));
 
-      K& ka = listK[pos];
-      K& kb = listK[pos + stride];
+      K ka = listK[pos];
+      K kb = listK[pos + stride];
 
-      bool s = Dir ? Comp::gt(ka, kb) : Comp::lt(ka, kb);
-      swap(s, ka, kb);
+      bool swap = Dir ? Comp::gt(ka, kb) : Comp::lt(ka, kb);
+      listK[pos] = swap ? kb : ka;
+      listK[pos + stride] = swap ? ka : kb;
 
-      V& va = listV[pos];
-      V& vb = listV[pos + stride];
-      swap(s, va, vb);
+      V va = listV[pos];
+      V vb = listV[pos + stride];
+      listV[pos] = swap ? vb : va;
+      listV[pos + stride] = swap ? va : vb;
+
+      // FIXME: is this a CUDA 9 compiler bug?
+      // K& ka = listK[pos];
+      // K& kb = listK[pos + stride];
+
+      // bool s = Dir ? Comp::gt(ka, kb) : Comp::lt(ka, kb);
+      // swap(s, ka, kb);
+
+      // V& va = listV[pos];
+      // V& vb = listV[pos + stride];
+      // swap(s, va, vb);
     }
 
     __syncthreads();
@@ -177,17 +234,15 @@ struct BlockMerge<NumThreads, K, V, N, L, Dir, Comp, true, FullMerge> {
 
     if (N < kNumParallelMerges) {
       // We only need L threads per each list to perform the merge
-      if (threadIdx.x < N * L) {
-        blockMergeSmall<NumThreads, K, V, L, Dir, Comp, FullMerge>(
-          listK, listV);
-      }
+      blockMergeSmall<NumThreads, K, V, N, L, false, Dir, Comp, FullMerge>(
+        listK, listV);
     } else {
       // All threads participate
 #pragma unroll
       for (int i = 0; i < kNumIterations; ++i) {
         int start = i * kNumParallelMerges * 2 * L;
 
-        blockMergeSmall<NumThreads, K, V, L, Dir, Comp, FullMerge>(
+        blockMergeSmall<NumThreads, K, V, N, L, true, Dir, Comp, FullMerge>(
           listK + start, listV + start);
       }
     }
