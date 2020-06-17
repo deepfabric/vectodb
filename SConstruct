@@ -23,7 +23,7 @@ import glob
 
 env = Environment(ENV=os.environ)
 
-env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && ./configure --disable-openmp --without-cuda && make -j8 && popd')
+env.Command('faiss/libfaiss.a', 'faiss/Makefile', 'pushd faiss && ./configure --disable-openmp --without-cuda && make -j8 libfaiss.a && popd')
 if env.GetOption('clean'):
     subprocess.call('pushd faiss && make clean && popd', shell=True)
 
