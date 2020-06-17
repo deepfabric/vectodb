@@ -125,11 +125,13 @@ void IndexIVFPQR::search_preassigned (idx_t n, const float *x, idx_t k,
 
     // 3rd level refinement
     size_t n_refine = 0;
+#pragma omp parallel reduction(+ : n_refine)
     {
         // tmp buffers
         float *residual_1 = new float [2 * d];
         ScopeDeleter<float> del (residual_1);
         float *residual_2 = residual_1 + d;
+#pragma omp for
         for (idx_t i = 0; i < n; i++) {
             const float *xq = x + i * d;
             const idx_t * shortlist = coarse_labels + k_coarse * i;

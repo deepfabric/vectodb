@@ -212,6 +212,7 @@ void IndexIVF::add_with_ids (idx_t n, const float * x, const idx_t *xids)
 
     DirectMapAdd dm_adder(direct_map, n, xids);
 
+#pragma omp parallel reduction(+: nadd)
     {
         int nt = omp_get_num_threads();
         int rank = omp_get_thread_num();
@@ -304,6 +305,7 @@ void IndexIVF::search_preassigned (idx_t n, const float *x, idx_t k,
         pmode == 1 ? nprobe > 1 :
         nprobe * n > 1;
 
+#pragma omp parallel if(do_parallel) reduction(+: nlistv, ndis, nheap)
     {
         InvertedListScanner *scanner = get_InvertedListScanner(store_pairs);
         ScopeDeleter1<InvertedListScanner> del(scanner);
@@ -380,6 +382,7 @@ void IndexIVF::search_preassigned (idx_t n, const float *x, idx_t k,
 
         if (pmode == 0) {
 
+#pragma omp for
             for (size_t i = 0; i < n; i++) {
 
                 if (interrupt) {
@@ -425,6 +428,7 @@ void IndexIVF::search_preassigned (idx_t n, const float *x, idx_t k,
                 scanner->set_query (x + i * d);
                 init_result (local_dis.data(), local_idx.data());
 
+#pragma omp for schedule(dynamic)
                 for (size_t ik = 0; ik < nprobe; ik++) {
                     ndis += scan_one_list
                         (keys [i * nprobe + ik],
@@ -437,8 +441,11 @@ void IndexIVF::search_preassigned (idx_t n, const float *x, idx_t k,
 
                 float * simi = distances + i * k;
                 idx_t * idxi = labels + i * k;
+#pragma omp single
                 init_result (simi, idxi);
 
+#pragma omp barrier
+#pragma omp critical
                 {
                     if (metric_type == METRIC_INNER_PRODUCT) {
                         heap_addn<HeapForIP>
@@ -450,6 +457,8 @@ void IndexIVF::search_preassigned (idx_t n, const float *x, idx_t k,
                              local_dis.data(), local_idx.data(), k);
                     }
                 }
+#pragma omp barrier
+#pragma omp single
                 reorder_result (simi, idxi);
             }
         } else {
@@ -502,6 +511,7 @@ void IndexIVF::range_search_preassigned (
 
     std::vector<RangeSearchPartialResult *> all_pres (omp_get_max_threads());
 
+#pragma omp parallel reduction(+: nlistv, ndis)
     {
         RangeSearchPartialResult pres(result);
         std::unique_ptr<InvertedListScanner> scanner
@@ -535,6 +545,7 @@ void IndexIVF::range_search_preassigned (
 
         if (parallel_mode == 0) {
 
+#pragma omp for
             for (size_t i = 0; i < nx; i++) {
                 scanner->set_query (x + i * d);
 
@@ -553,6 +564,7 @@ void IndexIVF::range_search_preassigned (
 
                 RangeQueryResult & qres = pres.new_result (i);
 
+#pragma omp for schedule(dynamic)
                 for (size_t ik = 0; ik < nprobe; ik++) {
                     scan_list_func (i, ik, qres);
                 }
@@ -561,6 +573,7 @@ void IndexIVF::range_search_preassigned (
             std::vector<RangeQueryResult *> all_qres (nx);
             RangeQueryResult *qres = nullptr;
 
+#pragma omp for schedule(dynamic)
             for (size_t iik = 0; iik < nx * nprobe; iik++) {
                 size_t i = iik / nprobe;
                 size_t ik = iik % nprobe;
@@ -577,7 +590,10 @@ void IndexIVF::range_search_preassigned (
         if (parallel_mode == 0) {
             pres.finalize ();
         } else {
+#pragma omp barrier
+#pragma omp single
             RangeSearchPartialResult::merge (all_pres, false);
+#pragma omp barrier
 
         }
     }

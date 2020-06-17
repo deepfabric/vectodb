@@ -74,6 +74,7 @@ void InvertedLists::reset () {
 
 void InvertedLists::merge_from (InvertedLists *oivf, size_t add_id) {
 
+#pragma omp parallel for
     for (idx_t i = 0; i < nlist; i++) {
         size_t list_size = oivf->list_size (i);
         ScopedIds ids (oivf, i);

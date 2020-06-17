@@ -401,6 +401,7 @@ size_t IndexIVFFlatDedup::remove_ids(const IDSelector& sel)
 
     std::vector<int64_t> toremove(nlist);
 
+#pragma omp parallel for
     for (int64_t i = 0; i < nlist; i++) {
         int64_t l0 = invlists->list_size (i), l = l0, j = 0;
         InvertedLists::ScopedIds idsi (invlists, i);

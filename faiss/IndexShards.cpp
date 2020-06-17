@@ -55,12 +55,14 @@ merge_tables(long n, long k, long nshard,
   using distance_t = typename IndexClass::distance_t;
 
   long stride = n * k;
+#pragma omp parallel
   {
     std::vector<int> buf (2 * nshard);
     int * pointer = buf.data();
     int * shard_ids = pointer + nshard;
     std::vector<distance_t> buf2 (nshard);
     distance_t * heap_vals = buf2.data();
+#pragma omp for
     for (long i = 0; i < n; i++) {
       // the heap maps values to the shard where they are
       // produced.

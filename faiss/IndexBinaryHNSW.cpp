@@ -116,6 +116,7 @@ void hnsw_add_vertices(IndexBinaryHNSW& index_hnsw,
         std::swap(order[j], order[j + rng2.rand_int(i1 - j)]);
       }
 
+#pragma omp parallel
       {
         VisitedTable vt (ntotal);
 
@@ -124,6 +125,7 @@ void hnsw_add_vertices(IndexBinaryHNSW& index_hnsw,
         );
         int prev_display = verbose && omp_get_thread_num() == 0 ? 0 : -1;
 
+#pragma omp  for schedule(dynamic)
         for (int i = i0; i < i1; i++) {
           HNSW::storage_idx_t pt_id = order[i];
           dis->set_query((float *)(x + (pt_id - n0) * index_hnsw.code_size));
@@ -196,10 +198,12 @@ void IndexBinaryHNSW::train(idx_t n, const uint8_t *x)
 void IndexBinaryHNSW::search(idx_t n, const uint8_t *x, idx_t k,
                              int32_t *distances, idx_t *labels) const
 {
+#pragma omp parallel
   {
     VisitedTable vt(ntotal);
     std::unique_ptr<DistanceComputer> dis(get_distance_computer());
 
+#pragma omp for
     for(idx_t i = 0; i < n; i++) {
       idx_t *idxi = labels + i * k;
       float *simi = (float *)(distances + i * k);
@@ -212,6 +216,7 @@ void IndexBinaryHNSW::search(idx_t n, const uint8_t *x, idx_t k,
     }
   }
 
+#pragma omp parallel for
   for (int i = 0; i < n * k; ++i) {
     distances[i] = std::round(((float *)distances)[i]);
   }
@@ -276,6 +281,7 @@ struct FlatHammingDis : DistanceComputer {
   }
 
   ~FlatHammingDis() override {
+#pragma omp critical
     {
       hnsw_stats.ndis += ndis;
     }

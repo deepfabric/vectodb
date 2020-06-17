@@ -18,6 +18,7 @@ namespace faiss {
 template <typename C>
 void HeapArray<C>::heapify ()
 {
+#pragma omp parallel for
     for (size_t j = 0; j < nh; j++)
         heap_heapify<C> (k, val + j * k, ids + j * k);
 }
@@ -25,6 +26,7 @@ void HeapArray<C>::heapify ()
 template <typename C>
 void HeapArray<C>::reorder ()
 {
+#pragma omp parallel for
     for (size_t j = 0; j < nh; j++)
         heap_reorder<C> (k, val + j * k, ids + j * k);
 }
@@ -35,6 +37,7 @@ void HeapArray<C>::addn (size_t nj, const T *vin, TI j0,
 {
     if (ni == -1) ni = nh;
     assert (i0 >= 0 && i0 + ni <= nh);
+#pragma omp parallel for
     for (size_t i = i0; i < i0 + ni; i++) {
         T * __restrict simi = get_val(i);
         TI * __restrict idxi = get_ids (i);
@@ -61,6 +64,7 @@ void HeapArray<C>::addn_with_ids (
     }
     if (ni == -1) ni = nh;
     assert (i0 >= 0 && i0 + ni <= nh);
+#pragma omp parallel for
     for (size_t i = i0; i < i0 + ni; i++) {
         T * __restrict simi = get_val(i);
         TI * __restrict idxi = get_ids (i);
@@ -82,6 +86,7 @@ void HeapArray<C>::per_line_extrema (
                    T * out_val,
                    TI * out_ids) const
 {
+#pragma omp parallel for
     for (size_t j = 0; j < nh; j++) {
         int64_t imin = -1;
         typename C::T xval = C::Crev::neutral ();

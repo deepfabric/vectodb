@@ -96,6 +96,7 @@ void Index::compute_residual (const float * x,
 void Index::compute_residual_n (idx_t n, const float* xs,
                                 float* residuals,
                                 const idx_t* keys) const {
+#pragma omp parallel for
   for (idx_t i = 0; i < n; ++i) {
     compute_residual(&xs[i * d], &residuals[i * d], keys[i]);
   }

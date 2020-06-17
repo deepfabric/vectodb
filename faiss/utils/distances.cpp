@@ -92,6 +92,7 @@ void fvec_norms_L2 (float * __restrict nr,
                     size_t d, size_t nx)
 {
 
+#pragma omp parallel for
     for (size_t i = 0; i < nx; i++) {
         nr[i] = sqrtf (fvec_norm_L2sqr (x + i * d, d));
     }
@@ -101,6 +102,7 @@ void fvec_norms_L2sqr (float * __restrict nr,
                        const float * __restrict x,
                        size_t d, size_t nx)
 {
+#pragma omp parallel for
     for (size_t i = 0; i < nx; i++)
         nr[i] = fvec_norm_L2sqr (x + i * d, d);
 }
@@ -109,6 +111,7 @@ void fvec_norms_L2sqr (float * __restrict nr,
 
 void fvec_renorm_L2 (size_t d, size_t nx, float * __restrict x)
 {
+#pragma omp parallel for
     for (size_t i = 0; i < nx; i++) {
         float * __restrict xi = x + i * d;
 
@@ -154,6 +157,7 @@ static void knn_inner_product_sse (const float * x,
     for (size_t i0 = 0; i0 < nx; i0 += check_period) {
         size_t i1 = std::min(i0 + check_period, nx);
 
+#pragma omp parallel for
         for (size_t i = i0; i < i1; i++) {
             const float * x_i = x + i * d;
             const float * y_j = y;
@@ -193,6 +197,7 @@ static void knn_L2sqr_sse (
     for (size_t i0 = 0; i0 < nx; i0 += check_period) {
         size_t i1 = std::min(i0 + check_period, nx);
 
+#pragma omp parallel for
         for (size_t i = i0; i < i1; i++) {
             const float * x_i = x + i * d;
             const float * y_j = y;
@@ -306,6 +311,7 @@ static void knn_L2sqr_blas (const float * x,
             }
 
             /* collect minima */
+#pragma omp parallel for
             for (size_t i = i0; i < i1; i++) {
                 float * __restrict simi = res->get_val(i);
                 int64_t * __restrict idxi = res->get_ids (i);
@@ -413,6 +419,7 @@ void fvec_inner_products_by_idx (float * __restrict ip,
                                  const int64_t * __restrict ids, /* for y vecs */
                                  size_t d, size_t nx, size_t ny)
 {
+#pragma omp parallel for
     for (size_t j = 0; j < nx; j++) {
         const int64_t * __restrict idsj = ids + j * ny;
         const float * xj = x + j * d;
@@ -435,6 +442,7 @@ void fvec_L2sqr_by_idx (float * __restrict dis,
                         const int64_t * __restrict ids, /* ids of y vecs */
                         size_t d, size_t nx, size_t ny)
 {
+#pragma omp parallel for
     for (size_t j = 0; j < nx; j++) {
         const int64_t * __restrict idsj = ids + j * ny;
         const float * xj = x + j * d;
@@ -453,6 +461,7 @@ void pairwise_indexed_L2sqr (
         const float * y, const int64_t *iy,
         float *dis)
 {
+#pragma omp parallel for
     for (size_t j = 0; j < n; j++) {
         if (ix[j] >= 0 && iy[j] >= 0) {
             dis[j] = fvec_L2sqr (x + d * ix[j], y + d * iy[j], d);
@@ -466,6 +475,7 @@ void pairwise_indexed_inner_product (
         const float * y, const int64_t *iy,
         float *dis)
 {
+#pragma omp parallel for
     for (size_t j = 0; j < n; j++) {
         if (ix[j] >= 0 && iy[j] >= 0) {
             dis[j] = fvec_inner_product (x + d * ix[j], y + d * iy[j], d);
@@ -484,6 +494,7 @@ void knn_inner_products_by_idx (const float * x,
 {
     size_t k = res->k;
 
+#pragma omp parallel for
     for (size_t i = 0; i < nx; i++) {
         const float * x_ = x + i * d;
         const int64_t * idsi = ids + i * ny;
@@ -514,6 +525,7 @@ void knn_L2sqr_by_idx (const float * x,
 {
     size_t k = res->k;
 
+#pragma omp parallel for
     for (size_t i = 0; i < nx; i++) {
         const float * x_ = x + i * d;
         const int64_t * __restrict idsi = ids + i * ny;
@@ -632,9 +644,11 @@ static void range_search_sse (const float * x,
                 RangeSearchResult *res)
 {
 
+#pragma omp parallel
     {
         RangeSearchPartialResult pres (res);
 
+#pragma omp for
         for (size_t i = 0; i < nx; i++) {
             const float * x_ = x + i * d;
             const float * y_ = y;
@@ -715,9 +729,11 @@ void pairwise_L2sqr (int64_t d,
     // store in beginning of distance matrix to avoid malloc
     float *b_norms = dis;
 
+#pragma omp parallel for
     for (int64_t i = 0; i < nb; i++)
         b_norms [i] = fvec_norm_L2sqr (xb + i * ldb, d);
 
+#pragma omp parallel for
     for (int64_t i = 1; i < nq; i++) {
         float q_norm = fvec_norm_L2sqr (xq + i * ldq, d);
         for (int64_t j = 0; j < nb; j++)

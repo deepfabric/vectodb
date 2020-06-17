@@ -145,9 +145,12 @@ RangeQueryResult &
 void RangeSearchPartialResult::finalize ()
 {
     set_lims ();
+#pragma omp barrier
 
+#pragma omp single
     res->do_allocation ();
 
+#pragma omp barrier
     copy_result ();
 }
 

@@ -377,10 +377,12 @@ void search_knn_hamming_heap(const IndexBinaryIVF& ivf,
     using HeapForIP = CMin<int32_t, idx_t>;
     using HeapForL2 = CMax<int32_t, idx_t>;
 
+#pragma omp parallel if(n > 1) reduction(+: nlistv, ndis, nheap)
     {
         std::unique_ptr<BinaryInvertedListScanner> scanner
             (ivf.get_InvertedListScanner (store_pairs));
 
+#pragma omp for
         for (size_t i = 0; i < n; i++) {
             const uint8_t *xi = x + i * ivf.code_size;
             scanner->set_query(xi);
@@ -478,6 +480,7 @@ void search_knn_hamming_count(const IndexBinaryIVF& ivf,
 
   size_t nlistv = 0, ndis = 0;
 
+#pragma omp parallel for reduction(+: nlistv, ndis)
   for (size_t i = 0; i < nx; i++) {
     const idx_t * keysi = keys + i * nprobe;
     HCounterState<HammingComputer>& csi = cs[i];
@@ -650,6 +653,7 @@ void IndexBinaryIVF::range_search(
 
     std::vector<RangeSearchPartialResult *> all_pres (omp_get_max_threads());
 
+#pragma omp parallel reduction(+: nlistv, ndis)
     {
         RangeSearchPartialResult pres(res);
         std::unique_ptr<BinaryInvertedListScanner> scanner
@@ -681,6 +685,7 @@ void IndexBinaryIVF::range_search(
                                        ids.get(), radius, qres);
         };
 
+#pragma omp for
         for (size_t i = 0; i < n; i++) {
             scanner->set_query (x + i * code_size);
 

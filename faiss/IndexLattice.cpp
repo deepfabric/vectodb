@@ -79,6 +79,7 @@ void IndexLattice::sa_encode (idx_t n, const float *x, uint8_t *codes) const
     const float * maxs = mins + nsq;
     int64_t sc = int64_t(1) << scale_nbit;
 
+#pragma omp parallel for
     for (idx_t i = 0; i < n; i++) {
         BitstringWriter wr(codes + i * code_size, code_size);
         const float *xi = x + i * d;
@@ -102,6 +103,7 @@ void IndexLattice::sa_decode (idx_t n, const uint8_t *codes, float *x) const
     float sc = int64_t(1) << scale_nbit;
     float r = sqrtf(zn_sphere_codec.r2);
 
+#pragma omp parallel for
     for (idx_t i = 0; i < n; i++) {
         BitstringReader rd(codes + i * code_size, code_size);
         float *xi = x + i * d;

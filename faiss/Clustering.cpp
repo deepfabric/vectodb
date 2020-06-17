@@ -148,6 +148,7 @@ void compute_centroids (size_t d, size_t k, size_t n,
 
     size_t line_size = codec ? codec->sa_code_size() : d * sizeof (float);
 
+#pragma omp parallel
     {
         int nt = omp_get_num_threads();
         int rank = omp_get_thread_num();
@@ -188,6 +189,7 @@ void compute_centroids (size_t d, size_t k, size_t n,
 
     }
 
+#pragma omp parallel for
     for (size_t ci = 0; ci < k; ci++) {
         if (hassign[ci] == 0) {
             continue;

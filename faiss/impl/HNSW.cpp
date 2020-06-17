@@ -117,6 +117,8 @@ void HNSW::print_neighbor_stats(int level) const
   printf("stats on level %d, max %d neighbors per vertex:\n",
          level, nb_neighbors(level));
   size_t tot_neigh = 0, tot_common = 0, tot_reciprocal = 0, n_node = 0;
+#pragma omp parallel for reduction(+: tot_neigh) reduction(+: tot_common) \
+  reduction(+: tot_reciprocal) reduction(+: n_node)
   for (int i = 0; i < levels.size(); i++) {
     if (levels[i] > level) {
       n_node++;
@@ -481,6 +483,7 @@ void HNSW::add_with_locks(DistanceComputer& ptdis, int pt_level, int pt_id,
   //  greedy search on upper levels
 
   storage_idx_t nearest;
+#pragma omp critical
   {
     nearest = entry_point;
 
@@ -587,6 +590,7 @@ int HNSW::search_from_candidates(
   }
 
   if (level == 0) {
+#pragma omp critical
     {
       hnsw_stats.n1 ++;
       if (candidates.size() == 0) {
@@ -659,6 +663,7 @@ std::priority_queue<HNSW::Node> HNSW::search_from_candidate_unbounded(
     }
   }
 
+#pragma omp critical
   {
     ++hnsw_stats.n1;
     if (candidates.size() == 0) {

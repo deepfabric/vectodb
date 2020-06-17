@@ -60,6 +60,7 @@ void float_rand (float * x, size_t n, int64_t seed)
     RandomGenerator rng0 (seed);
     int a0 = rng0.rand_int (), b0 = rng0.rand_int ();
 
+#pragma omp parallel for
     for (size_t j = 0; j < nblock; j++) {
 
         RandomGenerator rng (a0 + j * b0);
@@ -81,6 +82,7 @@ void float_randn (float * x, size_t n, int64_t seed)
     RandomGenerator rng0 (seed);
     int a0 = rng0.rand_int (), b0 = rng0.rand_int ();
 
+#pragma omp parallel for
     for (size_t j = 0; j < nblock; j++) {
         RandomGenerator rng (a0 + j * b0);
 
@@ -117,6 +119,7 @@ void int64_rand (int64_t * x, size_t n, int64_t seed)
     RandomGenerator rng0 (seed);
     int a0 = rng0.rand_int (), b0 = rng0.rand_int ();
 
+#pragma omp parallel for
     for (size_t j = 0; j < nblock; j++) {
 
         RandomGenerator rng (a0 + j * b0);
@@ -136,6 +139,7 @@ void int64_rand_max (int64_t * x, size_t n, uint64_t max, int64_t seed)
     RandomGenerator rng0 (seed);
     int a0 = rng0.rand_int (), b0 = rng0.rand_int ();
 
+#pragma omp parallel for
     for (size_t j = 0; j < nblock; j++) {
 
         RandomGenerator rng (a0 + j * b0);
@@ -171,6 +175,7 @@ void byte_rand (uint8_t * x, size_t n, int64_t seed)
     RandomGenerator rng0 (seed);
     int a0 = rng0.rand_int (), b0 = rng0.rand_int ();
 
+#pragma omp parallel for
     for (size_t j = 0; j < nblock; j++) {
 
         RandomGenerator rng (a0 + j * b0);

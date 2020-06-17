@@ -183,6 +183,7 @@ void inner_product_to_L2sqr (float * __restrict dis,
                              size_t n1, size_t n2)
 {
 
+#pragma omp parallel for
     for (size_t j = 0 ; j < n1 ; j++) {
         float * disj = dis + j * n2;
         for (size_t i = 0 ; i < n2 ; i++)
@@ -244,10 +245,12 @@ size_t merge_result_table_with (size_t n, size_t k,
 {
     size_t n1 = 0;
 
+#pragma omp parallel reduction(+:n1)
     {
         std::vector<int64_t> tmpI (k);
         std::vector<float> tmpD (k);
 
+#pragma omp for
         for (size_t i = 0; i < n; i++) {
             int64_t *lI0 = I0 + i * k;
             float *lD0 = D0 + i * k;
@@ -438,6 +441,7 @@ namespace {
         s2s[nt - 1].i1 = s2.i1;
 
         // not sure parallel actually helps here
+#pragma omp parallel for num_threads(nt)
         for (int t = 0; t < nt; t++) {
             s1s[t].i0 = s1.i0 + s1.len() * t / nt;
             s1s[t].i1 = s1.i0 + s1.len() * (t + 1) / nt;
@@ -466,6 +470,7 @@ namespace {
         assert(sws[nt - 1].i1 == s1.i1);
 
         // do the actual merging
+#pragma omp parallel for num_threads(nt)
         for (int t = 0; t < nt; t++) {
             SegmentS sw = sws[t];
             SegmentS s1t = s1s[t];
@@ -519,6 +524,7 @@ void fvec_argsort_parallel (size_t n, const float *vals,
         }
     }
 
+#pragma omp parallel
     for (size_t i = 0; i < n; i++) permA[i] = i;
 
     ArgsortComparator comp = {vals};
@@ -526,6 +532,7 @@ void fvec_argsort_parallel (size_t n, const float *vals,
     SegmentS segs[nt];
 
     // independent sorts
+#pragma omp parallel for
     for (int t = 0; t < nt; t++) {
         size_t i0 = t * n / nt;
         size_t i1 = (t + 1) * n / nt;
@@ -542,6 +549,7 @@ void fvec_argsort_parallel (size_t n, const float *vals,
         int sub_nt = nseg % 2 == 0 ? nt : nt - 1;
         int sub_nseg1 = nseg / 2;
 
+#pragma omp parallel for num_threads(nseg1)
         for (int s = 0; s < nseg; s += 2) {
             if (s + 1 == nseg) { // otherwise isolated segment
                 memcpy(permB + segs[s].i0, permA + segs[s].i0,
@@ -647,6 +655,7 @@ bool check_openmp() {
     std::vector<int> nt_per_thread(10);
     size_t sum = 0;
     bool in_parallel = true;
+#pragma omp parallel reduction(+: sum)
     {
         if (!omp_in_parallel()) {
             in_parallel = false;
@@ -656,6 +665,7 @@ bool check_openmp() {
         int rank = omp_get_thread_num();
 
         nt_per_thread[rank] = nt;
+#pragma omp for
         for(int i = 0; i < 1000 * 1000 * 10; i++) {
             sum += i;
         }

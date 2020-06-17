@@ -121,6 +121,7 @@ void IndexIVFSpectralHash::train_residual (idx_t n, const float *x)
 
     trained.resize (n * nbit);
     // compute medians
+#pragma omp for
     for (int i = 0; i < nlist; i++) {
         size_t i0 = i == 0 ? 0 : sizes[i - 1];
         size_t i1 = sizes[i];
@@ -171,10 +172,12 @@ void IndexIVFSpectralHash::encode_vectors(idx_t n, const float* x_in,
     // transform with vt
     std::unique_ptr<float []> x (vt->apply (n, x_in));
 
+#pragma omp parallel
     {
         std::vector<float> zero (nbit);
 
         // each thread takes care of a subset of lists
+#pragma omp for
         for (size_t i = 0; i < n; i++) {
             int64_t list_no = list_nos [i];
 

@@ -235,9 +235,11 @@ void IndexIVFPQ::sa_decode (idx_t n, const uint8_t *codes,
 {
     size_t coarse_size = coarse_code_size ();
 
+#pragma omp parallel
     {
         std::vector<float> residual (d);
 
+#pragma omp for
         for (size_t i = 0; i < n; i++) {
             const uint8_t *code = codes + i * (code_size + coarse_size);
             int64_t list_no = decode_listno (code);
@@ -978,6 +980,7 @@ struct IVFPQScannerT: QueryTables {
             }
             codes += code_size;
         }
+#pragma omp critical
         {
             indexIVFPQ_stats.n_hamming_pass += n_hamming_pass;
         }

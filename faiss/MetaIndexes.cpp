@@ -86,6 +86,7 @@ void IndexIDMapTemplate<IndexT>::search
 {
     index->search (n, x, k, distances, labels);
     idx_t *li = labels;
+#pragma omp parallel for
     for (idx_t i = 0; i < n * k; i++) {
         li[i] = li[i] < 0 ? li[i] : id_map[li[i]];
     }
@@ -98,6 +99,7 @@ void IndexIDMapTemplate<IndexT>::range_search
      typename IndexT::distance_t radius, RangeSearchResult *result) const
 {
   index->range_search(n, x, radius, result);
+#pragma omp parallel for
   for (idx_t i = 0; i < result->lims[result->nq]; i++) {
       result->labels[i] = result->labels[i] < 0 ?
         result->labels[i] : id_map[result->labels[i]];

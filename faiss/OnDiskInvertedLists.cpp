@@ -622,6 +622,7 @@ size_t OnDiskInvertedLists::merge_from (const InvertedLists **ils, int n_il,
     size_t nmerged = 0;
     double t0 = getmillisecs(), last_t = t0;
 
+#pragma omp parallel for
     for (size_t j = 0; j < nlist; j++) {
         List & l = lists[j];
         for (int i = 0; i < n_il; i++) {
@@ -634,6 +635,7 @@ size_t OnDiskInvertedLists::merge_from (const InvertedLists **ils, int n_il,
         }
         assert (l.size == l.capacity);
         if (verbose) {
+#pragma omp critical
             {
                 nmerged++;
                 double t1 = getmillisecs();

@@ -92,6 +92,7 @@ double IntersectionCriterion::evaluate(const float* /*D*/, const idx_t* I)
       (gt_I.size() == gt_nnn * nq && gt_nnn >= R && nnn >= R),
       "ground truth not initialized");
     int64_t n_ok = 0;
+#pragma omp parallel for reduction(+: n_ok)
     for (idx_t q = 0; q < nq; q++) {
         n_ok += ranklist_intersection_size (
              R, &gt_I [q * gt_nnn],
@@ -675,6 +676,7 @@ void ParameterSpace::explore (Index *index,
         do {
 
             if (thread_over_batches) {
+#pragma omp parallel for
                 for (size_t q0 = 0; q0 < nq; q0 += batchsize) {
                     size_t q1 = q0 + batchsize;
                     if (q1 > nq) q1 = nq;

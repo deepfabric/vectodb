@@ -411,9 +411,11 @@ void Index2Layer::sa_encode (idx_t n, const float *x, uint8_t *bytes) const
 void Index2Layer::sa_decode (idx_t n, const uint8_t *bytes, float *x) const
 {
 
+#pragma omp parallel
     {
         std::vector<float> residual (d);
 
+#pragma omp for
         for (size_t i = 0; i < n; i++) {
             const uint8_t *code = bytes + i * code_size;
             int64_t list_no = q1.decode_listno (code);
