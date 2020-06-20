@@ -101,7 +101,9 @@ int main(int /*argc*/, char** argv)
             vdb.SyncIndex();
         }
     } else {
+        LOG(INFO) << "Calling vdb.AddWithIds";
         vdb.AddWithIds(nb, xb, xids);
+        LOG(INFO) << "Calling vdb.SyncIndex";
         vdb.SyncIndex();
     }
 
@@ -138,9 +140,12 @@ int main(int /*argc*/, char** argv)
         }
     }
 
-    LOG(INFO) << "Executing " << nq << " queries one by one";
-    for (long i = 0; i < (long)nq; i++) {
-        vdb.Search(1, k, xq + i * sift_dim, nullptr, D + i*k, I + i*k);
+    const bool one_by_one = false;
+    if (one_by_one) {
+        LOG(INFO) << "Executing " << nq << " queries one by one";
+        for (long i = 0; i < (long)nq; i++) {
+            vdb.Search(1, k, xq + i * sift_dim, nullptr, D + i*k, I + i*k);
+        }
     }
 
     size_t gk; // nb of results per query in the GT

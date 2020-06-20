@@ -41,13 +41,13 @@ using wlock = shared_lock<shared_mutex>;
 
 //the number of training points which IVF4096 needs for 1M dataset
 const long DESIRED_NTRAIN = 200000L;
-const long ALLOW_ADD_GAP  = 10000L;
+const long ALLOW_ADD_GAP  =  10000L;
 
 struct DbState {
     DbState()
         : data_mut(nullptr)
         , refMutation(0L)
-        , refNtrain(0L)
+        , refDumpedTotal(0L)
         , refFlat(nullptr)
         , initFlat(nullptr)
     {
@@ -67,7 +67,7 @@ struct DbState {
     // the write-lock (activate index) just protects a pointer assignment.
     shared_mutex rw_index;
     long refMutation;
-    long refNtrain; // the number of training points of the refFlat->base_index
+    long refDumpedTotal;
     faiss::IndexRefineFlat* refFlat; //one of refFlat and initFlat is null
     faiss::IndexFlat* initFlat;
     vector<long> xids; //vector of xid of all vectors
@@ -103,7 +103,8 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, const char* index_key_in,
     state->fs_base_fvecs.exceptions(std::ios::failbit | std::ios::badbit);
     state->fs_base_xids.exceptions(std::ios::failbit | std::ios::badbit);
 
-    fs::create_directories(dir);
+    createBaseFilesIfNotExist();
+    openBaseFiles();
     SyncIndex();
     google::FlushLogFiles(google::INFO);
 }
@@ -167,38 +168,32 @@ void VectoDB::RemoveIds(long nb, const long* xids)
 
 void VectoDB::SyncIndex()
 {
+    LOG(INFO) << "SyncIndex begin of " << work_dir;
     mtxlock ms{ state->m_sync };
     {
         mtxlock m{ state->m_base };
-        if(state->xids.size() < DESIRED_NTRAIN){
+        wlock w{ state->rw_index };
+        if(!state->xids.empty() && state->xids.size() < DESIRED_NTRAIN){
             LOG(INFO) << "Skipped sync since number of vectors " << state->xids.size() << " is less than " << DESIRED_NTRAIN;
             return;
         }
         if (state->refFlat != nullptr && state->refMutation==getBaseMutation()){
-            if ((long)state->xids.size() < state->refFlat->base_index->ntotal + ALLOW_ADD_GAP){
-                LOG(INFO) << "Skipped sync since gap is too little";
+            if ((long)state->xids.size() < state->refDumpedTotal + ALLOW_ADD_GAP){
+                long gap = state->refDumpedTotal + ALLOW_ADD_GAP - (long)state->xids.size();
+                 LOG(INFO) << "Skipped sync since gap " << gap << " is too little";
                 return;
             }
             clearIndexFiles();
             // Output index
-            const string& fp_index = getIndexFp(state->refMutation, state->refNtrain);
+            const string& fp_index = getIndexFp(state->refMutation, (long)state->xids.size());
             faiss::write_index(state->refFlat->base_index, fp_index.c_str());
+            state->refDumpedTotal = (long)state->xids.size();
             LOG(INFO) << "Dumped index to " << fp_index;
             return;
         }
-        if (!fs::is_regular_file(fp_base_xids) || !fs::is_regular_file(fp_base_fvecs) || !fs::is_regular_file(fp_base_mutation)) {
-            std::ofstream out1(fp_base_xids);
-            std::ofstream out2(fp_base_fvecs);
-            std::ofstream out3(fp_base_mutation);
-            if (!fs::is_regular_file(fp_base_mutation) || fs::file_size(fp_base_mutation)!=8) {
-                std::ofstream ofs;
-                ofs.open(fp_base_mutation, std::fstream::out);
-                ofs << "00000000";
-                ofs.close();
-                fs::resize_file(fp_base_mutation, 8);
-            }
-            LOG(INFO) << "Initialized " << fp_base_xids << ", " << fp_base_fvecs << ", " << fp_base_mutation;
-        }
+        fs::remove(fp_base_xids_tmp);
+        fs::remove(fp_base_fvecs_tmp);
+        fs::remove(fp_base_mutation_tmp);
         fs::copy(fp_base_xids, fp_base_xids_tmp);
         fs::copy(fp_base_fvecs, fp_base_fvecs_tmp);
         fs::copy(fp_base_mutation, fp_base_mutation_tmp);
@@ -241,8 +236,6 @@ void VectoDB::SyncIndex()
     }
 
     faiss::Index* base_index = nullptr;
-    faiss::IndexRefineFlat* refFlat = new faiss::IndexRefineFlat(base_index);
-    refFlat->own_fields = true;
     long nt = cnt_xids;
     if(nt>DESIRED_NTRAIN)
         nt = DESIRED_NTRAIN;
@@ -259,6 +252,8 @@ void VectoDB::SyncIndex()
     params.initialize(base_index);
     params.set_index_parameters(base_index, query_params.c_str());
     LOG(INFO) << "Indexing " << cnt_xids << " vectors of " << work_dir;
+    faiss::IndexRefineFlat* refFlat = new faiss::IndexRefineFlat(base_index);
+    refFlat->own_fields = true;
     refFlat->add(cnt_xids, (const float*)data_fvecs);
     vector<long> xids(cnt_xids);
     unordered_map<long, long> xid2num;
@@ -282,24 +277,16 @@ void VectoDB::SyncIndex()
                 xid2num[xid] = cnt_xids + j;
                 j++;
             }
-        } else if(state->data_mut==nullptr || mutation>=getBaseMutation()) {
-            long len_mut = sizeof(uint64_t);
-            if(state->data_mut!=nullptr)
-                munmapFile(fp_base_mutation, state->data_mut, len_mut);
+        } else if(state->xids.empty() || mutation>=getBaseMutation()) {
+            mtxlock m{ state->m_base };
+            closeBaseFiles();
             fs::remove(fp_base_xids);
             fs::remove(fp_base_fvecs);
             fs::remove(fp_base_mutation);
             fs::create_hard_link(fp_base_xids_tmp, fp_base_xids);
             fs::create_hard_link(fp_base_fvecs_tmp, fp_base_fvecs);
             fs::create_hard_link(fp_base_mutation_tmp, fp_base_mutation);
-            //https://stackoverflow.com/questions/31483349/how-can-i-open-a-file-for-reading-writing-creating-it-if-it-does-not-exist-w
-            state->fs_base_fvecs.close();
-            state->fs_base_fvecs.open(fp_base_fvecs, std::fstream::in | std::fstream::out | std::fstream::binary);
-            state->fs_base_fvecs.seekp(0, ios_base::end); //a particular libstdc++ implementation may use a single pointer for both seekg and seekp.
-            state->fs_base_xids.close();
-            state->fs_base_xids.open(fp_base_xids, std::fstream::in | std::fstream::out | std::fstream::binary);
-            state->fs_base_xids.seekp(0, ios_base::end); //a particular libstdc++ implementation may use a single pointer for both seekg and seekp.
-            mmapFile(fp_base_mutation, state->data_mut, len_mut);
+            openBaseFiles();
             LOG(INFO) << "Copyied back temp files " << fp_base_xids_tmp << ", " << fp_base_fvecs_tmp << ", " << fp_base_mutation_tmp;
         }
         if(state->initFlat)
@@ -308,25 +295,65 @@ void VectoDB::SyncIndex()
             delete state->refFlat;
         }
         state->refMutation = mutation;
-        state->refNtrain = nt;
+        state->refDumpedTotal = xids.size();
         state->refFlat = refFlat;
         state->initFlat = nullptr;
         state->xids = std::move(xids);
         state->xid2num = std::move(xid2num);
         // Output index
-        const string& fp_index = getIndexFp(mutation, nt);
+        const string& fp_index = getIndexFp(mutation, state->refDumpedTotal);
         faiss::write_index(base_index, fp_index.c_str());
         LOG(INFO) << "Dumped index to " << fp_index;
     }
 
-    munmapFile(fp_base_xids, data_xids, len_xids);
-    munmapFile(fp_base_fvecs, data_fvecs, len_fvecs);
+    munmapFile(fp_base_xids_tmp, data_xids, len_xids);
+    munmapFile(fp_base_fvecs_tmp, data_fvecs, len_fvecs);
     fs::remove(fp_base_xids_tmp);
     fs::remove(fp_base_fvecs_tmp);
     fs::remove(fp_base_mutation_tmp);
     LOG(INFO) << "Destroyed temp files " << fp_base_xids_tmp << ", " << fp_base_fvecs_tmp << ", " << fp_base_mutation_tmp;
-    LOG(INFO) << "SyncIndex of " << work_dir << " done";
+    LOG(INFO) << "SyncIndex end of " << work_dir;
     google::FlushLogFiles(google::INFO);
+}
+
+void VectoDB::createBaseFilesIfNotExist()
+{
+    fs::create_directories(work_dir);
+    if (!fs::is_regular_file(fp_base_xids) || !fs::is_regular_file(fp_base_fvecs) || !fs::is_regular_file(fp_base_mutation)) {
+        std::ofstream out1(fp_base_xids);
+        std::ofstream out2(fp_base_fvecs);
+        std::ofstream out3(fp_base_mutation);
+        if (!fs::is_regular_file(fp_base_mutation) || fs::file_size(fp_base_mutation)!=8) {
+            std::ofstream ofs;
+            ofs.open(fp_base_mutation, std::fstream::out | std::fstream::binary);
+            long zero = 0L;
+            ofs.write(reinterpret_cast<char*>(&zero), sizeof(zero));
+            ofs.close();
+            fs::resize_file(fp_base_mutation, 8);
+        }
+        LOG(INFO) << "Created " << fp_base_xids << ", " << fp_base_fvecs << ", " << fp_base_mutation;
+    }
+}
+
+void VectoDB::openBaseFiles()
+{
+    //https://stackoverflow.com/questions/31483349/how-can-i-open-a-file-for-reading-writing-creating-it-if-it-does-not-exist-w
+    state->fs_base_fvecs.open(fp_base_fvecs, std::fstream::in | std::fstream::out | std::fstream::binary);
+    state->fs_base_fvecs.seekp(0, ios_base::end); //a particular libstdc++ implementation may use a single pointer for both seekg and seekp.
+    state->fs_base_xids.open(fp_base_xids, std::fstream::in | std::fstream::out | std::fstream::binary);
+    state->fs_base_xids.seekp(0, ios_base::end); //a particular libstdc++ implementation may use a single pointer for both seekg and seekp.
+    long len_mut = sizeof(uint64_t);
+    mmapFile(fp_base_mutation, state->data_mut, len_mut);
+}
+
+void VectoDB::closeBaseFiles()
+{
+    long len_mut = sizeof(uint64_t);
+    if(state->data_mut!=nullptr)
+        munmapFile(fp_base_mutation, state->data_mut, len_mut);
+    state->data_mut = nullptr;
+    state->fs_base_fvecs.close();
+    state->fs_base_xids.close();
 }
 
 long VectoDB::GetTotal()
@@ -419,16 +446,16 @@ std::string VectoDB::getBaseMutationFp() const
     return oss.str();
 }
 
-std::string VectoDB::getIndexFp(long mutation, long ntrain) const
+std::string VectoDB::getIndexFp(long mutation, long ntotal) const
 {
     ostringstream oss;
-    oss << work_dir << "/" << index_key << "." << mutation << "." << ntrain << ".index";
+    oss << work_dir << "/" << index_key << "." << mutation << "." << ntotal << ".index";
     return oss.str();
 }
 
-void VectoDB::getIndexFpLatest(long& mutation, long& ntrain) const
+void VectoDB::getIndexFpLatest(long& mutation, long& ntotal) const
 {
-    mutation = ntrain = 0;
+    mutation = ntotal = 0;
     fs::path fp_index;
     const std::regex base_regex(index_key + R"(\.(\d+)\.(\d+)\.index)");
     std::smatch base_match;
@@ -438,10 +465,10 @@ void VectoDB::getIndexFpLatest(long& mutation, long& ntrain) const
             const string fn = p.filename().string();
             if (std::regex_match(fn, base_match, base_regex) && base_match.size() == 3) {
                 long cur_mutation = std::stol(base_match[1].str());
-                long cur_ntrain = std::stol(base_match[2].str());
+                long cur_ntotal = std::stol(base_match[2].str());
                 if (cur_mutation > mutation) {
                     mutation = cur_mutation;
-                    ntrain = cur_ntrain;
+                    ntotal = cur_ntotal;
                 }
             }
         }

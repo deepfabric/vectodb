@@ -83,8 +83,9 @@ private:
     void incBaseMutation();
     void getIndexFpLatest(long& mutation, long& ntrain) const;
     void clearIndexFiles();
-    void readBase(const uint8_t* data, long len_data, long start_num, std::vector<float>& base) const;
-    void readXids(const uint8_t* data, long len_data, long start_num, std::vector<long>& xids) const;
+    void createBaseFilesIfNotExist();
+    void openBaseFiles();
+    void closeBaseFiles();
 
 private:
     std::string work_dir;
