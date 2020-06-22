@@ -170,27 +170,80 @@ void VectoDB::SyncIndex()
 {
     LOG(INFO) << "SyncIndex begin of " << work_dir;
     mtxlock ms{ state->m_sync };
+    long rawMutation = 0;
     {
         mtxlock m{ state->m_base };
         wlock w{ state->rw_index };
+        if(state->initFlat == nullptr && state->refFlat == nullptr) {
+            long mutation = 0;
+            long ntotal = 0;
+            getIndexFpLatest(mutation, ntotal);
+            if(ntotal==0){
+                state->initFlat = new faiss::IndexFlat(dim, faiss::METRIC_INNER_PRODUCT);
+                LOG(INFO) << "SyncIndex end of " << work_dir;
+                google::FlushLogFiles(google::INFO);
+                return;
+            } else {
+                rawMutation = getBaseMutationRaw();
+                long rawTotal = getBaseTotalRaw();
+                if(mutation == rawMutation) {
+                    // Reuse existing index if mutation match.
+                    assert(rawTotal>=ntotal);
+                    uint8_t *data_xids, *data_fvecs;
+                    long len_xids, len_fvecs;
+                    vector<long> xids(ntotal);
+                    unordered_map<long, long> xid2num;
+                    MmapFile(fp_base_xids, data_xids, len_xids);
+                    memcpy(&xids[0], data_xids, len_xids);
+                    MunmapFile(fp_base_xids, data_xids, len_xids);
+                    for(long i=0; i<ntotal; i++){
+                        xid2num[xids[i]] = i;
+                    }
+
+                    const string fp_index = getIndexFp(mutation, ntotal);
+                    faiss::Index *refFlat = faiss::read_index(fp_index.c_str(), 0);
+                    LOG(INFO) << "Readed index " << fp_index;
+                    if(rawTotal > ntotal){
+                        LOG(INFO) << "Indexing another " << rawTotal-ntotal << " vectors of " << work_dir;
+                        MmapFile(fp_base_fvecs_tmp, data_fvecs, len_fvecs);
+                        refFlat->add(rawTotal-ntotal, (float *)data_fvecs+dim*ntotal);
+                        MunmapFile(fp_base_fvecs_tmp, data_fvecs, len_fvecs);
+                    }
+
+                    state->refMutation = mutation;
+                    state->refDumpedTotal = rawTotal;
+                    state->refFlat = dynamic_cast<faiss::IndexRefineFlat *>(refFlat);
+                    state->initFlat = nullptr;
+                    state->xids = std::move(xids);
+                    state->xid2num = std::move(xid2num);
+                    LOG(INFO) << "SyncIndex end of " << work_dir;
+                    google::FlushLogFiles(google::INFO);
+                    return;
+                }
+            }
+        }
         if(!state->xids.empty() && state->xids.size() < DESIRED_NTRAIN){
             LOG(INFO) << "Skipped sync since number of vectors " << state->xids.size() << " is less than " << DESIRED_NTRAIN;
+            google::FlushLogFiles(google::INFO);
             return;
         }
         if (state->refFlat != nullptr && state->refMutation==getBaseMutation()){
             if ((long)state->xids.size() < state->refDumpedTotal + ALLOW_ADD_GAP){
                 long gap = state->refDumpedTotal + ALLOW_ADD_GAP - (long)state->xids.size();
-                 LOG(INFO) << "Skipped sync since gap " << gap << " is too little";
+                LOG(INFO) << "Skipped sync since gap " << gap << " is too little";
+                google::FlushLogFiles(google::INFO);
                 return;
             }
             clearIndexFiles();
             // Output index
             const string& fp_index = getIndexFp(state->refMutation, (long)state->xids.size());
-            faiss::write_index(state->refFlat->base_index, fp_index.c_str());
+            faiss::write_index(state->refFlat, fp_index.c_str());
             state->refDumpedTotal = (long)state->xids.size();
             LOG(INFO) << "Dumped index to " << fp_index;
+            google::FlushLogFiles(google::INFO);
             return;
         }
+        rawMutation = getBaseMutationRaw();
         fs::remove(fp_base_xids_tmp);
         fs::remove(fp_base_fvecs_tmp);
         fs::remove(fp_base_mutation_tmp);
@@ -199,12 +252,6 @@ void VectoDB::SyncIndex()
         fs::copy(fp_base_mutation, fp_base_mutation_tmp);
         LOG(INFO) << "Created temp files " << fp_base_xids_tmp << ", " << fp_base_fvecs_tmp << ", " << fp_base_mutation_tmp;
     }
-    long mutation = 0;
-    uint8_t *data_mut;
-    long len_mut = sizeof(uint64_t);
-    MmapFile(fp_base_mutation_tmp, data_mut, len_mut);
-    mutation = *(int64_t*)data_mut;
-    MunmapFile(fp_base_mutation_tmp, data_mut, len_mut);
 
     long orig_cnt_xids, cnt_xids;
     uint8_t *data_xids, *data_fvecs;
@@ -242,12 +289,6 @@ void VectoDB::SyncIndex()
     vector<long> xids(cnt_xids);
     unordered_map<long, long> xid2num;
     long nt = cnt_xids;
-    if(nt<=0){
-        wlock w{ state->rw_index };
-        if(state->initFlat==nullptr)
-            state->initFlat = new faiss::IndexFlat(dim, faiss::METRIC_INNER_PRODUCT);
-        goto QUIT;
-    }
     if(nt>DESIRED_NTRAIN)
         nt = DESIRED_NTRAIN;
     LOG(INFO) << "Training on " << nt << " vectors of " << work_dir;
@@ -275,7 +316,7 @@ void VectoDB::SyncIndex()
         wlock w{ state->rw_index };
         if((long)state->xids.size()>orig_cnt_xids){
             long gap = state->xids.size() - orig_cnt_xids;
-            LOG(INFO) << "Indexing " << gap << " vectors of " << work_dir;
+            LOG(INFO) << "Indexing another " << gap << " vectors of " << work_dir;
             for(long i=0, j=0; i<gap; i++){
                 long xid = state->xids[orig_cnt_xids+i];
                 if(xid==-1L)
@@ -285,7 +326,7 @@ void VectoDB::SyncIndex()
                 xid2num[xid] = cnt_xids + j;
                 j++;
             }
-        } else if(state->xids.empty() || mutation>=getBaseMutation()) {
+        } else if(state->xids.empty() || rawMutation>=getBaseMutation()) {
             mtxlock m{ state->m_base };
             closeBaseFiles();
             fs::remove(fp_base_xids);
@@ -302,18 +343,18 @@ void VectoDB::SyncIndex()
         else if(state->refFlat){
             delete state->refFlat;
         }
-        state->refMutation = mutation;
+        state->refMutation = rawMutation;
         state->refDumpedTotal = xids.size();
         state->refFlat = refFlat;
         state->initFlat = nullptr;
         state->xids = std::move(xids);
         state->xid2num = std::move(xid2num);
         // Output index
-        const string& fp_index = getIndexFp(mutation, state->refDumpedTotal);
-        faiss::write_index(base_index, fp_index.c_str());
+        const string& fp_index = getIndexFp(rawMutation, state->refDumpedTotal);
+        faiss::write_index(refFlat, fp_index.c_str());
         LOG(INFO) << "Dumped index to " << fp_index;
     }
-QUIT:
+
     MunmapFile(fp_base_xids_tmp, data_xids, len_xids);
     MunmapFile(fp_base_fvecs_tmp, data_fvecs, len_fvecs);
     fs::remove(fp_base_xids_tmp);
@@ -431,6 +472,22 @@ void VectoDB::incBaseMutation()
 {
     *(uint64_t*)state->data_mut += 1;
     msync(state->data_mut, 8, MS_ASYNC);
+}
+
+long VectoDB::getBaseMutationRaw()
+{
+    uint8_t *data_mut;
+    long len_mut = sizeof(uint64_t);
+    MmapFile(fp_base_mutation, data_mut, len_mut);
+    long mutation = *(int64_t*)data_mut;
+    MunmapFile(fp_base_mutation, data_mut, len_mut);
+    return mutation;
+}
+
+long VectoDB::getBaseTotalRaw()
+{
+    long len_xids = fs::file_size(fp_base_xids);
+    return len_xids/(long)sizeof(long);
 }
 
 std::string VectoDB::getBaseFvecsFp() const

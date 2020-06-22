@@ -69,6 +69,8 @@ private:
     std::string getIndexFp(long mutuation, long ntrain) const;
     long getBaseMutation() const;
     void incBaseMutation();
+    long getBaseMutationRaw();
+    long getBaseTotalRaw();
     void getIndexFpLatest(long& mutation, long& ntrain) const;
     void clearIndexFiles();
     void createBaseFilesIfNotExist();

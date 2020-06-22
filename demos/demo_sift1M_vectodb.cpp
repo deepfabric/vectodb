@@ -80,36 +80,46 @@ int main(int /*argc*/, char** argv)
     const char* work_dir1 = "/tmp/demo_sift1M_vectodb_cpp1";
     const char* work_dir2 = "/tmp/demo_sift1M_vectodb_cpp2";
 
-    ClearDir(work_dir1);
-    ClearDir(work_dir2);
+    //ClearDir(work_dir1);
+    //ClearDir(work_dir2);
     //VectoDB vdb(work_dir, sift_dim);
     VectoDB vdb1(work_dir1, sift_dim, "IVF4096,PQ32", "nprobe=256,ht=256");
     //VectoDB vdb1(work_dir, sift_dim, "IVF16384_HNSW32,Flat", "nprobe=384");
     VectoDB vdb2(work_dir2, sift_dim, "Flat", "");
+
     size_t nb, d;
     float* xb = fvecs_read("sift1M/sift_base.fvecs", &d, &nb);
     long* xids = new long[nb];
     for (long i = 0; i < (long)nb; i++) {
         xids[i] = i;
+        for(long j = 0; j<(long)d; j++) {
+            xb[i*d+j] = (float)drand48();
+        }
         NormVec(xb+i*d, d);
     }
 
-    const bool incremental = false;
-    if (incremental) {
-        const long batch_size = std::min(100000L, (long)nb);
-        const long batch_num = nb / batch_size;
-        assert(nb % batch_size == 0);
-        for (long i = 0; i < batch_num; i++) {
+    if(vdb1.GetTotal()==0 && vdb2.GetTotal()==0) {
+        const bool incremental = false;
+        if (incremental) {
+            const long batch_size = std::min(100000L, (long)nb);
+            const long batch_num = nb / batch_size;
+            assert(nb % batch_size == 0);
+            for (long i = 0; i < batch_num; i++) {
+                LOG(INFO) << "Calling vdb1.AddWithIds " << nb;
+                vdb1.AddWithIds(batch_size, xb + i * batch_size * sift_dim, xids + i * batch_size);
+                LOG(INFO) << "Calling vdb1.SyncIndex";
+                vdb1.SyncIndex();
+            }
+        } else {
             LOG(INFO) << "Calling vdb1.AddWithIds " << nb;
-            vdb1.AddWithIds(batch_size, xb + i * batch_size * sift_dim, xids + i * batch_size);
+            vdb1.AddWithIds(nb, xb, xids);
             LOG(INFO) << "Calling vdb1.SyncIndex";
             vdb1.SyncIndex();
         }
-    } else {
-        LOG(INFO) << "Calling vdb1.AddWithIds " << nb;
-        vdb1.AddWithIds(nb, xb, xids);
-        LOG(INFO) << "Calling vdb1.SyncIndex";
-        vdb1.SyncIndex();
+        LOG(INFO) << "Calling vdb2.AddWithIds " << nb;
+        vdb2.AddWithIds(nb, xb, xids);
+        LOG(INFO) << "Calling vdb2.SyncIndex";
+        vdb2.SyncIndex();
     }
 
     LOG(INFO) << "Searching index";
@@ -150,9 +160,6 @@ int main(int /*argc*/, char** argv)
         }
     }
 
-    LOG(INFO) << "Prepareing ground truth Vectodb";
-    vdb2.AddWithIds(nb, xb, xids);
-    vdb2.SyncIndex();
     LOG(INFO) << "Generating ground truth";
     vdb2.Search(nq, k, xq, nullptr, D2, I2);
 
@@ -160,11 +167,11 @@ int main(int /*argc*/, char** argv)
     // evaluate result by hand.
     int total=0, hit = 0;
     for (long q = 0; q < (long)nq; q++) {
-        for(int i=0; i<k; i++) {
-            if(I[q*k+i]!=-1L){
+        for(int i=0; i<1; i++) {
+            if(I2[q*k+i]!=-1L){
                 total++;
                 for(int j=0; j<k; j++){
-                    if(I[q*k+i]==I2[q*k+j])
+                    if(I2[q*k+i]==I[q*k+j])
                         hit++;
                 }
             }
