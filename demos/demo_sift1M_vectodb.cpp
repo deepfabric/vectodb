@@ -165,9 +165,11 @@ int main(int /*argc*/, char** argv)
 
     LOG(INFO) << "Compute recalls";
     // evaluate result by hand.
-    int total=0, hit = 0;
+    int total=0, hit = 0, match = 0;
     for (long q = 0; q < (long)nq; q++) {
-        for(int i=0; i<3; i++) {
+        if(I2[q*k]==I[q*k])
+            match++;
+        for(int i=0; i<k; i++) {
             if(I2[q*k+i]!=-1L){
                 total++;
                 for(int j=0; j<k; j++){
@@ -177,6 +179,7 @@ int main(int /*argc*/, char** argv)
             }
         }
     }
+    LOG(INFO) << "R@1=" <<  float(match)/nq;
     LOG(INFO) << "R@"<< k << "=" <<  float(hit)/total;
 
     delete[] D;
