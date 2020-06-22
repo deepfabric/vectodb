@@ -116,7 +116,7 @@ func (vdb *VectoDB) Search(k int, xq []float32, uids []string) (res [][]XidScore
 func VectodbClearWorkDir(workDir string) (err error) {
 	log.Infof("clearing VectoDB %v", workDir)
 	wordDirC := C.CString(workDir)
-	C.VectodbClearWorkDir(wordDirC)
+	C.VectodbClearDir(wordDirC)
 	C.free(unsafe.Pointer(wordDirC))
 	return
 }

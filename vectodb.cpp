@@ -112,7 +112,7 @@ VectoDB::VectoDB(const char* work_dir_in, long dim_in, const char* index_key_in,
 VectoDB::~VectoDB()
 {
     long len_mut = sizeof(uint64_t);
-    munmapFile(fp_base_mutation, state->data_mut, len_mut);
+    MunmapFile(fp_base_mutation, state->data_mut, len_mut);
     // There's no lock protection since I assume the object is idle.
     // Up layer could protect it with rwlock.
     if (state.get() != nullptr) {
@@ -202,15 +202,15 @@ void VectoDB::SyncIndex()
     long mutation = 0;
     uint8_t *data_mut;
     long len_mut = sizeof(uint64_t);
-    mmapFile(fp_base_mutation_tmp, data_mut, len_mut);
+    MmapFile(fp_base_mutation_tmp, data_mut, len_mut);
     mutation = *(int64_t*)data_mut;
-    munmapFile(fp_base_mutation_tmp, data_mut, len_mut);
+    MunmapFile(fp_base_mutation_tmp, data_mut, len_mut);
 
     long orig_cnt_xids, cnt_xids;
     uint8_t *data_xids, *data_fvecs;
     long len_xids, len_fvecs;
-    mmapFile(fp_base_xids_tmp, data_xids, len_xids);
-    mmapFile(fp_base_fvecs_tmp, data_fvecs, len_fvecs);
+    MmapFile(fp_base_xids_tmp, data_xids, len_xids);
+    MmapFile(fp_base_fvecs_tmp, data_fvecs, len_fvecs);
     assert(len_xids/(long)sizeof(long) == len_fvecs/len_vec);
     orig_cnt_xids = cnt_xids = len_xids/sizeof(long);
     long i=0, j=0;
@@ -306,8 +306,8 @@ void VectoDB::SyncIndex()
         LOG(INFO) << "Dumped index to " << fp_index;
     }
 
-    munmapFile(fp_base_xids_tmp, data_xids, len_xids);
-    munmapFile(fp_base_fvecs_tmp, data_fvecs, len_fvecs);
+    MunmapFile(fp_base_xids_tmp, data_xids, len_xids);
+    MunmapFile(fp_base_fvecs_tmp, data_fvecs, len_fvecs);
     fs::remove(fp_base_xids_tmp);
     fs::remove(fp_base_fvecs_tmp);
     fs::remove(fp_base_mutation_tmp);
@@ -343,14 +343,14 @@ void VectoDB::openBaseFiles()
     state->fs_base_xids.open(fp_base_xids, std::fstream::in | std::fstream::out | std::fstream::binary);
     state->fs_base_xids.seekp(0, ios_base::end); //a particular libstdc++ implementation may use a single pointer for both seekg and seekp.
     long len_mut = sizeof(uint64_t);
-    mmapFile(fp_base_mutation, state->data_mut, len_mut);
+    MmapFile(fp_base_mutation, state->data_mut, len_mut);
 }
 
 void VectoDB::closeBaseFiles()
 {
     long len_mut = sizeof(uint64_t);
     if(state->data_mut!=nullptr)
-        munmapFile(fp_base_mutation, state->data_mut, len_mut);
+        MunmapFile(fp_base_mutation, state->data_mut, len_mut);
     state->data_mut = nullptr;
     state->fs_base_fvecs.close();
     state->fs_base_xids.close();
@@ -491,20 +491,15 @@ void VectoDB::clearIndexFiles()
     }
 }
 
-void VectoDB::ClearWorkDir(const char* work_dir)
+void ClearDir(const char* work_dir)
 {
-    for (auto ent = fs::directory_iterator(work_dir); ent != fs::directory_iterator(); ent++) {
-        const fs::path& p = ent->path();
-        if (fs::is_regular_file(p)) {
-            fs::remove(p);
-        }
-    }
+    fs::remove_all(work_dir);
+    fs::create_directories(work_dir);
 }
 
-void VectoDB::Normalize(std::vector<float>& vec)
+void Normalize(float* vec, int dim)
 {
     double l = 0;
-    int dim = vec.size();
     for (int i = 0; i < dim; i++) {
         l += double(vec[i]) * double(vec[i]);
     }
@@ -514,9 +509,9 @@ void VectoDB::Normalize(std::vector<float>& vec)
     }
 }
 
-void VectoDB::mmapFile(const string& fp, uint8_t*& data, long& len_data)
+void MmapFile(const std::string& fp, uint8_t*& data, long& len_data)
 {
-    munmapFile(fp, data, len_data);
+    MunmapFile(fp, data, len_data);
     long len_f = fs::file_size(fp); //equivalent to "fs_base_fvecs.seekp(0, ios_base::end); long len_f = fs_base_fvecs.tellp();"
     if (len_f == 0)
         return;
@@ -532,7 +527,7 @@ void VectoDB::mmapFile(const string& fp, uint8_t*& data, long& len_data)
     len_data = len_f;
 }
 
-void VectoDB::munmapFile(const string& fp, uint8_t*& data, long& len_data)
+void MunmapFile(const std::string& fp, uint8_t*& data, long& len_data)
 {
     if (data != nullptr) {
         int rc = munmap(data, len_data);
@@ -584,7 +579,12 @@ void VectodbSearch(void* vdb, long nq, long k, float* xq, long* uids, float* sco
     static_cast<VectoDB*>(vdb)->Search(nq, k, xq, uids, scores, xids);
 }
 
-void VectodbClearWorkDir(char* work_dir)
+void VectodbClearDir(char* work_dir)
 {
-    VectoDB::ClearWorkDir(work_dir);
+    ClearDir(work_dir);
+}
+
+void VectodbNormalize(float* vec, int dim)
+{
+    Normalize(vec, dim);
 }

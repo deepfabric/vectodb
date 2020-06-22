@@ -18,7 +18,9 @@ long VectodbGetTotal(void* vdb);
 /**
  * Static methods.
  */
-void VectodbClearWorkDir(char* work_dir);
+void VectodbClearDir(char* work_dir);
+void VectodbNormalize(float* vec, int dim);
+
 
 #ifdef __cplusplus
 }
