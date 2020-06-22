@@ -124,7 +124,7 @@ int main(int /*argc*/, char** argv)
 
     LOG(INFO) << "Searching index";
     const long nq = 1000;
-    const long k = 10;
+    const long k = 100;
     const float* xq = xb;
     float* D = new float[nq*k];
     long* I = new long[nq*k];
@@ -167,7 +167,7 @@ int main(int /*argc*/, char** argv)
     // evaluate result by hand.
     int total=0, hit = 0;
     for (long q = 0; q < (long)nq; q++) {
-        for(int i=0; i<1; i++) {
+        for(int i=0; i<3; i++) {
             if(I2[q*k+i]!=-1L){
                 total++;
                 for(int j=0; j<k; j++){

@@ -531,7 +531,7 @@ void VectoDB::getIndexFpLatest(long& mutation, long& ntotal) const
             if (std::regex_match(fn, base_match, base_regex) && base_match.size() == 3) {
                 long cur_mutation = std::stol(base_match[1].str());
                 long cur_ntotal = std::stol(base_match[2].str());
-                if (cur_mutation > mutation) {
+                if (cur_mutation > mutation || (cur_mutation == mutation && cur_ntotal > ntotal)) {
                     mutation = cur_mutation;
                     ntotal = cur_ntotal;
                 }
