@@ -497,7 +497,7 @@ void ClearDir(const char* work_dir)
     fs::create_directories(work_dir);
 }
 
-void Normalize(float* vec, int dim)
+void NormVec(float* vec, int dim)
 {
     double l = 0;
     for (int i = 0; i < dim; i++) {
@@ -584,7 +584,7 @@ void VectodbClearDir(char* work_dir)
     ClearDir(work_dir);
 }
 
-void VectodbNormalize(float* vec, int dim)
+void VectodbNormVec(float* vec, int dim)
 {
-    Normalize(vec, dim);
+    NormVec(vec, dim);
 }
