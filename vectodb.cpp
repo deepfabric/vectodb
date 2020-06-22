@@ -209,11 +209,11 @@ void VectoDB::SyncIndex()
     long orig_cnt_xids, cnt_xids;
     uint8_t *data_xids, *data_fvecs;
     long len_xids, len_fvecs;
+    long i=0, j=0;
     MmapFile(fp_base_xids_tmp, data_xids, len_xids);
     MmapFile(fp_base_fvecs_tmp, data_fvecs, len_fvecs);
     assert(len_xids/(long)sizeof(long) == len_fvecs/len_vec);
     orig_cnt_xids = cnt_xids = len_xids/sizeof(long);
-    long i=0, j=0;
     // locate first i, elements[i]=-1
     for(; i<cnt_xids && *((long*)data_xids+i) != -1L; i++);
     if(i<cnt_xids) {
@@ -235,28 +235,36 @@ void VectoDB::SyncIndex()
         LOG(INFO) << "Compacted temp files " << fp_base_xids_tmp << ", " << fp_base_fvecs_tmp;
     }
 
-    faiss::Index* base_index = nullptr;
+    faiss::Index* base_index;
+    faiss::IndexIVFFlat* index_ivf;
+    faiss::IndexRefineFlat* refFlat;
+    faiss::ParameterSpace params;
+    vector<long> xids(cnt_xids);
+    unordered_map<long, long> xid2num;
     long nt = cnt_xids;
+    if(nt<=0){
+        wlock w{ state->rw_index };
+        if(state->initFlat==nullptr)
+            state->initFlat = new faiss::IndexFlat(dim, faiss::METRIC_INNER_PRODUCT);
+        goto QUIT;
+    }
     if(nt>DESIRED_NTRAIN)
         nt = DESIRED_NTRAIN;
     LOG(INFO) << "Training on " << nt << " vectors of " << work_dir;
     base_index = faiss::index_factory(dim, index_key.c_str(), faiss::METRIC_INNER_PRODUCT);
     // according to faiss/benchs/bench_hnsw.py, ivf_hnsw_quantizer.
-    auto index_ivf = dynamic_cast<faiss::IndexIVFFlat*>(base_index);
+    index_ivf = dynamic_cast<faiss::IndexIVFFlat*>(base_index);
     if (index_ivf != nullptr) {
         index_ivf->cp.min_points_per_centroid = 5; //quiet warning
         index_ivf->quantizer_trains_alone = 2;
     }
     base_index->train(nt, (const float*)data_fvecs);
-    faiss::ParameterSpace params;
     params.initialize(base_index);
     params.set_index_parameters(base_index, query_params.c_str());
     LOG(INFO) << "Indexing " << cnt_xids << " vectors of " << work_dir;
-    faiss::IndexRefineFlat* refFlat = new faiss::IndexRefineFlat(base_index);
+    refFlat = new faiss::IndexRefineFlat(base_index);
     refFlat->own_fields = true;
     refFlat->add(cnt_xids, (const float*)data_fvecs);
-    vector<long> xids(cnt_xids);
-    unordered_map<long, long> xid2num;
     memcpy(&xids[0], data_xids, len_xids);
     for(long i=0; i<cnt_xids; i++){
         long& xid = *(long *)(data_xids + i*sizeof(long));
@@ -305,7 +313,7 @@ void VectoDB::SyncIndex()
         faiss::write_index(base_index, fp_index.c_str());
         LOG(INFO) << "Dumped index to " << fp_index;
     }
-
+QUIT:
     MunmapFile(fp_base_xids_tmp, data_xids, len_xids);
     MunmapFile(fp_base_fvecs_tmp, data_fvecs, len_fvecs);
     fs::remove(fp_base_xids_tmp);
@@ -511,7 +519,8 @@ void NormVec(float* vec, int dim)
 
 void MmapFile(const std::string& fp, uint8_t*& data, long& len_data)
 {
-    MunmapFile(fp, data, len_data);
+    data = nullptr;
+    len_data = 0;
     long len_f = fs::file_size(fp); //equivalent to "fs_base_fvecs.seekp(0, ios_base::end); long len_f = fs_base_fvecs.tellp();"
     if (len_f == 0)
         return;

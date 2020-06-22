@@ -97,6 +97,6 @@ private:
  * @param work_dir      input working direcotry
  */
 void ClearDir(const char* work_dir);
-void Normalize(float* vec, int dim);
+void NormVec(float* vec, int dim);
 void MmapFile(const std::string& fp, uint8_t*& data, long& len_data);
 void MunmapFile(const std::string& fp, uint8_t*& data, long& len_data);

@@ -77,18 +77,21 @@ int main(int /*argc*/, char** argv)
 
     LOG(INFO) << "Loading database";
     const long sift_dim = 128L;
-    const char* work_dir = "/tmp/demo_sift1M_vectodb_cpp";
+    const char* work_dir1 = "/tmp/demo_sift1M_vectodb_cpp1";
+    const char* work_dir2 = "/tmp/demo_sift1M_vectodb_cpp2";
 
-    //VectoDB::ClearWorkDir(work_dir);
+    ClearDir(work_dir1);
+    ClearDir(work_dir2);
     //VectoDB vdb(work_dir, sift_dim);
-    //VectoDB vdb(work_dir, sift_dim, "IVF4096,PQ32", "nprobe=256,ht=256");
-    VectoDB vdb(work_dir, sift_dim, "Flat", "");
-    //VectoDB vdb(work_dir, sift_dim, "IVF16384_HNSW32,Flat", "nprobe=384");
+    VectoDB vdb1(work_dir1, sift_dim, "IVF4096,PQ32", "nprobe=256,ht=256");
+    //VectoDB vdb1(work_dir, sift_dim, "IVF16384_HNSW32,Flat", "nprobe=384");
+    VectoDB vdb2(work_dir2, sift_dim, "Flat", "");
     size_t nb, d;
     float* xb = fvecs_read("sift1M/sift_base.fvecs", &d, &nb);
     long* xids = new long[nb];
     for (long i = 0; i < (long)nb; i++) {
         xids[i] = i;
+        NormVec(xb+i*d, d);
     }
 
     const bool incremental = false;
@@ -97,40 +100,39 @@ int main(int /*argc*/, char** argv)
         const long batch_num = nb / batch_size;
         assert(nb % batch_size == 0);
         for (long i = 0; i < batch_num; i++) {
-            vdb.AddWithIds(batch_size, xb + i * batch_size * sift_dim, xids + i * batch_size);
-            vdb.SyncIndex();
+            LOG(INFO) << "Calling vdb1.AddWithIds " << nb;
+            vdb1.AddWithIds(batch_size, xb + i * batch_size * sift_dim, xids + i * batch_size);
+            LOG(INFO) << "Calling vdb1.SyncIndex";
+            vdb1.SyncIndex();
         }
     } else {
-        LOG(INFO) << "Calling vdb.AddWithIds";
-        vdb.AddWithIds(nb, xb, xids);
-        LOG(INFO) << "Calling vdb.SyncIndex";
-        vdb.SyncIndex();
+        LOG(INFO) << "Calling vdb1.AddWithIds " << nb;
+        vdb1.AddWithIds(nb, xb, xids);
+        LOG(INFO) << "Calling vdb1.SyncIndex";
+        vdb1.SyncIndex();
     }
 
-    delete[] xb;
-    delete[] xids;
-
     LOG(INFO) << "Searching index";
-    size_t nq;
-    size_t d2;
-    float* xq = fvecs_read("sift1M/sift_query.fvecs", &d2, &nq);
+    const long nq = 1000;
     const long k = 10;
+    const float* xq = xb;
     float* D = new float[nq*k];
     long* I = new long[nq*k];
+    float* D2 = new float[nq*k];
+    long* I2 = new long[nq*k];
 
     LOG(INFO) << "Executing " << nq << " queries in single batch";
-    vdb.Search(nq, k, xq, nullptr, D, I);
+    vdb1.Search(nq, k, xq, nullptr, D, I);
 
-    LOG(INFO) << "Executing " << nq << " queries in multiple threads";
-    const long num_threads = 4;
+    const long num_threads = 0;
     if (num_threads >= 2) {
+        LOG(INFO) << "Executing " << nq << " queries in multiple threads";
         const long batch_size = (long)nq / num_threads;
-        nq = num_threads * batch_size;
         vector<thread> workers;
         for (long i = 0; i < num_threads; i++) {
-            std::thread worker{ [&vdb, batch_size, i, &xq, &D, &I]() {
+            std::thread worker{ [&vdb1, batch_size, i, &xq, &D, &I]() {
                 LOG(INFO) << "thread " << i << " begins";
-                vdb.Search(batch_size, k, xq + i * batch_size * sift_dim, nullptr, D + i * batch_size, I + i * batch_size);
+                vdb1.Search(batch_size, k, xq + i * batch_size * sift_dim, nullptr, D + i * batch_size * k, I + i * batch_size * k);
                 LOG(INFO) << "thread " << i << " ends";
             } };
             workers.push_back(std::move(worker));
@@ -144,40 +146,36 @@ int main(int /*argc*/, char** argv)
     if (one_by_one) {
         LOG(INFO) << "Executing " << nq << " queries one by one";
         for (long i = 0; i < (long)nq; i++) {
-            vdb.Search(1, k, xq + i * sift_dim, nullptr, D + i*k, I + i*k);
+            vdb1.Search(1, k, xq + i * sift_dim, nullptr, D + i*k, I + i*k);
         }
     }
 
-    size_t gk; // nb of results per query in the GT
-    long* gt; // nq * k matrix of ground-truth nearest-neighbors
-    {
-        LOG(INFO) << "Loading ground truth for " << nq << " queries";
-
-        // load ground-truth and convert int to long
-        size_t nq2;
-        int* gt_int = ivecs_read("sift1M/sift_groundtruth.ivecs", &gk, &nq2);
-        assert(nq2 == nq || !"incorrect nb of ground truth entries");
-
-        gt = new long[k * nq];
-        for (long i = 0; i < (long)(gk * nq); i++) {
-            gt[i] = gt_int[i];
-        }
-        delete[] gt_int;
-    }
+    LOG(INFO) << "Prepareing ground truth Vectodb";
+    vdb2.AddWithIds(nb, xb, xids);
+    vdb2.SyncIndex();
+    LOG(INFO) << "Generating ground truth";
+    vdb2.Search(nq, k, xq, nullptr, D2, I2);
 
     LOG(INFO) << "Compute recalls";
     // evaluate result by hand.
-    int n_1 = 0;
-    for (long i = 0; i < (long)nq; i++) {
-        long gt_nn = gt[i * k];
-        if (I[i*k] == gt_nn) {
-            n_1++;
+    int total=0, hit = 0;
+    for (long q = 0; q < (long)nq; q++) {
+        for(int i=0; i<k; i++) {
+            if(I[q*k+i]!=-1L){
+                total++;
+                for(int j=0; j<k; j++){
+                    if(I[q*k+i]==I2[q*k+j])
+                        hit++;
+                }
+            }
         }
     }
-    LOG(INFO) << "R@1 = " << n_1 / float(nq);
+    LOG(INFO) << "R@"<< k << "=" <<  float(hit)/total;
 
-    delete[] gt;
     delete[] D;
     delete[] I;
-    delete[] xq;
+    delete[] D2;
+    delete[] I2;
+    delete[] xb;
+    delete[] xids;
 }
