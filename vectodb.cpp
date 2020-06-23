@@ -175,28 +175,30 @@ void VectoDB::SyncIndex()
         mtxlock m{ state->m_base };
         wlock w{ state->rw_index };
         if(state->initFlat == nullptr && state->refFlat == nullptr) {
-            long mutation = 0;
-            long ntotal = 0;
-            getIndexFpLatest(mutation, ntotal);
-            if(ntotal==0){
+            assert(state->xids.empty());
+            assert(state->xid2num.empty());
+            long rawTotal = getBaseTotalRaw();
+            if(rawTotal==0){
                 state->initFlat = new faiss::IndexFlat(dim, faiss::METRIC_INNER_PRODUCT);
-                LOG(INFO) << "SyncIndex end of " << work_dir;
+                LOG(INFO) << "SyncIndex empty database " << work_dir;
                 google::FlushLogFiles(google::INFO);
                 return;
             } else {
+                long mutation = 0;
+                long ntotal = 0;
+                getIndexFpLatest(mutation, ntotal);
                 rawMutation = getBaseMutationRaw();
-                long rawTotal = getBaseTotalRaw();
-                if(mutation == rawMutation) {
+                if(ntotal>0 && mutation == rawMutation) {
                     // Reuse existing index if mutation match.
                     assert(rawTotal>=ntotal);
                     uint8_t *data_xids, *data_fvecs;
                     long len_xids, len_fvecs;
-                    vector<long> xids(ntotal);
+                    vector<long> xids(rawTotal);
                     unordered_map<long, long> xid2num;
                     MmapFile(fp_base_xids, data_xids, len_xids);
                     memcpy(&xids[0], data_xids, len_xids);
                     MunmapFile(fp_base_xids, data_xids, len_xids);
-                    for(long i=0; i<ntotal; i++){
+                    for(long i=0; i<rawTotal; i++){
                         xid2num[xids[i]] = i;
                     }
 
@@ -205,9 +207,9 @@ void VectoDB::SyncIndex()
                     LOG(INFO) << "Readed index " << fp_index;
                     if(rawTotal > ntotal){
                         LOG(INFO) << "Indexing another " << rawTotal-ntotal << " vectors of " << work_dir;
-                        MmapFile(fp_base_fvecs_tmp, data_fvecs, len_fvecs);
+                        MmapFile(fp_base_fvecs, data_fvecs, len_fvecs);
                         refFlat->add(rawTotal-ntotal, (float *)data_fvecs+dim*ntotal);
-                        MunmapFile(fp_base_fvecs_tmp, data_fvecs, len_fvecs);
+                        MunmapFile(fp_base_fvecs, data_fvecs, len_fvecs);
                     }
 
                     state->refMutation = mutation;

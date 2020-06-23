@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <thread>
 #include <unistd.h>
+#include <stdlib.h>
 
 #include <cassert>
 
@@ -83,7 +84,7 @@ int main(int /*argc*/, char** argv)
     //ClearDir(work_dir1);
     //ClearDir(work_dir2);
     //VectoDB vdb(work_dir, sift_dim);
-    VectoDB vdb1(work_dir1, sift_dim, "IVF4096,PQ32", "nprobe=256,ht=256");
+    VectoDB vdb1(work_dir1, sift_dim, "IVF4096,PQ32", "nprobe=256,ht=1024");
     //VectoDB vdb1(work_dir, sift_dim, "IVF16384_HNSW32,Flat", "nprobe=384");
     VectoDB vdb2(work_dir2, sift_dim, "Flat", "");
 
@@ -92,9 +93,11 @@ int main(int /*argc*/, char** argv)
     long* xids = new long[nb];
     for (long i = 0; i < (long)nb; i++) {
         xids[i] = i;
-        for(long j = 0; j<(long)d; j++) {
-            xb[i*d+j] = (float)drand48();
-        }
+        /*
+        //Randomlizing causes far less recall. Don't do that.
+        for(long j = 0; j<(long)d; j++)
+            xb[i*d+j] = float(2 * random() - RAND_MAX);
+        */
         NormVec(xb+i*d, d);
     }
 
@@ -123,8 +126,8 @@ int main(int /*argc*/, char** argv)
     }
 
     LOG(INFO) << "Searching index";
-    const long nq = 1000;
-    const long k = 100;
+    const long nq = 10000;
+    const long k = 400;
     const float* xq = xb;
     float* D = new float[nq*k];
     long* I = new long[nq*k];
@@ -165,22 +168,29 @@ int main(int /*argc*/, char** argv)
 
     LOG(INFO) << "Compute recalls";
     // evaluate result by hand.
-    int total=0, hit = 0, match = 0;
+    vector<int> total(k), hit(k);
+    for (int i=0; i<k; i++) {
+        total[k] = hit[k] = 0;
+    }
     for (long q = 0; q < (long)nq; q++) {
-        if(I2[q*k]==I[q*k])
-            match++;
         for(int i=0; i<k; i++) {
             if(I2[q*k+i]!=-1L){
-                total++;
+                total[i]++;
                 for(int j=0; j<k; j++){
                     if(I2[q*k+i]==I[q*k+j])
-                        hit++;
+                        hit[i]++;
                 }
             }
         }
     }
-    LOG(INFO) << "R@1=" <<  float(match)/nq;
-    LOG(INFO) << "R@"<< k << "=" <<  float(hit)/total;
+    int sum_total=0, sum_hit=0;
+    ostringstream oss;
+    for (int i=0; i<k; i++) {
+        sum_total += total[i];
+        sum_hit += hit[i];
+        oss << "\t" << (float)sum_hit/(float)sum_total;
+    }
+    LOG(INFO) << oss.str();
 
     delete[] D;
     delete[] I;
