@@ -84,7 +84,7 @@ int main(int /*argc*/, char** argv)
     //ClearDir(work_dir1);
     //ClearDir(work_dir2);
     //VectoDB vdb(work_dir, sift_dim);
-    VectoDB vdb1(work_dir1, sift_dim, "IVF4096,PQ32", "nprobe=256,ht=1024");
+    VectoDB vdb1(work_dir1, sift_dim, "IVF4096,PQ32", "nprobe=256");
     //VectoDB vdb1(work_dir, sift_dim, "IVF16384_HNSW32,Flat", "nprobe=384");
     VectoDB vdb2(work_dir2, sift_dim, "Flat", "");
 
@@ -167,7 +167,7 @@ int main(int /*argc*/, char** argv)
     vdb2.Search(nq, k, xq, nullptr, D2, I2);
 
     LOG(INFO) << "Compute recalls";
-    // evaluate result by hand.
+    // Another metric is mAP(https://zhuanlan.zhihu.com/p/35983818).
     vector<int> total(k), hit(k);
     for (int i=0; i<k; i++) {
         total[k] = hit[k] = 0;

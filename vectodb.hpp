@@ -20,7 +20,7 @@ public:
      * @param index_key     input faiss index_key
      * @param query_params  input faiss selected params of auto-tuning
      */
-    VectoDB(const char* work_dir, long dim, const char* index_key = "IVF4096,PQ32", const char* query_params = "nprobe=256,ht=256");
+    VectoDB(const char* work_dir, long dim, const char* index_key = "IVF4096,PQ32", const char* query_params = "nprobe=256");
 
     /** 
      * Deconstruct a VectoDB.
