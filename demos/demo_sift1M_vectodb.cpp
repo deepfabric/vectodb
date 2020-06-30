@@ -81,6 +81,10 @@ int main(int /*argc*/, char** argv)
     const char* work_dir1 = "/tmp/demo_sift1M_vectodb_cpp1";
     const char* work_dir2 = "/tmp/demo_sift1M_vectodb_cpp2";
 
+    //Search performance:
+    //"IVF1,Flat", "nprobe=1", 10000 queries:   458s
+    //"Flat", 10000 queries:                    51s
+
     //ClearDir(work_dir1);
     //ClearDir(work_dir2);
     //VectoDB vdb(work_dir, sift_dim);
