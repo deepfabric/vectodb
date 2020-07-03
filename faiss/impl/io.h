@@ -47,6 +47,9 @@ struct IOWriter {
     virtual size_t operator()(
          const void *ptr, size_t size, size_t nitems) = 0;
 
+    // repositions the file offset ahead, equivalent to writing some zero bytes
+    virtual void skip(size_t size) = 0;
+
     // return a file number that can be memory-mapped
     virtual int fileno ();
 
@@ -63,6 +66,7 @@ struct VectorIOReader:IOReader {
 struct VectorIOWriter:IOWriter {
     std::vector<uint8_t> data;
     size_t operator()(const void *ptr, size_t size, size_t nitems) override;
+    void skip(size_t size) override;
 };
 
 struct FileIOReader: IOReader {
@@ -91,6 +95,8 @@ struct FileIOWriter: IOWriter {
     ~FileIOWriter() override;
 
     size_t operator()(const void *ptr, size_t size, size_t nitems) override;
+
+    void skip(size_t size) override;
 
     int fileno() override;
 };
@@ -125,6 +131,8 @@ struct BufferedIOWriter: IOWriter {
     BufferedIOWriter(IOWriter *writer, size_t bsz);
 
     size_t operator()(const void *ptr, size_t size, size_t nitems) override;
+
+    void skip(size_t size) override;
 
     // flushes
     ~BufferedIOWriter();

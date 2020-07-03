@@ -49,6 +49,12 @@ size_t VectorIOWriter::operator()(
     return nitems;
 }
 
+void VectorIOWriter::skip(size_t size)
+{
+    size_t o = data.size();
+    data.resize(o+size);
+}
+
 size_t VectorIOReader::operator()(
                   void *ptr, size_t size, size_t nitems)
 {
@@ -61,8 +67,6 @@ size_t VectorIOReader::operator()(
     }
     return nitems;
 }
-
-
 
 
 /***********************************************************************
@@ -125,6 +129,12 @@ FileIOWriter::~FileIOWriter()  {
 
 size_t FileIOWriter::operator()(const void *ptr, size_t size, size_t nitems) {
     return fwrite(ptr, size, nitems, f);
+}
+
+void FileIOWriter::skip(size_t size){
+    int rc = fseek(f, size, SEEK_CUR);
+    FAISS_THROW_IF_NOT_FMT (rc != 0, "could not seek %s for skipping: %s",
+                            fname, strerror(errno));
 }
 
 int FileIOWriter::fileno()  {
@@ -224,6 +234,21 @@ size_t BufferedIOWriter::operator()(const void *ptr, size_t unitsize, size_t nit
     }
 
     return nb / unitsize;
+}
+
+void BufferedIOWriter::skip(size_t size){
+    if(b0 != 0) {
+        // now we need to flush to add more bytes
+        size_t ofs = 0;
+        do {
+            assert (ofs < 10000000);
+            size_t written = (*writer)(buffer.data() + ofs, 1, b0 - ofs);
+            FAISS_THROW_IF_NOT(written > 0);
+            ofs += written;
+        } while(ofs != b0);
+        b0 = 0;
+    }
+    writer->skip(size);
 }
 
 BufferedIOWriter::~BufferedIOWriter()

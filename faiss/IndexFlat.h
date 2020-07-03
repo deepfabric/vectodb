@@ -11,6 +11,7 @@
 #define INDEX_FLAT_H
 
 #include <vector>
+#include <shared_mutex>
 
 #include <faiss/Index.h>
 
@@ -168,6 +169,78 @@ struct IndexFlat1D:IndexFlatL2 {
         idx_t k,
         float* distances,
         idx_t* labels) const override;
+};
+
+
+/** Index that stores the full vectors and performs exhaustive search */
+struct IndexFlatDisk: Index {
+    std::shared_mutex shm;
+    float* xb;
+    idx_t* ids;
+    std::string filename;
+    uint8_t *ptr; // mmap base pointer
+    idx_t* p_ntotal;
+    size_t totsize;
+    size_t capacity;
+
+    explicit IndexFlatDisk (idx_t d, MetricType metric = METRIC_INNER_PRODUCT);
+
+    void add(idx_t n, const float* x) override;
+
+    void add_with_ids (idx_t n, const float * x, const idx_t *xids) override;
+
+    void reset() override;
+
+    void search(
+        idx_t n,
+        const float* x,
+        idx_t k,
+        float* distances,
+        idx_t* labels) const override;
+
+    void range_search(
+        idx_t n,
+        const float* x,
+        float radius,
+        RangeSearchResult* result) const override;
+
+    void reconstruct(idx_t key, float* recons) const override;
+
+    /** compute distance with a subset of vectors
+     *
+     * @param x       query vectors, size n * d
+     * @param labels  indices of the vectors that should be compared
+     *                for each query vector, size n * k
+     * @param distances
+     *                corresponding output distances, size n * k
+     */
+    void compute_distance_subset (
+            idx_t n,
+            const float *x,
+            idx_t k,
+            float *distances,
+            const idx_t *labels) const;
+
+    /** remove some ids. NB that Because of the structure of the
+     * indexing structure, the semantics of this operation are
+     * different from the usual ones: the new ids are shifted */
+    size_t remove_ids(const IDSelector& sel) override;
+
+    IndexFlatDisk (): xb(nullptr), ids(nullptr), ptr(nullptr), p_ntotal(null_ptr), totsize(0), capacity(0) {}
+
+    DistanceComputer * get_distance_computer() const override;
+
+    /* The stanadlone codec interface (just memcopies in this case) */
+    size_t sa_code_size () const override;
+
+    void sa_encode (idx_t n, const float *x,
+                          uint8_t *bytes) const override;
+
+    void sa_decode (idx_t n, const uint8_t *bytes,
+                            float *x) const override;
+
+    void reserve(idx_t n);
+
 };
 
 

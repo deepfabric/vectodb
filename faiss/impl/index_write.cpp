@@ -108,7 +108,8 @@ static void write_index_header (const Index *idx, IOWriter *f) {
     Index::idx_t dummy = 1 << 20;
     WRITE1 (dummy);
     WRITE1 (dummy);
-    WRITE1 (idx->is_trained);
+    int is_trained = idx->is_trained; //ensure elements are 4-bytes aligined
+    WRITE1 (is_trained);
     WRITE1 (idx->metric_type);
     if (idx->metric_type > 1) {
         WRITE1 (idx->metric_arg);
@@ -318,6 +319,23 @@ void write_index (const Index *idx, IOWriter *f) {
         WRITE1 (h);
         write_index_header (idx, f);
         WRITEVECTOR (idxf->xb);
+    } else if(const IndexFlatDisk * idxf = dynamic_cast<const IndexFlatDisk *> (idx)) {
+        using idx_t = Index::idx_t;
+        uint32_t h = fourcc ("IxFD");
+        WRITE1 (h);
+        write_index_header (idx, f);
+        const uint8_t zero = 0;
+        if(idx->ntotal > 0) {
+            WRITEANDCHECK (idxf->xb, sizeof(float) * idxf->d * idxf->ntotal);
+        }
+        f->skip(sizeof(float)* idxf->d * (idxf->capacity - idxf->ntotal));
+        if(idx->ntotal > 0) {
+            WRITEANDCHECK (idxf->ids, sizeof(idx_t) * idxf->ntotal);
+        }
+        f->skip(sizeof(idx_t) * (idxf->capacity - idxf->ntotal));
+        size_t totsize = idx->header_size() + sizeof(idxf->capacity) + sizeof(float) * idxf->d * idxf->capacity + sizeof(idx_t) * idxf->capacity;
+        int rc = ftruncate(f->fileno(), totsize);
+        FAISS_THROW_IF_NOT_FMT(rc == 0, "could not truncate: %s", strerror(errno));
     } else if(const IndexLSH * idxl = dynamic_cast<const IndexLSH *> (idx)) {
         uint32_t h = fourcc ("IxHe");
         WRITE1 (h);

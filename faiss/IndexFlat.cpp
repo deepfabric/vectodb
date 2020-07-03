@@ -10,6 +10,11 @@
 #include <faiss/IndexFlat.h>
 
 #include <cstring>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <faiss/utils/distances.h>
 #include <faiss/utils/extra_distances.h>
 #include <faiss/utils/utils.h>
@@ -17,6 +22,9 @@
 #include <faiss/impl/FaissAssert.h>
 #include <faiss/impl/AuxIndexStructures.h>
 
+using namespace std;
+using rlock = unique_lock<shared_mutex>;
+using wlock = shared_lock<shared_mutex>;
 
 namespace faiss {
 
@@ -503,6 +511,181 @@ void IndexFlat1D::search (
 
 }
 
+
+IndexFlatDisk::IndexFlatDisk (idx_t d, MetricType metric):
+    Index(d, metric), xb(nullptr), ids(nullptr), ptr(nullptr), p_ntotal(null_ptr), totsize(0), capacity(1000000L)
+{
+}
+
+
+void IndexFlatDisk::add (idx_t n, const float *x) {
+    FAISS_THROW_MSG ("add not implemented for this type of index");
+}
+
+void IndexFlatDisk::add_with_ids (idx_t n, const float * x, const idx_t *xids) {
+    reserve(n);
+    wlock w{shm};
+    memcpy(xb+sizeof(float)*d*ntotal, x, sizeof(float)*d*n);
+    for(int i=0; i<n; i++)
+        ids[ntotal+i] = xids[i];
+    ntotal += n;
+    *p_ntotal = ntotal;
+    msync(ptr, totsize, MS_ASYNC);
+}
+
+
+void IndexFlatDisk::reset() {
+    wlock w{shm};
+    ntotal = 0;
+    if (ptr != nullptr) {
+        *p_ntotal = ntotal;
+        msync(p_ntotal, sizeof(idx_t), MS_ASYNC);
+    }
+}
+
+
+void IndexFlatDisk::reserve(size_t n) {
+    wlock w{shm};
+    if (ptr == nullptr) {
+        // refers to write_index
+        FAISS_THROW_IF_NOT_FMT(ntotal == 0, "inconsistent state, ptr nullptr, ntotal %l, filename %s", ntotal, filename);
+        if (capacity <= 0)
+            capacity = 1 << 20;
+        while (capacity < n)
+            capacity *= 2;
+        int fd = open(filename.c_str(), O_RDWR| O_CREAT | O_TRUNC);
+        FAISS_THROW_IF_NOT_FMT(fd >= 0, "could not create or truncate file: %s", strerror(errno));
+        close(fd);
+        totsize = header_size() + sizeof(capacity) + sizeof(float)*d*capacity + sizeof(idx_t)*capacity;
+        int rc = truncate(filename.c_str(), totsize);
+        FAISS_THROW_IF_NOT_FMT(rc == 0, "could not truncate: %s", strerror(errno));
+        fd = open(filename.c_str(), O_RDWR);
+        FAISS_THROW_IF_NOT_FMT(fd >= 0, "could not open: %s", strerror(errno));
+        ptr = (uint8_t*)mmap (nullptr, totsize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+        FAISS_THROW_IF_NOT_FMT(ptr != MAP_FAILED, "could not mmap: %s", strerror(errno));
+        close(fd);
+        memcpy(ptr, "IxFD", 4);
+        *(int *)(ptr + 4) = d;
+        *(idx_t *)(ptr + 4 + sizeof(d)) = ntotal;
+        *(int *)(ptr + 4 + sizeof(d) + 3 * sizeof(idx_t)) = 1; //is_trained
+        *(int *)(ptr + 4 + sizeof(d) + 3 * sizeof(idx_t) + sizeof(int)) = metric_type;
+        if (metric_type > 1)
+            *(int *)(ptr + 4 + sizeof(int) + 3 * sizeof(idx_t) + 2 * sizeof(int)) = metric_arg;
+        *(size_t *)(ptr + header_size() - sizeof(capacity)) = capacity;
+        msync(ptr, totsize, MS_ASYNC);
+        p_ntotal = (idx_t *)(ptr + 4 + sizeof(d));
+        xb = (float *)(ptr + header_size() + sizeof(capacity));
+        ids = (idx_t *)(ptr + header_size() + sizeof(capacity) + sizeof(float)*d*capacity);
+    } else if (ntotal + n > capacity) {
+        munmap(ptr, totsize);
+        size_t xb_off = header_size() + sizeof(capacity);
+        size_t xb_cap = sizeof(float)*d*capacity;
+        size_t ids_cap = sizeof(idx_t)*capacity;
+        size_t xb_ids_cap = sizeof(float)*d*capacity + sizeof(idx_t)*capacity;
+        totsize = xb_off + 2 * xb_ids_cap;
+        int rc = truncate(filename.c_str(), totsize);
+        FAISS_THROW_IF_NOT_FMT(rc == 0, "could not truncate: %s", strerror(errno));
+        int fd = open(filename.c_str(), O_RDWR);
+        FAISS_THROW_IF_NOT_FMT(fd >= 0, "could not open: %s", strerror(errno));
+        ptr = (uint8_t*)mmap (nullptr, totsize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+        FAISS_THROW_IF_NOT_FMT(ptr != MAP_FAILED, "could not mmap: %s", strerror(errno));
+        close(fd);
+        memcpy(ptr + xb_off + 2 * xb_cap, ptr + xb_off + xb_cap, sizeof(idx_t)*ntotal);
+        capacity *= 2;
+        *(size_t *)(ptr + header_size() - sizeof(capacity)) = capacity;
+        msync(ptr, totsize, MS_ASYNC);
+        p_ntotal = (idx_t *)(ptr + 4 + sizeof(d));
+        xb = (float *)(ptr + header_size() + sizeof(capacity));
+        ids = (idx_t *)(ptr + header_size() + sizeof(capacity) + sizeof(float)*d*capacity);
+    }
+}
+
+
+void IndexFlatDisk::search (idx_t n, const float *x, idx_t k,
+                               float *distances, idx_t *labels) const
+{
+    // we see the distances and labels as heaps
+    rlock r{ shm };
+    if (metric_type == METRIC_INNER_PRODUCT) {
+        float_minheap_array_t res = {
+            size_t(n), size_t(k), labels, distances};
+        knn_inner_product (x, xb, d, n, ntotal, &res);
+    } else if (metric_type == METRIC_L2) {
+        float_maxheap_array_t res = {
+            size_t(n), size_t(k), labels, distances};
+        knn_L2sqr (x, xb, d, n, ntotal, &res);
+    } else {
+        float_maxheap_array_t res = {
+            size_t(n), size_t(k), labels, distances};
+        knn_extra_metrics (x, xb, d, n, ntotal,
+                           metric_type, metric_arg,
+                           &res);
+    }
+}
+
+
+void IndexFlatDisk::range_search (idx_t n, const float *x, float radius,
+                              RangeSearchResult *result) const
+{
+    rlock r{ shm };
+    switch (metric_type) {
+    case METRIC_INNER_PRODUCT:
+        range_search_inner_product (x, xb, d, n, ntotal,
+                                    radius, result);
+        break;
+    case METRIC_L2:
+        range_search_L2sqr (x, xb, d, n, ntotal, radius, result);
+        break;
+    default:
+        FAISS_THROW_MSG("metric type not supported");
+    }
+}
+
+
+void IndexFlatDisk::compute_distance_subset (
+            idx_t n,
+            const float *x,
+            idx_t k,
+            float *distances,
+            const idx_t *labels) const
+{
+    rlock r{ shm };
+    switch (metric_type) {
+        case METRIC_INNER_PRODUCT:
+            fvec_inner_products_by_idx (
+                 distances,
+                 x, xb, labels, d, n, k);
+            break;
+        case METRIC_L2:
+            fvec_L2sqr_by_idx (
+                 distances,
+                 x, xb, labels, d, n, k);
+            break;
+        default:
+            FAISS_THROW_MSG("metric type not supported");
+    }
+}
+
+
+size_t IndexFlatDisk::remove_ids (const IDSelector & sel)
+{
+    wlock w{ shm };
+    idx_t j = 0;
+    for (idx_t i = 0; i < ntotal; i++) {
+        if (!sel.is_member(ids[i])) {
+            if (i > j) {
+                memmove (&xb[d * j], &xb[d * i], sizeof(xb[0]) * d);
+                ids[j] = ids[i];
+            }
+            j++;
+        }
+    }
+    size_t nremove = ntotal - j;
+    ntotal -= j;
+    *p_ntotal = ntotal;
+    msync(ptr, totsize, MS_ASYNC);
+    return nremove;
+}
 
 
 } // namespace faiss
