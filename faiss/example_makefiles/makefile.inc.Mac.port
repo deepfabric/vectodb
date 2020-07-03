@@ -10,7 +10,7 @@
 # The system default clang does not support openmp
 # You can install an openmp compatible g++ with macports:
 # port install g++-mp-6
-CXX      = /opt/local/bin/g++-mp-6 -std=c++11
+CXX      = /opt/local/bin/g++-mp-8 -std=c++17
 CXXFLAGS = -fPIC -m64 -Wall -g -O3 -fopenmp -Wno-sign-compare
 CPUFLAGS = -msse4 -mpopcnt
 LDFLAGS  = -g -fPIC -fopenmp

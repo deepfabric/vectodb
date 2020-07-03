@@ -7,7 +7,7 @@
 # tested on CentOS 7, Ubuntu 16 and Ubuntu 14, see below to adjust flags to distribution.
 
 
-CXX      = g++ -std=c++11
+CXX      = g++ -std=c++17
 CXXFLAGS = -fPIC -m64 -Wall -g -O3 -fopenmp -Wno-sign-compare
 CPUFLAGS = -mavx -msse4 -mpopcnt
 LDFLAGS  = -fPIC -fopenmp
