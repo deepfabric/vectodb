@@ -235,8 +235,7 @@ struct Index {
 
     // refers to read_index_header, write_index_header
     size_t header_size() const {
-        return sizeof(uint32_t) + sizeof(d) + sizeof(ntotal) + 2*sizeof(idx_t) + sizeof(is_trained)
-        + sizeof(metric_type) + (metric_type > 1) ? sizeof(metric_arg) : 0;
+        return sizeof(uint32_t) + sizeof(d) + sizeof(ntotal) + 2*sizeof(idx_t) + sizeof(int) + sizeof(metric_type) + ((metric_type > 1) ? sizeof(metric_arg) : 0);
     }
 
 };

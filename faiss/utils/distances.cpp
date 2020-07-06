@@ -146,6 +146,7 @@ void fvec_renorm_L2 (size_t d, size_t nx, float * __restrict x)
 /* Find the nearest neighbors for nx queries in a set of ny vectors */
 static void knn_inner_product_sse (const float * x,
                         const float * y,
+                        const int64_t * yid,
                         size_t d, size_t nx, size_t ny,
                         float_minheap_array_t * res)
 {
@@ -172,7 +173,7 @@ static void knn_inner_product_sse (const float * x,
 
                 if (ip > simi[0]) {
                     minheap_pop (k, simi, idxi);
-                    minheap_push (k, simi, idxi, ip, j);
+                    minheap_push (k, simi, idxi, ip, (yid==nullptr)?j:yid[j]);
                 }
                 y_j += d;
             }
@@ -186,6 +187,7 @@ static void knn_inner_product_sse (const float * x,
 static void knn_L2sqr_sse (
                 const float * x,
                 const float * y,
+                const int64_t * yid,
                 size_t d, size_t nx, size_t ny,
                 float_maxheap_array_t * res)
 {
@@ -211,7 +213,7 @@ static void knn_L2sqr_sse (
 
                 if (disij < simi[0]) {
                     maxheap_pop (k, simi, idxi);
-                    maxheap_push (k, simi, idxi, disij, j);
+                    maxheap_push (k, simi, idxi, disij, (yid==nullptr)?j:yid[j]);
                 }
                 y_j += d;
             }
@@ -227,6 +229,7 @@ static void knn_L2sqr_sse (
 static void knn_inner_product_blas (
         const float * x,
         const float * y,
+        const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         float_minheap_array_t * res)
 {
@@ -258,7 +261,10 @@ static void knn_inner_product_blas (
             }
 
             /* collect maxima */
-            res->addn (j1 - j0, ip_block.get(), j0, i0, i1 - i0);
+            if (yid==nullptr)
+                res->addn (j1 - j0, ip_block.get(), j0, i0, i1 - i0);
+            else
+                res->addn_with_ids (j1 - j0, ip_block.get(), yid + j0, 0, i0, i1 - i0);
         }
         InterruptCallback::check ();
     }
@@ -270,6 +276,7 @@ static void knn_inner_product_blas (
 template<class DistanceCorrection>
 static void knn_L2sqr_blas (const float * x,
         const float * y,
+        const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         float_maxheap_array_t * res,
         const DistanceCorrection &corr)
@@ -329,7 +336,7 @@ static void knn_L2sqr_blas (const float * x,
 
                     if (dis < simi[0]) {
                         maxheap_pop (k, simi, idxi);
-                        maxheap_push (k, simi, idxi, dis, j);
+                        maxheap_push (k, simi, idxi, dis, (yid==nullptr)?j:yid[j]);
                     }
                 }
             }
@@ -355,14 +362,14 @@ static void knn_L2sqr_blas (const float * x,
 int distance_compute_blas_threshold = 20;
 
 void knn_inner_product (const float * x,
-        const float * y,
+        const float * y, const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         float_minheap_array_t * res)
 {
     if (nx < distance_compute_blas_threshold) {
-        knn_inner_product_sse (x, y, d, nx, ny, res);
+        knn_inner_product_sse (x, y, yid, d, nx, ny, res);
     } else {
-        knn_inner_product_blas (x, y, d, nx, ny, res);
+        knn_inner_product_blas (x, y, yid, d, nx, ny, res);
     }
 }
 
@@ -376,14 +383,15 @@ struct NopDistanceCorrection {
 
 void knn_L2sqr (const float * x,
                 const float * y,
+                const int64_t * yid,
                 size_t d, size_t nx, size_t ny,
                 float_maxheap_array_t * res)
 {
     if (nx < distance_compute_blas_threshold) {
-        knn_L2sqr_sse (x, y, d, nx, ny, res);
+        knn_L2sqr_sse (x, y, yid, d, nx, ny, res);
     } else {
         NopDistanceCorrection nop;
-        knn_L2sqr_blas (x, y, d, nx, ny, res, nop);
+        knn_L2sqr_blas (x, y, yid, d, nx, ny, res, nop);
     }
 }
 
@@ -402,7 +410,7 @@ void knn_L2sqr_base_shift (
          const float *base_shift)
 {
     BaseShiftDistanceCorrection corr = {base_shift};
-    knn_L2sqr_blas (x, y, d, nx, ny, res, corr);
+    knn_L2sqr_blas (x, y, nullptr, d, nx, ny, res, corr);
 }
 
 
@@ -560,6 +568,7 @@ template <bool compute_l2>
 static void range_search_blas (
         const float * x,
         const float * y,
+        const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         float radius,
         RangeSearchResult *result)
@@ -619,11 +628,11 @@ static void range_search_blas (
                     if (compute_l2) {
                         float dis =  x_norms[i] + y_norms[j] - 2 * ip;
                         if (dis < radius) {
-                            qres.add (dis, j);
+                            qres.add (dis, (yid==nullptr)?j:yid[j]);
                         }
                     } else {
                         if (ip > radius) {
-                            qres.add (ip, j);
+                            qres.add (ip, (yid==nullptr)?j:yid[j]);
                         }
                     }
                 }
@@ -639,6 +648,7 @@ static void range_search_blas (
 template <bool compute_l2>
 static void range_search_sse (const float * x,
                 const float * y,
+                const int64_t * yid,
                 size_t d, size_t nx, size_t ny,
                 float radius,
                 RangeSearchResult *res)
@@ -660,12 +670,12 @@ static void range_search_sse (const float * x,
                 if (compute_l2) {
                     float disij = fvec_L2sqr (x_, y_, d);
                     if (disij < radius) {
-                        qres.add (disij, j);
+                        qres.add (disij, (yid==nullptr)?j:yid[j]);
                     }
                 } else {
                     float ip = fvec_inner_product (x_, y_, d);
                     if (ip > radius) {
-                        qres.add (ip, j);
+                        qres.add (ip, (yid==nullptr)?j:yid[j]);
                     }
                 }
                 y_ += d;
@@ -687,30 +697,32 @@ static void range_search_sse (const float * x,
 void range_search_L2sqr (
         const float * x,
         const float * y,
+        const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         float radius,
         RangeSearchResult *res)
 {
 
     if (nx < distance_compute_blas_threshold) {
-        range_search_sse<true> (x, y, d, nx, ny, radius, res);
+        range_search_sse<true> (x, y, yid, d, nx, ny, radius, res);
     } else {
-        range_search_blas<true> (x, y, d, nx, ny, radius, res);
+        range_search_blas<true> (x, y, yid, d, nx, ny, radius, res);
     }
 }
 
 void range_search_inner_product (
         const float * x,
         const float * y,
+        const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         float radius,
         RangeSearchResult *res)
 {
 
     if (nx < distance_compute_blas_threshold) {
-        range_search_sse<false> (x, y, d, nx, ny, radius, res);
+        range_search_sse<false> (x, y, yid, d, nx, ny, radius, res);
     } else {
-        range_search_blas<false> (x, y, d, nx, ny, radius, res);
+        range_search_blas<false> (x, y, yid, d, nx, ny, radius, res);
     }
 }
 

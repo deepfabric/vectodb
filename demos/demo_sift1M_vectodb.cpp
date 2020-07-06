@@ -1,7 +1,9 @@
 #include "vectodb.hpp"
 
-#include <glog/logging.h>
+#include "faiss/IndexFlat.h"
+#include "vectodb.h"
 
+#include <glog/logging.h>
 #include <iostream>
 #include <memory>
 #include <string.h>
@@ -11,6 +13,9 @@
 #include <thread>
 #include <unistd.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <sys/mman.h>
 
 #include <cassert>
 
@@ -69,6 +74,34 @@ int* ivecs_read(const char* fname, size_t* d_out, size_t* n_out)
     return (int*)fvecs_read(fname, d_out, n_out);
 }
 
+int check_indexflat(faiss::IndexFlat *flat, const string& work_dir, long id_shift)
+{
+    string fp = work_dir + "/flatdisk.index";
+    int fd = open(fp.c_str(), O_RDONLY);
+
+    struct stat buf;
+    fstat(fd, &buf);
+    long totsize = buf.st_size;
+    uint8_t *ptr = (uint8_t*)mmap(nullptr, totsize, PROT_READ, MAP_SHARED, fd, 0);
+    close(fd);
+    size_t capacity = *(size_t *)(ptr + flat->header_size());
+    float *xb = (float *)(ptr + flat->header_size() + sizeof(capacity));
+    long *ids = (long *)(ptr + flat->header_size() + sizeof(capacity) + sizeof(float)* (flat->d) *capacity);
+    int rc = memcmp(flat->xb.data(), xb, flat->ntotal * (flat->d) * sizeof(float));
+    if(rc!=0){
+        LOG(ERROR) << "IndexFlatDisk xb is corrupted!";
+        return rc;
+    }
+    int i = 0;
+    for(; (i<flat->ntotal) && ids[i]==id_shift+i; i++);
+    if(i<flat->ntotal){
+        LOG(ERROR) << "IndexFlatDisk xid is corrupted!";
+        return rc;
+    }
+    munmap(ptr, totsize);
+    return 0;
+}
+
 // train phase, input: index_key database train_set, output: index
 int main(int /*argc*/, char** argv)
 {
@@ -78,25 +111,25 @@ int main(int /*argc*/, char** argv)
 
     LOG(INFO) << "Loading database";
     const long sift_dim = 128L;
-    const char* work_dir1 = "/tmp/demo_sift1M_vectodb_cpp1";
-    const char* work_dir2 = "/tmp/demo_sift1M_vectodb_cpp2";
+    const char* work_dir = "/tmp/demo_sift1M_vectodb_cpp";
 
-    //Search performance:
-    //"IVF1,Flat", "nprobe=1", 10000 queries:   458s
-    //"Flat", 10000 queries:                    51s
+    //Search performance(10000 queries):
+    //"IVF1,Flat", "nprobe=1":      458s
+    //"Flat":                       51s
+    //"IVF4096,PQ32", "nprobe=256"  26s
+    //"IVF16384_HNSW32,Flat", "nprobe=384"  23s
 
-    //ClearDir(work_dir1);
-    //ClearDir(work_dir2);
-    //VectoDB vdb(work_dir, sift_dim);
-    VectoDB vdb1(work_dir1, sift_dim, "IVF4096,PQ32", "nprobe=256");
-    //VectoDB vdb1(work_dir, sift_dim, "IVF16384_HNSW32,Flat", "nprobe=384");
-    VectoDB vdb2(work_dir2, sift_dim, "Flat", "");
+    //ClearDir(work_dir);
+    VectoDB vdb(work_dir, sift_dim);
+    vdb.Reset();
+    faiss::IndexFlat flat(sift_dim, faiss::METRIC_INNER_PRODUCT);
 
     size_t nb, d;
     float* xb = fvecs_read("sift1M/sift_base.fvecs", &d, &nb);
     long* xids = new long[nb];
+    const static long id_shift = 1000L;
     for (long i = 0; i < (long)nb; i++) {
-        xids[i] = i;
+        xids[i] = id_shift + i;
         /*
         //Randomlizing causes far less recall. Don't do that.
         for(long j = 0; j<(long)d; j++)
@@ -105,32 +138,37 @@ int main(int /*argc*/, char** argv)
         NormVec(xb+i*d, d);
     }
 
-    if(vdb1.GetTotal()==0 && vdb2.GetTotal()==0) {
-        const bool incremental = false;
-        if (incremental) {
-            const long batch_size = std::min(100000L, (long)nb);
-            const long batch_num = nb / batch_size;
-            assert(nb % batch_size == 0);
-            for (long i = 0; i < batch_num; i++) {
-                LOG(INFO) << "Calling vdb1.AddWithIds " << nb;
-                vdb1.AddWithIds(batch_size, xb + i * batch_size * sift_dim, xids + i * batch_size);
-                LOG(INFO) << "Calling vdb1.SyncIndex";
-                vdb1.SyncIndex();
-            }
-        } else {
-            LOG(INFO) << "Calling vdb1.AddWithIds " << nb;
-            vdb1.AddWithIds(nb, xb, xids);
-            LOG(INFO) << "Calling vdb1.SyncIndex";
-            vdb1.SyncIndex();
+    const bool incremental = false;
+    if (incremental) {
+        const long batch_size = std::min(100000L, (long)nb);
+        const long batch_num = nb / batch_size;
+        assert(nb % batch_size == 0);
+        for (long i = 0; i < batch_num; i++) {
+            LOG(INFO) << "Calling vdb.AddWithIds " << nb;
+            vdb.AddWithIds(batch_size, xb + i * batch_size * sift_dim, xids + i * batch_size);
         }
-        LOG(INFO) << "Calling vdb2.AddWithIds " << nb;
-        vdb2.AddWithIds(nb, xb, xids);
-        LOG(INFO) << "Calling vdb2.SyncIndex";
-        vdb2.SyncIndex();
+    } else {
+        LOG(INFO) << "Calling vdb.AddWithIds " << nb;
+        vdb.AddWithIds(nb, xb, xids);
+    }
+    LOG(INFO) << "Calling flat.add " << nb;
+    flat.add(nb, xb);
+
+    //check IndexFlatDisk file content
+    LOG(INFO) << "Checking IndexFlatDisk file";
+    if(flat.ntotal != vdb.GetTotal()) {
+        LOG(ERROR) << "vdb is corrupted! flat.ntotal " << flat.ntotal << ", vdb.GetTotal() " << vdb.GetTotal();
+        return -1;
+    }
+    int rc = check_indexflat(&flat, work_dir, id_shift);
+    if(rc!=0){
+        LOG(ERROR) << "IndexFlatDisk file is corrupted!";
+        return rc;
     }
 
     LOG(INFO) << "Searching index";
-    const long nq = 10000;
+    //const long nq = 10000;
+    const long nq = 100;
     const long k = 400;
     const float* xq = xb;
     float* D = new float[nq*k];
@@ -139,7 +177,7 @@ int main(int /*argc*/, char** argv)
     long* I2 = new long[nq*k];
 
     LOG(INFO) << "Executing " << nq << " queries in single batch";
-    vdb1.Search(nq, k, xq, nullptr, D, I);
+    vdb.Search(nq, xq, k, nullptr, D, I);
 
     const long num_threads = 0;
     if (num_threads >= 2) {
@@ -147,9 +185,9 @@ int main(int /*argc*/, char** argv)
         const long batch_size = (long)nq / num_threads;
         vector<thread> workers;
         for (long i = 0; i < num_threads; i++) {
-            std::thread worker{ [&vdb1, batch_size, i, &xq, &D, &I]() {
+            std::thread worker{ [&vdb, batch_size, i, &xq, &D, &I]() {
                 LOG(INFO) << "thread " << i << " begins";
-                vdb1.Search(batch_size, k, xq + i * batch_size * sift_dim, nullptr, D + i * batch_size * k, I + i * batch_size * k);
+                vdb.Search(batch_size, xq + i * batch_size * sift_dim, k, nullptr, D + i * batch_size * k, I + i * batch_size * k);
                 LOG(INFO) << "thread " << i << " ends";
             } };
             workers.push_back(std::move(worker));
@@ -163,12 +201,12 @@ int main(int /*argc*/, char** argv)
     if (one_by_one) {
         LOG(INFO) << "Executing " << nq << " queries one by one";
         for (long i = 0; i < (long)nq; i++) {
-            vdb1.Search(1, k, xq + i * sift_dim, nullptr, D + i*k, I + i*k);
+            vdb.Search(1, xq + i * sift_dim, k, nullptr, D + i*k, I + i*k);
         }
     }
 
     LOG(INFO) << "Generating ground truth";
-    vdb2.Search(nq, k, xq, nullptr, D2, I2);
+    flat.search(nq, xq, k, D2, I2);
 
     LOG(INFO) << "Compute recalls";
     // Another metric is mAP(https://zhuanlan.zhihu.com/p/35983818).
@@ -181,8 +219,10 @@ int main(int /*argc*/, char** argv)
             if(I2[q*k+i]!=-1L){
                 total[i]++;
                 for(int j=0; j<k; j++){
-                    if(I2[q*k+i]==I[q*k+j])
+                    if(I2[q*k+i]+id_shift==I[q*k+j]){
                         hit[i]++;
+                        break;
+                    }
                 }
             }
         }

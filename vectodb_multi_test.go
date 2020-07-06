@@ -21,8 +21,6 @@ func TestVectodbMulti(t *testing.T) {
 	vm, err := NewVectodbMulti(workDir, dim, sizeLimit)
 	require.NoError(t, err)
 
-	vm.StartBuilderLoop()
-
 	const nb int = 100000
 	xb := make([]float32, nb*dim)
 	xids := make([]int64, nb)
@@ -34,7 +32,7 @@ func TestVectodbMulti(t *testing.T) {
 		for j := 0; j < dim; j++ {
 			xb[i*dim+j] = rand.Float32()
 		}
-		normalizeInplace(dim, xb[i*dim:(i+1)*dim])
+		NormalizeVec(dim, xb[i*dim:(i+1)*dim])
 		xids[i] = xidBegin + int64(i)
 	}
 
@@ -47,6 +45,4 @@ func TestVectodbMulti(t *testing.T) {
 	fmt.Printf("res: %+v\n", res)
 
 	time.Sleep(5 * time.Second)
-
-	vm.StopBuilderLoop()
 }

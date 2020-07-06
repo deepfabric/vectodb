@@ -10,9 +10,9 @@ extern "C" {
 void* VectodbNew(char* work_dir, long dim);
 void VectodbDelete(void* vdb);
 void VectodbAddWithIds(void* vdb, long nb, float* xb, long* xids);
-void VectodbRemoveIds(long nb, long* xids);
-void VectodbSearch(void* vdb, long nq, long k, float* xq, long* uids, float* scores, long* xids);
-void VectodbSyncIndex(void* vdb);
+long VectodbRemoveIds(void* vdb, long nb, long* xids);
+void VectodbReset(void* vdb);
+void VectodbSearch(void* vdb, long nq, float* xq, long k, long* uids, float* scores, long* xids);
 long VectodbGetTotal(void* vdb);
 
 /**

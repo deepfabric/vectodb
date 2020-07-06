@@ -473,25 +473,6 @@ Index *read_index (IOReader *f, int io_flags) {
         FAISS_THROW_IF_NOT (idxf->xb.size() == idxf->ntotal * idxf->d);
         // leak!
         idx = idxf;
-    } else if (h == fourcc("IxFD")) {
-        using idx_t = Index::idx_t;
-        IndexFlatDisk *idxf;
-        idxf = new IndexFlatDisk();
-        // do the mmap
-        read_index_header (idxf, f);
-        READ1 (idxf->capacity);
-        off_t off_xb = lseek(f->fileno(), 0, SEEK_CUR);
-        FAISS_THROW_IF_NOT_FMT (off_xb > 0, "lseek failed: %s", strerror(errno));
-        idxf->totsize = lseek(f->fileno(), 0, SEEK_END);
-        FAISS_THROW_IF_NOT_FMT (idxf->totsize >= 0, "lseek failed: %s", strerror(errno));
-        off_xb = lseek(f->fileno(), off_xb, SEEK_CUR);
-        FAISS_THROW_IF_NOT_FMT (off_xb > 0, "lseek failed: %s", strerror(errno));
-        idxf->ptr = (uint8_t*)mmap (nullptr, idxf->totsize, PROT_READ|PROT_WRITE, MAP_SHARED, f->fileno(), 0);
-        FAISS_THROW_IF_NOT_FMT (idxf->ptr != MAP_FAILED, "could not mmap: %s", strerror(errno));
-        idxf->p_ntotal = (idx_t *)(idxf->ptr + sizeof(int));
-        idxf->xb = (float *)(idxf->ptr + off_xb);
-        idxf->ids = (idx_t *)(idxf->ptr + idxf->totsize + idxf->capacity * sizeof(idx_t));
-        idx = idxf;
     } else if (h == fourcc("IxHE") || h == fourcc("IxHe")) {
         IndexLSH * idxl = new IndexLSH ();
         read_index_header (idxl, f);

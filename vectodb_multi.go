@@ -10,10 +10,8 @@ import (
 	"sort"
 	"strconv"
 	"sync/atomic"
-	"time"
 
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 )
 
 /**
@@ -177,52 +175,6 @@ func (vm *VectodbMulti) AddWithIds(xb []float32, xids []int64) (err error) {
 		}
 
 	}
-	return
-}
-
-//StartBuilderLoop starts a goroutine to build index in loop
-func (vm *VectodbMulti) StartBuilderLoop() {
-	if vm.cancel != nil {
-		return
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		ticker := time.Tick(2 * time.Second)
-		var err error
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker:
-				log.Infof("build iteration begin")
-				vdbs := vm.vdbs
-				for _, vdb := range vdbs {
-					if err = vdb.SyncIndex(); err != nil {
-						log.Fatalf("%+v", err)
-					}
-					// sleep a while to avoid busy loop
-					select {
-					case <-ctx.Done():
-						return
-					case <-ticker:
-					}
-				}
-				log.Infof("build iteration done")
-			}
-		}
-
-	}()
-	vm.cancel = cancel
-	return
-}
-
-//StopBuilderLoop stops the build goroutinep
-func (vm *VectodbMulti) StopBuilderLoop() {
-	if vm.cancel == nil {
-		return
-	}
-	vm.cancel()
-	vm.cancel = nil
 	return
 }
 

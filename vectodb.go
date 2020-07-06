@@ -10,6 +10,7 @@ package vectodb
 import "C"
 
 import (
+	"math"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
@@ -56,11 +57,25 @@ func (vdb *VectoDB) AddWithIds(xb []float32, xids []int64) (err error) {
 	return
 }
 
-func (vdb *VectoDB) SyncIndex() (err error) {
-	C.VectodbSyncIndex(vdb.vdbC)
+/** removes IDs from the index. Returns the number of elements removed.
+ */
+func (vdb *VectoDB) RemoveIds(xids []int64) (nremove int) {
+	nb := len(xids)
+	nremoveC := C.VectodbRemoveIds(vdb.vdbC, C.long(nb), (*C.long)(&xids[0]))
+	nremove = int(nremoveC)
 	return
 }
 
+/**
+* Removes all elements from the database.
+ */
+func (vdb *VectoDB) Reset() {
+	C.VectodbReset(vdb.vdbC)
+}
+
+/**
+* Returns the number of elements in the database.
+ */
 func (vdb *VectoDB) GetTotal() (total int, err error) {
 	totalC := C.VectodbGetTotal(vdb.vdbC)
 	total = int(totalC)
@@ -97,7 +112,7 @@ func (vdb *VectoDB) Search(k int, xq []float32, uids []string) (res [][]XidScore
 	scores := make([]float32, nq*k)
 	xids := make([]int64, nq*k)
 	var uidsFilter int64
-	C.VectodbSearch(vdb.vdbC, C.long(nq), C.long(k), (*C.float)(&xq[0]), (*C.long)(&uidsFilter), (*C.float)(&scores[0]), (*C.long)(&xids[0]))
+	C.VectodbSearch(vdb.vdbC, C.long(nq), (*C.float)(&xq[0]), C.long(k), (*C.long)(&uidsFilter), (*C.float)(&scores[0]), (*C.long)(&xids[0]))
 	for i := 0; i < nq; i++ {
 		for j := 0; j < k; j++ {
 			if xids[i*k+j] == int64(-1) {
@@ -119,4 +134,15 @@ func VectodbClearWorkDir(workDir string) (err error) {
 	C.VectodbClearDir(wordDirC)
 	C.free(unsafe.Pointer(wordDirC))
 	return
+}
+
+func NormalizeVec(d int, v []float32) {
+	var norm float64
+	for i := 0; i < d; i++ {
+		norm += float64(v[i]) * float64(v[i])
+	}
+	norm = math.Sqrt(norm)
+	for i := 0; i < d; i++ {
+		v[i] = float32(float64(v[i]) / norm)
+	}
 }

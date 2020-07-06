@@ -17,10 +17,8 @@ public:
      *
      * @param work_dir      input working direcotry. will load existing index if the directory is not empty.
      * @param dim           input dimension of vector
-     * @param index_key     input faiss index_key
-     * @param query_params  input faiss selected params of auto-tuning
      */
-    VectoDB(const char* work_dir, long dim, const char* index_key = "IVF4096,PQ32", const char* query_params = "nprobe=256");
+    VectoDB(const char* work_dir, long dim);
 
     /** 
      * Deconstruct a VectoDB.
@@ -36,7 +34,14 @@ public:
      */
     void AddWithIds(long nb, const float* xb, const long* xids);
 
-    void RemoveIds(long nb, const long* xids);
+    /** removes IDs from the index. Returns the number of elements removed.
+     */
+    long RemoveIds(long nb, const long* xids);
+
+    /**
+     * removes all elements from the database.
+    */
+    void Reset();
 
     /** 
      * Get total number of vectors.
@@ -45,51 +50,26 @@ public:
     long GetTotal();
 
     /** 
-     * Upper layer shall invoke this regularly to let deletion & update take effect, and ensure all vectors be indexed.
-     */
-    void SyncIndex();
-
-    /** 
      * Query n vectors of dimension d to the index.
      * The upper layer does memory management for xq, uids, scores, xids.
      *
      * @param nq            input the number of vectors to search
-     * @param k             input do kNN search
      * @param xq            input vectors to search, size nq * d
+     * @param k             input do kNN search
      * @param uids          input uid bitmap pointer array, size nq
      * @param scores        output pairwise scores, size nq * k
      * @param xids          output labels of the kNN, size nq * k
      */
-    void Search(long nq, long k, const float* xq, const long* uids, float* scores, long* xids);
+    void Search(long nq, const float* xq, long k, const long* uids, float* scores, long* xids);
 
 private:
-    std::string getBaseFvecsFp() const;
-    std::string getBaseXidsFp() const;
-    std::string getBaseMutationFp() const;
-    std::string getIndexFp(long mutuation, long ntrain) const;
-    long getBaseMutation() const;
-    void incBaseMutation();
-    long getBaseMutationRaw();
-    long getBaseTotalRaw();
-    void getIndexFpLatest(long& mutation, long& ntrain) const;
-    void clearIndexFiles();
-    void createBaseFilesIfNotExist();
-    void openBaseFiles();
-    void closeBaseFiles();
+    std::string getFlatFp() const;
 
 private:
     std::string work_dir;
     long dim;
-    long len_vec;
-    std::string index_key;
-    std::string query_params;
+    std::string fp_flat;
     std::unique_ptr<DbState> state;
-    std::string fp_base_xids;
-    std::string fp_base_fvecs;
-    std::string fp_base_mutation;
-    std::string fp_base_xids_tmp;
-    std::string fp_base_fvecs_tmp;
-    std::string fp_base_mutation_tmp;
 };
 
 
@@ -100,5 +80,3 @@ private:
  */
 void ClearDir(const char* work_dir);
 void NormVec(float* vec, int dim);
-void MmapFile(const std::string& fp, uint8_t*& data, long& len_data);
-void MunmapFile(const std::string& fp, uint8_t*& data, long& len_data);

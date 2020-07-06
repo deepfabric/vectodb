@@ -151,6 +151,7 @@ void knn_extra_metrics_template (
         VD vd,
         const float * x,
         const float * y,
+        const int64_t * yid,
         size_t nx, size_t ny,
         float_maxheap_array_t * res)
 {
@@ -176,7 +177,7 @@ void knn_extra_metrics_template (
 
                 if (disij < simi[0]) {
                     maxheap_pop (k, simi, idxi);
-                    maxheap_push (k, simi, idxi, disij, j);
+                    maxheap_push (k, simi, idxi, disij, (yid==nullptr)?j:yid[j]);
                 }
                 y_j += d;
             }
@@ -272,6 +273,7 @@ void pairwise_extra_distances (
 void knn_extra_metrics (
         const float * x,
         const float * y,
+        const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         MetricType mt, float metric_arg,
         float_maxheap_array_t * res)
@@ -281,7 +283,7 @@ void knn_extra_metrics (
 #define HANDLE_VAR(kw)                                          \
      case METRIC_ ## kw: {                                      \
         VectorDistance ## kw vd({(size_t)d});                   \
-        knn_extra_metrics_template (vd, x, y, nx, ny, res);     \
+        knn_extra_metrics_template (vd, x, y, yid, nx, ny, res);     \
         break;                                                  \
     }
         HANDLE_VAR(L2);
@@ -293,7 +295,7 @@ void knn_extra_metrics (
 #undef HANDLE_VAR
     case METRIC_Lp: {
         VectorDistanceLp vd({(size_t)d, metric_arg});
-        knn_extra_metrics_template (vd, x, y, nx, ny, res);
+        knn_extra_metrics_template (vd, x, y, yid, nx, ny, res);
         break;
     }
     default:

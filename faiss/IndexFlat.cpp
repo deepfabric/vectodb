@@ -53,15 +53,15 @@ void IndexFlat::search (idx_t n, const float *x, idx_t k,
     if (metric_type == METRIC_INNER_PRODUCT) {
         float_minheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
-        knn_inner_product (x, xb.data(), d, n, ntotal, &res);
+        knn_inner_product (x, xb.data(), nullptr, d, n, ntotal, &res);
     } else if (metric_type == METRIC_L2) {
         float_maxheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
-        knn_L2sqr (x, xb.data(), d, n, ntotal, &res);
+        knn_L2sqr (x, xb.data(), nullptr, d, n, ntotal, &res);
     } else {
         float_maxheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
-        knn_extra_metrics (x, xb.data(), d, n, ntotal,
+        knn_extra_metrics (x, xb.data(), nullptr, d, n, ntotal,
                            metric_type, metric_arg,
                            &res);
     }
@@ -72,11 +72,11 @@ void IndexFlat::range_search (idx_t n, const float *x, float radius,
 {
     switch (metric_type) {
     case METRIC_INNER_PRODUCT:
-        range_search_inner_product (x, xb.data(), d, n, ntotal,
+        range_search_inner_product (x, xb.data(), nullptr, d, n, ntotal,
                                     radius, result);
         break;
     case METRIC_L2:
-        range_search_L2sqr (x, xb.data(), d, n, ntotal, radius, result);
+        range_search_L2sqr (x, xb.data(), nullptr, d, n, ntotal, radius, result);
         break;
     default:
         FAISS_THROW_MSG("metric type not supported");
@@ -509,22 +509,79 @@ void IndexFlat1D::search (
 
 }
 
+const static int off_header_d = 4;
+const static int off_header_ntotal = off_header_d + sizeof(idx_t);
+const static int off_header_is_trained = off_header_ntotal + 2 * sizeof(idx_t);
+const static int off_header_metric_type = off_header_is_trained + sizeof(int);
+const static int off_header_metric_arg = off_header_metric_type + sizeof(int);
 
-IndexFlatDisk::IndexFlatDisk (idx_t d, MetricType metric):
-    Index(d, metric), xb(nullptr), ids(nullptr), ptr(nullptr), p_ntotal(nullptr), totsize(0), capacity(1000000L)
+IndexFlatDisk::IndexFlatDisk (const std::string& filename_in, idx_t d, MetricType metric)
+    : Index(d, metric)
+    , xb(nullptr)
+    , ids(nullptr)
+    , filename(filename_in)
+    , ptr(nullptr)
+    , p_ntotal(nullptr)
+    , totsize(0)
+    , capacity(1000000L)
 {
     pthread_rwlock_init(&rwlock, NULL);
+    int fd = open(filename.c_str(), O_RDWR | O_APPEND);
+    if (fd < 0) {
+        fd = open(filename.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
+        FAISS_THROW_IF_NOT_FMT(fd >= 0, "could not create or truncate %s: %s", filename.c_str(), strerror(errno));
+        close(fd);
+        totsize = header_size() + sizeof(capacity) + sizeof(float)*d*capacity + sizeof(idx_t)*capacity;
+        int rc = truncate(filename.c_str(), totsize);
+        FAISS_THROW_IF_NOT_FMT(rc == 0, "could not truncate %s: %s", filename.c_str(), strerror(errno));
+        fd = open(filename.c_str(), O_RDWR);
+        FAISS_THROW_IF_NOT_FMT(fd >= 0, "could not open %s: %s", filename.c_str(), strerror(errno));
+        ptr = (uint8_t*)mmap(nullptr, totsize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+        FAISS_THROW_IF_NOT_FMT(ptr != MAP_FAILED, "could not mmap %s: %s", filename.c_str(), strerror(errno));
+        close(fd);
+        memcpy(ptr, "IxFD", 4);
+        *(int *)(ptr + off_header_d) = d;
+        *(idx_t *)(ptr + off_header_ntotal) = ntotal;
+        *(int *)(ptr + off_header_is_trained) = 1; //is_trained
+        *(int *)(ptr + off_header_metric_type) = metric_type;
+        if (metric_type > 1)
+            *(int *)(ptr + off_header_metric_arg) = metric_arg;
+        *(size_t *)(ptr + header_size()) = capacity;
+        msync(ptr, totsize, MS_SYNC);
+        p_ntotal = (idx_t *)(ptr + off_header_ntotal);
+        xb = (float *)(ptr + header_size() + sizeof(capacity));
+        ids = (idx_t *)(ptr + header_size() + sizeof(capacity) + sizeof(float)*d*capacity);
+    } else {
+        struct stat buf;
+        fstat(fd, &buf);
+        totsize = buf.st_size;
+        ptr = (uint8_t*)mmap(nullptr, totsize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+        FAISS_THROW_IF_NOT_FMT(ptr != MAP_FAILED, "could not mmap %s: %s", filename.c_str(), strerror(errno));
+        close(fd);
+        int rc = strncmp((char *)ptr, "IxFD", 4);
+        FAISS_THROW_IF_NOT_MSG(rc==0, "index type is not IxFD");
+        d = *(int *)(ptr + off_header_d);
+        ntotal = *(idx_t *)(ptr + off_header_ntotal);
+        is_trained = 1;
+        metric_type = (MetricType)*(int *)(ptr + off_header_metric_type);
+        if (metric_type > 1)
+            metric_arg = *(int *)(ptr + off_header_metric_arg);
+        capacity = *(size_t *)(ptr + header_size());
+    }
+    p_ntotal = (idx_t *)(ptr + off_header_ntotal);
+    xb = (float *)(ptr + header_size() + sizeof(capacity));
+    ids = (idx_t *)(ptr + header_size() + sizeof(capacity) + sizeof(float)*d*capacity);
 }
 
 
-void IndexFlatDisk::add (idx_t n, const float *x) {
+void IndexFlatDisk::add (idx_t /*n*/, const float */*x*/) {
     FAISS_THROW_MSG ("add not implemented for this type of index");
 }
 
 void IndexFlatDisk::add_with_ids (idx_t n, const float * x, const idx_t *xids) {
     reserve(n);
     pthread_rwlock_wrlock(&rwlock);
-    memcpy(xb+sizeof(float)*d*ntotal, x, sizeof(float)*d*n);
+    memcpy((uint8_t *)xb+sizeof(float)*d*ntotal, x, sizeof(float)*d*n);
     for(int i=0; i<n; i++)
         ids[ntotal+i] = xids[i];
     ntotal += n;
@@ -539,7 +596,7 @@ void IndexFlatDisk::reset() {
     ntotal = 0;
     if (ptr != nullptr) {
         *p_ntotal = ntotal;
-        msync(p_ntotal, sizeof(idx_t), MS_ASYNC);
+        msync(p_ntotal, sizeof(idx_t), MS_SYNC);
     }
     pthread_rwlock_unlock(&rwlock);
 }
@@ -547,54 +604,24 @@ void IndexFlatDisk::reset() {
 
 void IndexFlatDisk::reserve(size_t n) {
     pthread_rwlock_wrlock(&rwlock);
-    if (ptr == nullptr) {
-        // refers to write_index
-        FAISS_THROW_IF_NOT_FMT(ntotal == 0, "inconsistent state, ptr nullptr, ntotal %l, filename %s", ntotal, filename);
-        if (capacity <= 0)
-            capacity = 1 << 20;
-        while (capacity < n)
-            capacity *= 2;
-        int fd = open(filename.c_str(), O_RDWR| O_CREAT | O_TRUNC);
-        FAISS_THROW_IF_NOT_FMT(fd >= 0, "could not create or truncate file: %s", strerror(errno));
-        close(fd);
-        totsize = header_size() + sizeof(capacity) + sizeof(float)*d*capacity + sizeof(idx_t)*capacity;
-        int rc = truncate(filename.c_str(), totsize);
-        FAISS_THROW_IF_NOT_FMT(rc == 0, "could not truncate: %s", strerror(errno));
-        fd = open(filename.c_str(), O_RDWR);
-        FAISS_THROW_IF_NOT_FMT(fd >= 0, "could not open: %s", strerror(errno));
-        ptr = (uint8_t*)mmap (nullptr, totsize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-        FAISS_THROW_IF_NOT_FMT(ptr != MAP_FAILED, "could not mmap: %s", strerror(errno));
-        close(fd);
-        memcpy(ptr, "IxFD", 4);
-        *(int *)(ptr + 4) = d;
-        *(idx_t *)(ptr + 4 + sizeof(d)) = ntotal;
-        *(int *)(ptr + 4 + sizeof(d) + 3 * sizeof(idx_t)) = 1; //is_trained
-        *(int *)(ptr + 4 + sizeof(d) + 3 * sizeof(idx_t) + sizeof(int)) = metric_type;
-        if (metric_type > 1)
-            *(int *)(ptr + 4 + sizeof(int) + 3 * sizeof(idx_t) + 2 * sizeof(int)) = metric_arg;
-        *(size_t *)(ptr + header_size() - sizeof(capacity)) = capacity;
-        msync(ptr, totsize, MS_ASYNC);
-        p_ntotal = (idx_t *)(ptr + 4 + sizeof(d));
-        xb = (float *)(ptr + header_size() + sizeof(capacity));
-        ids = (idx_t *)(ptr + header_size() + sizeof(capacity) + sizeof(float)*d*capacity);
-    } else if (ntotal + n > capacity) {
+    FAISS_THROW_IF_NOT_FMT(ptr != nullptr, "inconsistent state, ptr nullptr, ntotal %ld, filename %s", ntotal, filename.c_str());
+    if (ntotal + n > capacity) {
         munmap(ptr, totsize);
         size_t xb_off = header_size() + sizeof(capacity);
         size_t xb_cap = sizeof(float)*d*capacity;
-        size_t ids_cap = sizeof(idx_t)*capacity;
         size_t xb_ids_cap = sizeof(float)*d*capacity + sizeof(idx_t)*capacity;
         totsize = xb_off + 2 * xb_ids_cap;
         int rc = truncate(filename.c_str(), totsize);
-        FAISS_THROW_IF_NOT_FMT(rc == 0, "could not truncate: %s", strerror(errno));
+        FAISS_THROW_IF_NOT_FMT(rc == 0, "could not truncate %s: %s", filename.c_str(), strerror(errno));
         int fd = open(filename.c_str(), O_RDWR);
-        FAISS_THROW_IF_NOT_FMT(fd >= 0, "could not open: %s", strerror(errno));
+        FAISS_THROW_IF_NOT_FMT(fd >= 0, "could not open %s: %s", filename.c_str(), strerror(errno));
         ptr = (uint8_t*)mmap (nullptr, totsize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-        FAISS_THROW_IF_NOT_FMT(ptr != MAP_FAILED, "could not mmap: %s", strerror(errno));
+        FAISS_THROW_IF_NOT_FMT(ptr != MAP_FAILED, "could not mmap %s: %s", filename.c_str(), strerror(errno));
         close(fd);
         memcpy(ptr + xb_off + 2 * xb_cap, ptr + xb_off + xb_cap, sizeof(idx_t)*ntotal);
         capacity *= 2;
-        *(size_t *)(ptr + header_size() - sizeof(capacity)) = capacity;
-        msync(ptr, totsize, MS_ASYNC);
+        *(size_t *)(ptr + header_size()) = capacity;
+        msync(ptr, totsize, MS_SYNC);
         p_ntotal = (idx_t *)(ptr + 4 + sizeof(d));
         xb = (float *)(ptr + header_size() + sizeof(capacity));
         ids = (idx_t *)(ptr + header_size() + sizeof(capacity) + sizeof(float)*d*capacity);
@@ -611,15 +638,15 @@ void IndexFlatDisk::search (idx_t n, const float *x, idx_t k,
     if (metric_type == METRIC_INNER_PRODUCT) {
         float_minheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
-        knn_inner_product (x, xb, d, n, ntotal, &res);
+        knn_inner_product (x, xb, (int64_t *)ids, d, n, ntotal, &res);
     } else if (metric_type == METRIC_L2) {
         float_maxheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
-        knn_L2sqr (x, xb, d, n, ntotal, &res);
+        knn_L2sqr (x, xb, (int64_t *)ids, d, n, ntotal, &res);
     } else {
         float_maxheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
-        knn_extra_metrics (x, xb, d, n, ntotal,
+        knn_extra_metrics (x, xb, (int64_t *)ids, d, n, ntotal,
                            metric_type, metric_arg,
                            &res);
     }
@@ -633,11 +660,11 @@ void IndexFlatDisk::range_search (idx_t n, const float *x, float radius,
     pthread_rwlock_rdlock(&rwlock);
     switch (metric_type) {
     case METRIC_INNER_PRODUCT:
-        range_search_inner_product (x, xb, d, n, ntotal,
+        range_search_inner_product (x, xb, (int64_t *)ids, d, n, ntotal,
                                     radius, result);
         break;
     case METRIC_L2:
-        range_search_L2sqr (x, xb, d, n, ntotal, radius, result);
+        range_search_L2sqr (x, xb, (int64_t *)ids, d, n, ntotal, radius, result);
         break;
     default:
         FAISS_THROW_MSG("metric type not supported");
@@ -688,13 +715,13 @@ size_t IndexFlatDisk::remove_ids (const IDSelector & sel)
     size_t nremove = ntotal - j;
     ntotal -= j;
     *p_ntotal = ntotal;
-    msync(ptr, totsize, MS_ASYNC);
+    msync(ptr, totsize, MS_SYNC);
     pthread_rwlock_unlock(&rwlock);
     return nremove;
 }
 
 
-void IndexFlatDisk::reconstruct (idx_t key, float * recons) const
+void IndexFlatDisk::reconstruct (idx_t /*key*/, float * /*recons*/) const
 {
     FAISS_THROW_MSG ("reconstruct not implemented for this type of index");
 }

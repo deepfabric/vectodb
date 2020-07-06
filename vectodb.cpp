@@ -33,529 +33,82 @@
 #include <vector>
 #include <regex>
 
+
 using namespace std;
 namespace fs = std::filesystem;
-using mtxlock = unique_lock<mutex>;
-using rlock = unique_lock<shared_mutex>;
-using wlock = shared_lock<shared_mutex>;
-
-//the number of training points which IVF4096 needs for 1M dataset
-const long DESIRED_NTRAIN = 200000L;
-const long ALLOW_ADD_GAP  =  10000L;
 
 struct DbState {
     DbState()
-        : data_mut(nullptr)
-        , refMutation(0L)
-        , refDumpedTotal(0L)
-        , refFlat(nullptr)
-        , initFlat(nullptr)
+        : flat(nullptr)
     {
     }
     ~DbState()
     {
+        delete flat;
     }
 
-    mutex m_sync;
-    mutex m_base;
-    std::fstream fs_base_fvecs; //for append of base.fvecs
-    std::fstream fs_base_xids; //for append of base.xids
-    uint8_t* data_mut; // mapped base.mutation
-
-    // Main activities in decreasing priority: insert, search, build and activate index.
-    // Normally index is large, the read-lock (search) time is long(~26s for 10K searchs of sift),
-    // the write-lock (activate index) just protects a pointer assignment.
-    shared_mutex rw_index;
-    long refMutation;
-    long refDumpedTotal;
-    faiss::IndexRefineFlat* refFlat; //one of refFlat and initFlat is null
-    faiss::IndexFlat* initFlat;
-    vector<long> xids; //vector of xid of all vectors
-    std::unordered_map<long, long> xid2num;
+    faiss::IndexFlatDisk* flat;
 };
 
-struct VecExt {
-    long count;
-    vector<float> vec;
-};
-
-VectoDB::VectoDB(const char* work_dir_in, long dim_in, const char* index_key_in, const char* query_params_in)
+VectoDB::VectoDB(const char* work_dir_in, long dim_in)
     : work_dir(work_dir_in)
     , dim(dim_in)
-    , len_vec(dim * sizeof(float))
-    , index_key(index_key_in)
-    , query_params(query_params_in)
-    , fp_base_xids(getBaseXidsFp())
-    , fp_base_fvecs(getBaseFvecsFp())
-    , fp_base_mutation(getBaseMutationFp())
-    , fp_base_xids_tmp(fp_base_xids + ".tmp")
-    , fp_base_fvecs_tmp(fp_base_fvecs + ".tmp")
-    , fp_base_mutation_tmp(fp_base_mutation + ".tmp")
+    , fp_flat(getFlatFp())
 {
-    static_assert(sizeof(float) == 4, "sizeof(float) must be 4");
-    static_assert(sizeof(long) == 2 * sizeof(float), "sizeof(long) must be 8");
-
     fs::path dir{ fs::absolute(work_dir_in) };
     work_dir = dir.string().c_str();
+    fs::create_directories(work_dir);
+
+    faiss::IndexFlatDisk *flat = nullptr;
+    flat = new faiss::IndexFlatDisk(fp_flat, dim_in, faiss::METRIC_INNER_PRODUCT);
 
     auto st{ std::make_unique<DbState>() }; //Make DbState be exception safe
     state = std::move(st); // equivalent to state.reset(st.release());
-    state->fs_base_fvecs.exceptions(std::ios::failbit | std::ios::badbit);
-    state->fs_base_xids.exceptions(std::ios::failbit | std::ios::badbit);
+    state->flat = flat;
 
-    createBaseFilesIfNotExist();
-    openBaseFiles();
-    SyncIndex();
     google::FlushLogFiles(google::INFO);
 }
 
 VectoDB::~VectoDB()
 {
-    long len_mut = sizeof(uint64_t);
-    MunmapFile(fp_base_mutation, state->data_mut, len_mut);
-    // There's no lock protection since I assume the object is idle.
-    // Up layer could protect it with rwlock.
-    if (state.get() != nullptr) {
-        delete state->initFlat;
-        delete state->refFlat;
-    }
 }
 
 void VectoDB::AddWithIds(long nb, const float* xb, const long* xids)
 {
-    mtxlock m{ state->m_base };
-    wlock w{ state->rw_index };
-    state->fs_base_fvecs.write((const char*)xb, len_vec*nb);
-    state->fs_base_xids.write((const char*)xids, sizeof(long)*nb);
-    state->fs_base_fvecs.flush();
-    state->fs_base_xids.flush();
-
-    long cnt_xids = state->xids.size();
-    for (long i = 0; i < nb; i++) {
-        state->xids.push_back(xids[i]);
-        state->xid2num[xids[i]] = cnt_xids + i;
-    }
-    if (state->initFlat)
-        state->initFlat->add(nb, xb);
-    else
-        state->refFlat->add(nb, xb);
+    state->flat->add_with_ids(nb, xb, xids);
 }
 
-void VectoDB::RemoveIds(long nb, const long* xids)
+long VectoDB::RemoveIds(long nb, const long* xids)
 {
-    mtxlock m{ state->m_base };
-    wlock w{ state->rw_index };
-    bool seeked = false;
-    for(long i=0; i<nb; i++){
-        long xid = xids[i];
-        auto it = state->xid2num.find(xid);
-        if(it==state->xid2num.cend())
-            continue;
-        long num = it->second;
-        state->xids[num] = -1L;
-        state->xid2num.erase(it);
-        xid = -1L;
-        state->fs_base_xids.seekp(num, ios_base::beg);
-        state->fs_base_xids.write((const char*)&xid, sizeof(long));
-        seeked = true;
-    }
-    if(seeked) {
-        state->fs_base_xids.seekp(0, ios_base::end);
-        state->fs_base_xids.flush();
-    }
-    incBaseMutation();
+    faiss::IDSelectorBatch sel(nb, xids);
+    return state->flat->remove_ids(sel);
 }
 
-void VectoDB::SyncIndex()
+void VectoDB::Reset()
 {
-    LOG(INFO) << "SyncIndex begin of " << work_dir;
-    mtxlock ms{ state->m_sync };
-    long rawMutation = 0;
-    {
-        mtxlock m{ state->m_base };
-        wlock w{ state->rw_index };
-        if(state->initFlat == nullptr && state->refFlat == nullptr) {
-            assert(state->xids.empty());
-            assert(state->xid2num.empty());
-            long rawTotal = getBaseTotalRaw();
-            if(rawTotal==0){
-                state->initFlat = new faiss::IndexFlat(dim, faiss::METRIC_INNER_PRODUCT);
-                LOG(INFO) << "SyncIndex empty database " << work_dir;
-                google::FlushLogFiles(google::INFO);
-                return;
-            } else {
-                long mutation = 0;
-                long ntotal = 0;
-                getIndexFpLatest(mutation, ntotal);
-                rawMutation = getBaseMutationRaw();
-                if(ntotal>0 && mutation == rawMutation) {
-                    // Reuse existing index if mutation match.
-                    assert(rawTotal>=ntotal);
-                    uint8_t *data_xids, *data_fvecs;
-                    long len_xids, len_fvecs;
-                    vector<long> xids(rawTotal);
-                    unordered_map<long, long> xid2num;
-                    MmapFile(fp_base_xids, data_xids, len_xids);
-                    memcpy(&xids[0], data_xids, len_xids);
-                    MunmapFile(fp_base_xids, data_xids, len_xids);
-                    for(long i=0; i<rawTotal; i++){
-                        xid2num[xids[i]] = i;
-                    }
-
-                    const string fp_index = getIndexFp(mutation, ntotal);
-                    faiss::Index *refFlat = faiss::read_index(fp_index.c_str(), 0);
-                    LOG(INFO) << "Readed index " << fp_index;
-                    if(rawTotal > ntotal){
-                        LOG(INFO) << "Indexing another " << rawTotal-ntotal << " vectors of " << work_dir;
-                        MmapFile(fp_base_fvecs, data_fvecs, len_fvecs);
-                        refFlat->add(rawTotal-ntotal, (float *)data_fvecs+dim*ntotal);
-                        MunmapFile(fp_base_fvecs, data_fvecs, len_fvecs);
-                    }
-
-                    state->refMutation = mutation;
-                    state->refDumpedTotal = rawTotal;
-                    state->refFlat = dynamic_cast<faiss::IndexRefineFlat *>(refFlat);
-                    state->initFlat = nullptr;
-                    state->xids = std::move(xids);
-                    state->xid2num = std::move(xid2num);
-                    LOG(INFO) << "SyncIndex end of " << work_dir;
-                    google::FlushLogFiles(google::INFO);
-                    return;
-                }
-            }
-        }
-        if(!state->xids.empty() && state->xids.size() < DESIRED_NTRAIN){
-            LOG(INFO) << "Skipped sync since number of vectors " << state->xids.size() << " is less than " << DESIRED_NTRAIN;
-            google::FlushLogFiles(google::INFO);
-            return;
-        }
-        if (state->refFlat != nullptr && state->refMutation==getBaseMutation()){
-            if ((long)state->xids.size() < state->refDumpedTotal + ALLOW_ADD_GAP){
-                long gap = state->refDumpedTotal + ALLOW_ADD_GAP - (long)state->xids.size();
-                LOG(INFO) << "Skipped sync since gap " << gap << " is too little";
-                google::FlushLogFiles(google::INFO);
-                return;
-            }
-            clearIndexFiles();
-            // Output index
-            const string& fp_index = getIndexFp(state->refMutation, (long)state->xids.size());
-            faiss::write_index(state->refFlat, fp_index.c_str());
-            state->refDumpedTotal = (long)state->xids.size();
-            LOG(INFO) << "Dumped index to " << fp_index;
-            google::FlushLogFiles(google::INFO);
-            return;
-        }
-        rawMutation = getBaseMutationRaw();
-        fs::remove(fp_base_xids_tmp);
-        fs::remove(fp_base_fvecs_tmp);
-        fs::remove(fp_base_mutation_tmp);
-        fs::copy(fp_base_xids, fp_base_xids_tmp);
-        fs::copy(fp_base_fvecs, fp_base_fvecs_tmp);
-        fs::copy(fp_base_mutation, fp_base_mutation_tmp);
-        LOG(INFO) << "Created temp files " << fp_base_xids_tmp << ", " << fp_base_fvecs_tmp << ", " << fp_base_mutation_tmp;
-    }
-
-    long orig_cnt_xids, cnt_xids;
-    uint8_t *data_xids, *data_fvecs;
-    long len_xids, len_fvecs;
-    long i=0, j=0;
-    MmapFile(fp_base_xids_tmp, data_xids, len_xids);
-    MmapFile(fp_base_fvecs_tmp, data_fvecs, len_fvecs);
-    assert(len_xids/(long)sizeof(long) == len_fvecs/len_vec);
-    orig_cnt_xids = cnt_xids = len_xids/sizeof(long);
-    // locate first i, elements[i]=-1
-    for(; i<cnt_xids && *((long*)data_xids+i) != -1L; i++);
-    if(i<cnt_xids) {
-        j = i+1;
-        while(1){
-            // locate first j, elements[j]!=-1
-            for(; j<cnt_xids && *((long*)data_xids+j) == -1L; j++);
-            if(j>=cnt_xids)
-                break;
-            //move elements[j] to position i
-            memmove(data_xids+i*sizeof(long), data_xids+j*sizeof(long), sizeof(long));
-            memmove(data_fvecs+i*len_vec, data_fvecs+j*len_vec, len_vec);
-            i++;
-            j++;
-        }
-        cnt_xids = i;
-        fs::resize_file(fp_base_xids_tmp, cnt_xids*sizeof(long));
-        fs::resize_file(fp_base_fvecs_tmp, cnt_xids*len_vec);
-        LOG(INFO) << "Compacted temp files " << fp_base_xids_tmp << ", " << fp_base_fvecs_tmp;
-    }
-
-    faiss::Index* base_index;
-    faiss::IndexIVFFlat* index_ivf;
-    faiss::IndexRefineFlat* refFlat;
-    faiss::ParameterSpace params;
-    vector<long> xids(cnt_xids);
-    unordered_map<long, long> xid2num;
-    long nt = cnt_xids;
-    if(nt>DESIRED_NTRAIN)
-        nt = DESIRED_NTRAIN;
-    LOG(INFO) << "Training on " << nt << " vectors of " << work_dir;
-    base_index = faiss::index_factory(dim, index_key.c_str(), faiss::METRIC_INNER_PRODUCT);
-    // according to faiss/benchs/bench_hnsw.py, ivf_hnsw_quantizer.
-    index_ivf = dynamic_cast<faiss::IndexIVFFlat*>(base_index);
-    if (index_ivf != nullptr) {
-        index_ivf->cp.min_points_per_centroid = 5; //quiet warning
-        index_ivf->quantizer_trains_alone = 2;
-    }
-    base_index->train(nt, (const float*)data_fvecs);
-    params.initialize(base_index);
-    params.set_index_parameters(base_index, query_params.c_str());
-    LOG(INFO) << "Indexing " << cnt_xids << " vectors of " << work_dir;
-    refFlat = new faiss::IndexRefineFlat(base_index);
-    refFlat->own_fields = true;
-    refFlat->add(cnt_xids, (const float*)data_fvecs);
-    memcpy(&xids[0], data_xids, len_xids);
-    for(long i=0; i<cnt_xids; i++){
-        long& xid = *(long *)(data_xids + i*sizeof(long));
-        xid2num[xid] = i;
-    }
-
-    {
-        wlock w{ state->rw_index };
-        if((long)state->xids.size()>orig_cnt_xids){
-            long gap = state->xids.size() - orig_cnt_xids;
-            LOG(INFO) << "Indexing another " << gap << " vectors of " << work_dir;
-            for(long i=0, j=0; i<gap; i++){
-                long xid = state->xids[orig_cnt_xids+i];
-                if(xid==-1L)
-                    continue;
-                refFlat->add(1, (float *)data_fvecs+dim*(orig_cnt_xids+i));
-                xids.push_back(xid);
-                xid2num[xid] = cnt_xids + j;
-                j++;
-            }
-        } else if(state->xids.empty() || rawMutation>=getBaseMutation()) {
-            mtxlock m{ state->m_base };
-            closeBaseFiles();
-            fs::remove(fp_base_xids);
-            fs::remove(fp_base_fvecs);
-            fs::remove(fp_base_mutation);
-            fs::create_hard_link(fp_base_xids_tmp, fp_base_xids);
-            fs::create_hard_link(fp_base_fvecs_tmp, fp_base_fvecs);
-            fs::create_hard_link(fp_base_mutation_tmp, fp_base_mutation);
-            openBaseFiles();
-            LOG(INFO) << "Copyied back temp files " << fp_base_xids_tmp << ", " << fp_base_fvecs_tmp << ", " << fp_base_mutation_tmp;
-        }
-        if(state->initFlat)
-            delete state->initFlat;
-        else if(state->refFlat){
-            delete state->refFlat;
-        }
-        state->refMutation = rawMutation;
-        state->refDumpedTotal = xids.size();
-        state->refFlat = refFlat;
-        state->initFlat = nullptr;
-        state->xids = std::move(xids);
-        state->xid2num = std::move(xid2num);
-        // Output index
-        const string& fp_index = getIndexFp(rawMutation, state->refDumpedTotal);
-        faiss::write_index(refFlat, fp_index.c_str());
-        LOG(INFO) << "Dumped index to " << fp_index;
-    }
-
-    MunmapFile(fp_base_xids_tmp, data_xids, len_xids);
-    MunmapFile(fp_base_fvecs_tmp, data_fvecs, len_fvecs);
-    fs::remove(fp_base_xids_tmp);
-    fs::remove(fp_base_fvecs_tmp);
-    fs::remove(fp_base_mutation_tmp);
-    LOG(INFO) << "Destroyed temp files " << fp_base_xids_tmp << ", " << fp_base_fvecs_tmp << ", " << fp_base_mutation_tmp;
-    LOG(INFO) << "SyncIndex end of " << work_dir;
-    google::FlushLogFiles(google::INFO);
-}
-
-void VectoDB::createBaseFilesIfNotExist()
-{
-    fs::create_directories(work_dir);
-    if (!fs::is_regular_file(fp_base_xids) || !fs::is_regular_file(fp_base_fvecs) || !fs::is_regular_file(fp_base_mutation)) {
-        std::ofstream out1(fp_base_xids);
-        std::ofstream out2(fp_base_fvecs);
-        std::ofstream out3(fp_base_mutation);
-        if (!fs::is_regular_file(fp_base_mutation) || fs::file_size(fp_base_mutation)!=8) {
-            std::ofstream ofs;
-            ofs.open(fp_base_mutation, std::fstream::out | std::fstream::binary);
-            long zero = 0L;
-            ofs.write(reinterpret_cast<char*>(&zero), sizeof(zero));
-            ofs.close();
-            fs::resize_file(fp_base_mutation, 8);
-        }
-        LOG(INFO) << "Created " << fp_base_xids << ", " << fp_base_fvecs << ", " << fp_base_mutation;
-    }
-}
-
-void VectoDB::openBaseFiles()
-{
-    //https://stackoverflow.com/questions/31483349/how-can-i-open-a-file-for-reading-writing-creating-it-if-it-does-not-exist-w
-    state->fs_base_fvecs.open(fp_base_fvecs, std::fstream::in | std::fstream::out | std::fstream::binary);
-    state->fs_base_fvecs.seekp(0, ios_base::end); //a particular libstdc++ implementation may use a single pointer for both seekg and seekp.
-    state->fs_base_xids.open(fp_base_xids, std::fstream::in | std::fstream::out | std::fstream::binary);
-    state->fs_base_xids.seekp(0, ios_base::end); //a particular libstdc++ implementation may use a single pointer for both seekg and seekp.
-    long len_mut = sizeof(uint64_t);
-    MmapFile(fp_base_mutation, state->data_mut, len_mut);
-}
-
-void VectoDB::closeBaseFiles()
-{
-    long len_mut = sizeof(uint64_t);
-    if(state->data_mut!=nullptr)
-        MunmapFile(fp_base_mutation, state->data_mut, len_mut);
-    state->data_mut = nullptr;
-    state->fs_base_fvecs.close();
-    state->fs_base_xids.close();
+    state->flat->reset();
 }
 
 long VectoDB::GetTotal()
 {
-    rlock l{ state->rw_index };
-    return state->xids.size();
+    return state->flat->ntotal;
 }
 
-void VectoDB::Search(long nq, long k, const float* xq, const long* /*uids*/, float* scores, long* xids)
+void VectoDB::Search(long nq, const float* xq, long k, const long* /*uids*/, float* scores, long* xids)
 {
     for (int i = 0; i < nq*k; i++) {
         xids[i] = -1L;
         scores[i] = -1.0;
     }
-    rlock l{ state->rw_index };
-    long total = state->xids.size();
-    if (total <= 0)
-        return;
-    /*
-    // refers to https://blog.csdn.net/quyuan2009/article/details/50001679
-    */
-    if (state->initFlat != nullptr) {
-        state->initFlat->search(nq, xq, k, scores, xids);
-    } else if(state->refFlat != nullptr) {
-        state->refFlat->search(nq, xq, k, scores, xids);
-    }
-    //translate xids
-    for(int i=0; i<nq*k; i++){
-        if(xids[i] != -1L){
-            long xid = state->xids[xids[i]];
-            xids[i] = xid;
-        }
-    }
-    //compact xids for each query
-    for(int q=0; q<nq; q++){
-        long i=0, j=0;
-        // locate first i, elements[i]=-1
-        for(; i<k && xids[q*k+i] != -1L; i++);
-        if(i<k) {
-            j = i+1;
-            while(1){
-                // locate first j, elements[j]!=-1
-                for(; j<k && xids[q*k+j] == -1L; j++);
-                if(j>=k)
-                    break;
-                //move elements[j] to position i
-                xids[q*k+i] = xids[q*k+j];
-                scores[q*k+i]=scores[q*k+j];
-                i++;
-                j++;
-            }
-            for(; i<k; i++){
-                xids[q*k+i] = -1L;
-                scores[q*k+i]=-1.0f;
-            }
-        }
-    }
+    state->flat->search(nq, xq, k, scores, xids);
     return;
 }
 
-long VectoDB::getBaseMutation() const
-{
-    return *(uint64_t*)state->data_mut;
-}
-
-void VectoDB::incBaseMutation()
-{
-    *(uint64_t*)state->data_mut += 1;
-    msync(state->data_mut, 8, MS_ASYNC);
-}
-
-long VectoDB::getBaseMutationRaw()
-{
-    uint8_t *data_mut;
-    long len_mut = sizeof(uint64_t);
-    MmapFile(fp_base_mutation, data_mut, len_mut);
-    long mutation = *(int64_t*)data_mut;
-    MunmapFile(fp_base_mutation, data_mut, len_mut);
-    return mutation;
-}
-
-long VectoDB::getBaseTotalRaw()
-{
-    long len_xids = fs::file_size(fp_base_xids);
-    return len_xids/(long)sizeof(long);
-}
-
-std::string VectoDB::getBaseFvecsFp() const
+std::string VectoDB::getFlatFp() const
 {
     ostringstream oss;
-    oss << work_dir << "/base.fvecs";
+    oss << work_dir << "/flatdisk.index";
     return oss.str();
-}
-
-std::string VectoDB::getBaseXidsFp() const
-{
-    ostringstream oss;
-    oss << work_dir << "/base.xids";
-    return oss.str();
-}
-
-std::string VectoDB::getBaseMutationFp() const
-{
-    ostringstream oss;
-    oss << work_dir << "/base.mutation";
-    return oss.str();
-}
-
-std::string VectoDB::getIndexFp(long mutation, long ntotal) const
-{
-    ostringstream oss;
-    oss << work_dir << "/" << index_key << "." << mutation << "." << ntotal << ".index";
-    return oss.str();
-}
-
-void VectoDB::getIndexFpLatest(long& mutation, long& ntotal) const
-{
-    mutation = ntotal = 0;
-    fs::path fp_index;
-    const std::regex base_regex(index_key + R"(\.(\d+)\.(\d+)\.index)");
-    std::smatch base_match;
-    for (auto ent = fs::directory_iterator(work_dir); ent != fs::directory_iterator(); ent++) {
-        const fs::path& p = ent->path();
-        if (fs::is_regular_file(p)) {
-            const string fn = p.filename().string();
-            if (std::regex_match(fn, base_match, base_regex) && base_match.size() == 3) {
-                long cur_mutation = std::stol(base_match[1].str());
-                long cur_ntotal = std::stol(base_match[2].str());
-                if (cur_mutation > mutation || (cur_mutation == mutation && cur_ntotal > ntotal)) {
-                    mutation = cur_mutation;
-                    ntotal = cur_ntotal;
-                }
-            }
-        }
-    }
-}
-
-void VectoDB::clearIndexFiles()
-{
-    fs::path fp_index;
-    const std::regex base_regex(index_key + R"(\.(\d+)\.(\d+)\.index)");
-    std::smatch base_match;
-    for (auto ent = fs::directory_iterator(work_dir); ent != fs::directory_iterator(); ent++) {
-        const fs::path& p = ent->path();
-        if (fs::is_regular_file(p)) {
-            const string fn = p.filename().string();
-            if (std::regex_match(fn, base_match, base_regex)) {
-                fs::remove(p);
-            }
-        }
-    }
 }
 
 void ClearDir(const char* work_dir)
@@ -573,36 +126,6 @@ void NormVec(float* vec, int dim)
     l = sqrt(l);
     for (int i = 0; i < dim; i++) {
         vec[i] = (float)(((double)vec[i]) / l);
-    }
-}
-
-void MmapFile(const std::string& fp, uint8_t*& data, long& len_data)
-{
-    data = nullptr;
-    len_data = 0;
-    long len_f = fs::file_size(fp); //equivalent to "fs_base_fvecs.seekp(0, ios_base::end); long len_f = fs_base_fvecs.tellp();"
-    if (len_f == 0)
-        return;
-    int f = open(fp.c_str(), O_RDONLY);
-    void* tmpd = mmap(NULL, len_f, PROT_READ, MAP_SHARED, f, 0);
-    if (tmpd == MAP_FAILED)
-        throw fs::filesystem_error(fp, error_code(errno, generic_category()));
-    close(f);
-    int rc = madvise(tmpd, len_f, MADV_RANDOM | MADV_DONTDUMP);
-    if (rc < 0)
-        LOG(ERROR) << "madvise failed with " << strerror(errno);
-    data = (uint8_t*)tmpd;
-    len_data = len_f;
-}
-
-void MunmapFile(const std::string& fp, uint8_t*& data, long& len_data)
-{
-    if (data != nullptr) {
-        int rc = munmap(data, len_data);
-        if (rc < 0)
-            throw fs::filesystem_error(fp, error_code(errno, generic_category()));
-        data = nullptr;
-        len_data = 0;
     }
 }
 
@@ -626,25 +149,24 @@ void VectodbAddWithIds(void* vdb, long nb, float* xb, long* xids)
     static_cast<VectoDB*>(vdb)->AddWithIds(nb, xb, xids);
 }
 
-void VectodbRemoveIds(void* vdb, long nb, long* xids)
+long VectodbRemoveIds(void* vdb, long nb, long* xids)
 {
-    static_cast<VectoDB*>(vdb)->RemoveIds(nb, xids);
+    return static_cast<VectoDB*>(vdb)->RemoveIds(nb, xids);
 }
 
-void VectodbSyncIndex(void* vdb)
+void VectodbReset(void* vdb)
 {
-    static_cast<VectoDB*>(vdb)->SyncIndex();
+    static_cast<VectoDB*>(vdb)->Reset();
 }
-
 
 long VectodbGetTotal(void* vdb)
 {
     return static_cast<VectoDB*>(vdb)->GetTotal();
 }
 
-void VectodbSearch(void* vdb, long nq, long k, float* xq, long* uids, float* scores, long* xids)
+void VectodbSearch(void* vdb, long nq, float* xq, long k, long* uids, float* scores, long* xids)
 {
-    static_cast<VectoDB*>(vdb)->Search(nq, k, xq, uids, scores, xids);
+    static_cast<VectoDB*>(vdb)->Search(nq, xq, k, uids, scores, xids);
 }
 
 void VectodbClearDir(char* work_dir)

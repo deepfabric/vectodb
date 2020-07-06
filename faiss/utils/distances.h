@@ -165,6 +165,7 @@ extern int distance_compute_blas_threshold;
 void knn_inner_product (
         const float * x,
         const float * y,
+        const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         float_minheap_array_t * res);
 
@@ -172,6 +173,7 @@ void knn_inner_product (
 void knn_L2sqr (
         const float * x,
         const float * y,
+        const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         float_maxheap_array_t * res);
 
@@ -225,6 +227,7 @@ struct RangeSearchResult;
 void range_search_L2sqr (
         const float * x,
         const float * y,
+        const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         float radius,
         RangeSearchResult *result);
@@ -233,6 +236,7 @@ void range_search_L2sqr (
 void range_search_inner_product (
         const float * x,
         const float * y,
+        const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         float radius,
         RangeSearchResult *result);

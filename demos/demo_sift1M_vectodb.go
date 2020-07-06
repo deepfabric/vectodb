@@ -78,6 +78,7 @@ func fvecs_read(fname string) (x []float32, d, n int, err error) {
 		for j := 0; j < d; j++ {
 			x[i*d+j] = *(*float32)(unsafe.Pointer(&data[start+j*4]))
 		}
+		vectodb.NormalizeVec(d, x[i*d:(i+1)*d])
 	}
 
 	if err = FileMunmap(data); err != nil {
@@ -85,35 +86,6 @@ func fvecs_read(fname string) (x []float32, d, n int, err error) {
 	}
 	err = f.Close()
 	return
-}
-
-func ivecs_read(fname string) (x []int32, d, n int, err error) {
-	var x2 []float32
-	if x2, d, n, err = fvecs_read(fname); err != nil {
-		return
-	}
-	x = make([]int32, n*d)
-	for i := 0; i < n*d; i++ {
-		x[i] = *(*int32)(unsafe.Pointer(&x2[i]))
-	}
-	return
-}
-
-func builderLoop(ctx context.Context, vdb *vectodb.VectoDB) {
-	ticker := time.Tick(5 * time.Second)
-	var err error
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker:
-			log.Infof("build iteration begin")
-			if err = vdb.SyncIndex(); err != nil {
-				log.Fatalf("%+v", err)
-			}
-			log.Infof("build iteration done")
-		}
-	}
 }
 
 func searcherLoop(ctx context.Context, vdb *vectodb.VectoDB) {
@@ -129,6 +101,7 @@ func searcherLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 	if dim2 != siftDim {
 		log.Fatalf("%s dim %d, expects %d", siftQuery, dim2, siftDim)
 	}
+
 	nq = 500
 	k = 10
 	var res [][]vectodb.XidScore
@@ -159,7 +132,6 @@ func benchmarkAdd() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go builderLoop(ctx, vdb)
 	go searcherLoop(ctx, vdb)
 
 	log.Infof("Loading database")
@@ -216,12 +188,10 @@ func main() {
 	var err error
 	var vdb *vectodb.VectoDB
 
-	//if err = vectodb.VectodbClearWorkDir(workDir); err != nil {
-	//	log.Fatalf("%+v", err)
-	//}
 	if vdb, err = vectodb.NewVectoDB(workDir, siftDim); err != nil {
 		log.Fatalf("%+v", err)
 	}
+	vdb.Reset()
 
 	log.Infof("Loading database")
 	var xb []float32
@@ -243,10 +213,6 @@ func main() {
 		log.Fatalf("%+v", err)
 	}
 
-	if err = vdb.SyncIndex(); err != nil {
-		log.Fatalf("%+v", err)
-	}
-
 	log.Infof("Searching index")
 	var xq []float32
 	var dim2 int
@@ -257,6 +223,7 @@ func main() {
 	if dim2 != siftDim {
 		log.Fatalf("%s dim %d, expects %d", siftQuery, dim2, siftDim)
 	}
+
 	var res [][]vectodb.XidScore
 	uids := make([]string, nq)
 	k := 10

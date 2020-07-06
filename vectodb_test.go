@@ -1,7 +1,6 @@
 package vectodb
 
 import (
-	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -19,15 +18,4 @@ func TestVectodbNew(t *testing.T) {
 	require.NoError(t, err)
 	err = vdb.Destroy()
 	require.NoError(t, err)
-}
-
-func normalizeInplace(d int, v []float32) {
-	var norm float32
-	for i := 0; i < d; i++ {
-		norm += v[i] * v[i]
-	}
-	norm = float32(math.Sqrt(float64(norm)))
-	for i := 0; i < d; i++ {
-		v[i] /= norm
-	}
 }

@@ -36,6 +36,7 @@ void pairwise_extra_distances (
 void knn_extra_metrics (
         const float * x,
         const float * y,
+        const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         MetricType mt, float metric_arg,
         float_maxheap_array_t * res);

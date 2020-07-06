@@ -183,7 +183,7 @@ struct IndexFlatDisk: Index {
     size_t totsize;
     size_t capacity;
 
-    explicit IndexFlatDisk (idx_t d, MetricType metric = METRIC_INNER_PRODUCT);
+    explicit IndexFlatDisk (const std::string& filename, idx_t d, MetricType metric = METRIC_INNER_PRODUCT);
 
     void add(idx_t n, const float* x) override;
 
