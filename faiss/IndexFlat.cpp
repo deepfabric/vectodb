@@ -694,4 +694,34 @@ size_t IndexFlatDisk::remove_ids (const IDSelector & sel)
 }
 
 
+void IndexFlatDisk::reconstruct (idx_t key, float * recons) const
+{
+    FAISS_THROW_MSG ("reconstruct not implemented for this type of index");
+}
+
+
+DistanceComputer * IndexFlatDisk::get_distance_computer() const {
+    FAISS_THROW_MSG ("get_distance_computer() not implemented");
+    return nullptr;
+}
+
+
+/* The standalone codec interface */
+size_t IndexFlatDisk::sa_code_size () const
+{
+    return sizeof(float) * d;
+}
+
+
+void IndexFlatDisk::sa_encode (idx_t n, const float *x, uint8_t *bytes) const
+{
+    memcpy (bytes, x, sizeof(float) * d * n);
+}
+
+
+void IndexFlatDisk::sa_decode (idx_t n, const uint8_t *bytes, float *x) const
+{
+    memcpy (x, bytes, sizeof(float) * d * n);
+}
+
 } // namespace faiss
