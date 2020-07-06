@@ -174,7 +174,7 @@ struct IndexFlat1D:IndexFlatL2 {
 
 /** Index that stores the full vectors and performs exhaustive search */
 struct IndexFlatDisk: Index {
-    pthread_rwlock_t rwlock;
+    mutable pthread_rwlock_t rwlock;
     float* xb;
     idx_t* ids;
     std::string filename;
@@ -239,7 +239,7 @@ struct IndexFlatDisk: Index {
     void sa_decode (idx_t n, const uint8_t *bytes,
                             float *x) const override;
 
-    void reserve(idx_t n);
+    void reserve(size_t n);
 
 };
 

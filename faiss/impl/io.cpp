@@ -134,7 +134,7 @@ size_t FileIOWriter::operator()(const void *ptr, size_t size, size_t nitems) {
 void FileIOWriter::skip(size_t size){
     int rc = fseek(f, size, SEEK_CUR);
     FAISS_THROW_IF_NOT_FMT (rc != 0, "could not seek %s for skipping: %s",
-                            fname, strerror(errno));
+                            name, strerror(errno));
 }
 
 int FileIOWriter::fileno()  {
@@ -237,17 +237,13 @@ size_t BufferedIOWriter::operator()(const void *ptr, size_t unitsize, size_t nit
 }
 
 void BufferedIOWriter::skip(size_t size){
-    if(b0 != 0) {
-        // now we need to flush to add more bytes
-        size_t ofs = 0;
-        do {
-            assert (ofs < 10000000);
-            size_t written = (*writer)(buffer.data() + ofs, 1, b0 - ofs);
-            FAISS_THROW_IF_NOT(written > 0);
-            ofs += written;
-        } while(ofs != b0);
-        b0 = 0;
+    size_t ofs = 0;
+    while(ofs != b0) {
+        size_t written = (*writer)(buffer.data() + ofs, 1, b0 - ofs);
+        FAISS_THROW_IF_NOT(written > 0);
+        ofs += written;
     }
+    b0 = 0;
     writer->skip(size);
 }
 
