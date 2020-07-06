@@ -11,7 +11,7 @@
 #define INDEX_FLAT_H
 
 #include <vector>
-#include <shared_mutex>
+#include <pthread.h>
 
 #include <faiss/Index.h>
 
@@ -174,7 +174,7 @@ struct IndexFlat1D:IndexFlatL2 {
 
 /** Index that stores the full vectors and performs exhaustive search */
 struct IndexFlatDisk: Index {
-    std::shared_mutex shm;
+    pthread_rwlock_t rwlock;
     float* xb;
     idx_t* ids;
     std::string filename;
@@ -226,7 +226,7 @@ struct IndexFlatDisk: Index {
      * different from the usual ones: the new ids are shifted */
     size_t remove_ids(const IDSelector& sel) override;
 
-    IndexFlatDisk (): xb(nullptr), ids(nullptr), ptr(nullptr), p_ntotal(null_ptr), totsize(0), capacity(0) {}
+    IndexFlatDisk (): xb(nullptr), ids(nullptr), ptr(nullptr), p_ntotal(nullptr), totsize(0), capacity(0) {pthread_rwlock_init(&rwlock, NULL);}
 
     DistanceComputer * get_distance_computer() const override;
 

@@ -23,8 +23,6 @@
 #include <faiss/impl/AuxIndexStructures.h>
 
 using namespace std;
-using rlock = unique_lock<shared_mutex>;
-using wlock = shared_lock<shared_mutex>;
 
 namespace faiss {
 
@@ -513,8 +511,9 @@ void IndexFlat1D::search (
 
 
 IndexFlatDisk::IndexFlatDisk (idx_t d, MetricType metric):
-    Index(d, metric), xb(nullptr), ids(nullptr), ptr(nullptr), p_ntotal(null_ptr), totsize(0), capacity(1000000L)
+    Index(d, metric), xb(nullptr), ids(nullptr), ptr(nullptr), p_ntotal(nullptr), totsize(0), capacity(1000000L)
 {
+    pthread_rwlock_init(&rwlock, NULL);
 }
 
 
@@ -524,28 +523,30 @@ void IndexFlatDisk::add (idx_t n, const float *x) {
 
 void IndexFlatDisk::add_with_ids (idx_t n, const float * x, const idx_t *xids) {
     reserve(n);
-    wlock w{shm};
+    pthread_rwlock_wrlock(&rwlock);
     memcpy(xb+sizeof(float)*d*ntotal, x, sizeof(float)*d*n);
     for(int i=0; i<n; i++)
         ids[ntotal+i] = xids[i];
     ntotal += n;
     *p_ntotal = ntotal;
     msync(ptr, totsize, MS_ASYNC);
+    pthread_rwlock_unlock(&rwlock);
 }
 
 
 void IndexFlatDisk::reset() {
-    wlock w{shm};
+    pthread_rwlock_wrlock(&rwlock);
     ntotal = 0;
     if (ptr != nullptr) {
         *p_ntotal = ntotal;
         msync(p_ntotal, sizeof(idx_t), MS_ASYNC);
     }
+    pthread_rwlock_unlock(&rwlock);
 }
 
 
 void IndexFlatDisk::reserve(size_t n) {
-    wlock w{shm};
+    pthread_rwlock_wrlock(&rwlock);
     if (ptr == nullptr) {
         // refers to write_index
         FAISS_THROW_IF_NOT_FMT(ntotal == 0, "inconsistent state, ptr nullptr, ntotal %l, filename %s", ntotal, filename);
@@ -598,6 +599,7 @@ void IndexFlatDisk::reserve(size_t n) {
         xb = (float *)(ptr + header_size() + sizeof(capacity));
         ids = (idx_t *)(ptr + header_size() + sizeof(capacity) + sizeof(float)*d*capacity);
     }
+    pthread_rwlock_unlock(&rwlock);
 }
 
 
@@ -605,7 +607,7 @@ void IndexFlatDisk::search (idx_t n, const float *x, idx_t k,
                                float *distances, idx_t *labels) const
 {
     // we see the distances and labels as heaps
-    rlock r{ shm };
+    pthread_rwlock_rdlock(&rwlock);
     if (metric_type == METRIC_INNER_PRODUCT) {
         float_minheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
@@ -621,13 +623,14 @@ void IndexFlatDisk::search (idx_t n, const float *x, idx_t k,
                            metric_type, metric_arg,
                            &res);
     }
+    pthread_rwlock_unlock(&rwlock);
 }
 
 
 void IndexFlatDisk::range_search (idx_t n, const float *x, float radius,
                               RangeSearchResult *result) const
 {
-    rlock r{ shm };
+    pthread_rwlock_rdlock(&rwlock);
     switch (metric_type) {
     case METRIC_INNER_PRODUCT:
         range_search_inner_product (x, xb, d, n, ntotal,
@@ -639,6 +642,7 @@ void IndexFlatDisk::range_search (idx_t n, const float *x, float radius,
     default:
         FAISS_THROW_MSG("metric type not supported");
     }
+    pthread_rwlock_unlock(&rwlock);
 }
 
 
@@ -649,7 +653,7 @@ void IndexFlatDisk::compute_distance_subset (
             float *distances,
             const idx_t *labels) const
 {
-    rlock r{ shm };
+    pthread_rwlock_rdlock(&rwlock);
     switch (metric_type) {
         case METRIC_INNER_PRODUCT:
             fvec_inner_products_by_idx (
@@ -664,12 +668,13 @@ void IndexFlatDisk::compute_distance_subset (
         default:
             FAISS_THROW_MSG("metric type not supported");
     }
+    pthread_rwlock_unlock(&rwlock);
 }
 
 
 size_t IndexFlatDisk::remove_ids (const IDSelector & sel)
 {
-    wlock w{ shm };
+    pthread_rwlock_wrlock(&rwlock);
     idx_t j = 0;
     for (idx_t i = 0; i < ntotal; i++) {
         if (!sel.is_member(ids[i])) {
@@ -684,6 +689,7 @@ size_t IndexFlatDisk::remove_ids (const IDSelector & sel)
     ntotal -= j;
     *p_ntotal = ntotal;
     msync(ptr, totsize, MS_ASYNC);
+    pthread_rwlock_unlock(&rwlock);
     return nremove;
 }
 
