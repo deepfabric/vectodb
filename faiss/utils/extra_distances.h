@@ -39,6 +39,7 @@ void knn_extra_metrics (
         const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         MetricType mt, float metric_arg,
+        roaring_bitmap_t ** rbs,
         float_maxheap_array_t * res);
 
 

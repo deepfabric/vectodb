@@ -14,6 +14,7 @@
 #include <pthread.h>
 
 #include <faiss/Index.h>
+#include <faiss/roaring.h>
 
 
 namespace faiss {
@@ -36,6 +37,14 @@ struct IndexFlat: Index {
         idx_t k,
         float* distances,
         idx_t* labels) const override;
+
+    void search(
+        idx_t n,
+        const float* x,
+        idx_t k,
+        roaring_bitmap_t ** rbs,
+        float* distances,
+        idx_t* labels) const;
 
     void range_search(
         idx_t n,
@@ -185,6 +194,8 @@ struct IndexFlatDisk: Index {
 
     explicit IndexFlatDisk (const std::string& filename, idx_t d, MetricType metric = METRIC_INNER_PRODUCT);
 
+    ~IndexFlatDisk() override;
+
     void add(idx_t n, const float* x) override;
 
     void add_with_ids (idx_t n, const float * x, const idx_t *xids) override;
@@ -197,6 +208,14 @@ struct IndexFlatDisk: Index {
         idx_t k,
         float* distances,
         idx_t* labels) const override;
+
+    void search(
+        idx_t n,
+        const float* x,
+        idx_t k,
+        roaring_bitmap_t ** rbs,
+        float* distances,
+        idx_t* labels) const;
 
     void range_search(
         idx_t n,

@@ -21,6 +21,9 @@
 
 using namespace std;
 
+const long sift_dim = 128L;
+const char* work_dir = "/tmp/demo_sift1M_vectodb_cpp";
+
 /**
  * To run this demo, please download the ANN_SIFT1M dataset from
  *
@@ -102,16 +105,9 @@ int check_indexflat(faiss::IndexFlat *flat, const string& work_dir, long id_shif
     return 0;
 }
 
-// train phase, input: index_key database train_set, output: index
-int main(int /*argc*/, char** argv)
+int demo_search(size_t d, size_t nb, float* xb)
 {
-    FLAGS_stderrthreshold = 0;
-    FLAGS_log_dir = ".";
-    google::InitGoogleLogging(argv[0]);
-
     LOG(INFO) << "Loading database";
-    const long sift_dim = 128L;
-    const char* work_dir = "/tmp/demo_sift1M_vectodb_cpp";
 
     //Search performance(10000 queries):
     //"IVF1,Flat", "nprobe=1":      458s
@@ -120,22 +116,14 @@ int main(int /*argc*/, char** argv)
     //"IVF16384_HNSW32,Flat", "nprobe=384"  23s
 
     //ClearDir(work_dir);
-    VectoDB vdb(work_dir, sift_dim);
+    VectoDB vdb(work_dir, d);
     vdb.Reset();
-    faiss::IndexFlat flat(sift_dim, faiss::METRIC_INNER_PRODUCT);
+    faiss::IndexFlat flat(d, faiss::METRIC_INNER_PRODUCT);
 
-    size_t nb, d;
-    float* xb = fvecs_read("sift1M/sift_base.fvecs", &d, &nb);
     long* xids = new long[nb];
     const static long id_shift = 1000L;
     for (long i = 0; i < (long)nb; i++) {
         xids[i] = id_shift + i;
-        /*
-        //Randomlizing causes far less recall. Don't do that.
-        for(long j = 0; j<(long)d; j++)
-            xb[i*d+j] = float(2 * random() - RAND_MAX);
-        */
-        NormVec(xb+i*d, d);
     }
 
     const bool incremental = false;
@@ -168,7 +156,7 @@ int main(int /*argc*/, char** argv)
 
     LOG(INFO) << "Searching index";
     //const long nq = 10000;
-    const long nq = 100;
+    const long nq = 1000;
     const long k = 400;
     const float* xq = xb;
     float* D = new float[nq*k];
@@ -240,6 +228,112 @@ int main(int /*argc*/, char** argv)
     delete[] I;
     delete[] D2;
     delete[] I2;
-    delete[] xb;
     delete[] xids;
+    return 0;
+}
+
+int demo_search_roaring(size_t d, size_t nb, float* xb)
+{
+    VectoDB vdb(work_dir, d);
+    vdb.Reset();
+
+    long* xids = new long[nb];
+    const static long vecs_per_user = 100L;
+    for (long i = 0; i < (long)nb; i++) {
+        xids[i] = GetXid(i/vecs_per_user, i);
+    }
+    LOG(INFO) << "Calling vdb.AddWithIds " << nb;
+    vdb.AddWithIds(nb, xb, xids);
+
+    const long nq = 1000;
+    const long k = 400;
+    const float* xq = xb;
+    vector<float> D(nq*k);
+    vector<long> I(nq*k);
+    vector<roaring_bitmap_t *> rbs(nq);
+    vector<char *> uids(nq);
+
+    const int bitmap_cardinality = 3;
+    for(int i=0; i<nq; i++){
+        int uid = i/vecs_per_user;
+        RoaringBitmapWithSmallSet rbwss;
+        for(int j=0; j<bitmap_cardinality; j++)
+            rbwss.Add(uid+j);
+        uids[i] = new char[rbwss.SizeInBytes()];
+        rbwss.Write(uids[i]);
+        rbs[i] = rbwss.CastAndReset();
+    }
+
+    LOG(INFO) << "Executing " << nq << " queries in single batch";
+    vdb.Search(nq, xq, k, (long *)(&uids[0]), &D[0], &I[0]);
+
+    LOG(INFO) << "Checking result";
+    bool printed_error = false;
+    for(int i=0; i<nq; i++){
+        for(int j=0; j<k; j++){
+            long xid = I[i*k+j];
+            if(xid==-1L)
+                break;
+            uint64_t uid = GetUid(xid);
+            uint64_t pid = GetPid(xid);
+            bool c = roaring_bitmap_contains(rbs[i], uint32_t(uid));
+            if(!c && !printed_error){
+                LOG(ERROR) << "Bitmap filter bug, i " << i << ", xid " << xid << ", uid " << uid << ", pid " << pid;
+                printed_error = true;
+            }
+        }
+    }
+
+    for(int i=0; i<nq; i++){
+        roaring_bitmap_free(rbs[i]);
+        delete[] uids[i];
+    }
+    delete[] xids;
+    return 0;
+}
+
+int demo_roaring_bitmap()
+{
+    RoaringBitmapWithSmallSet rbwss, rbwss2;
+    for(int j=0; j<10; j++)
+        rbwss.Add(j);
+    size_t len = rbwss.SizeInBytes();
+    char *buf = new char[len];
+    rbwss.Write(buf);
+
+    rbwss2.Read(buf);
+    delete []buf;
+    int rc = 0;
+    for(int j=0; j<10; j++)
+        if(!rbwss2.Contains(j)){
+            printf("RoaringBitmapWithSmallSet bug, want Contains %d\n", j);
+            rc = -1;
+        }
+    return rc;
+}
+
+int main(int /*argc*/, char** argv)
+{
+    FLAGS_stderrthreshold = 0;
+    FLAGS_log_dir = ".";
+    google::InitGoogleLogging(argv[0]);
+
+    size_t nb, d;
+    float* xb = fvecs_read("sift1M/sift_base.fvecs", &d, &nb);
+    for (long i = 0; i < (long)nb; i++) {
+        /*
+        //Randomlizing causes far less recall. Don't do that.
+        for(long j = 0; j<(long)d; j++)
+            xb[i*d+j] = float(2 * random() - RAND_MAX);
+        */
+        NormVec(xb+i*d, d);
+    }
+
+    int rc = demo_roaring_bitmap();
+    if(rc<0)
+        return rc;
+    demo_search(d, nb, xb);
+    demo_search_roaring(d, nb, xb);
+
+    delete[] xb;
 }

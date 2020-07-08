@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	runPprof "runtime/pprof"
@@ -11,6 +12,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/RoaringBitmap/roaring"
 	"github.com/infinivision/vectodb"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -105,7 +107,7 @@ func searcherLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 	nq = 500
 	k = 10
 	var res [][]vectodb.XidScore
-	uids := make([]string, nq)
+	uids := make([][]byte, nq)
 	for {
 		select {
 		case <-ctx.Done():
@@ -161,10 +163,116 @@ func benchmarkAdd() {
 	return
 }
 
+func demo_search(d, nb int, xb []float32) {
+	var err error
+	var vdb *vectodb.VectoDB
+
+	if vdb, err = vectodb.NewVectoDB(workDir, d); err != nil {
+		log.Fatalf("%+v", err)
+	}
+	vdb.Reset()
+
+	xids := make([]int64, nb)
+	id_shift := int64(1000)
+	for i := 0; i < nb; i++ {
+		xids[i] = id_shift + int64(i)
+	}
+
+	log.Infof("Inserting vectors")
+	if err = vdb.AddWithIds(xb, xids); err != nil {
+		log.Fatalf("%+v", err)
+	}
+
+	log.Infof("Searching index")
+	nq := 1000
+	k := 400
+	xq := xb[0 : d*nq]
+	var res [][]vectodb.XidScore
+	if res, err = vdb.Search(k, xq, nil); err != nil {
+		log.Fatalf("%+v", err)
+	}
+	log.Debugf("search result: %+v", res)
+
+	if err = vdb.Destroy(); err != nil {
+		log.Fatalf("%+v", err)
+	}
+}
+
+func demo_search_roaring(d, nb int, xb []float32) {
+	var err error
+	var vdb *vectodb.VectoDB
+
+	if vdb, err = vectodb.NewVectoDB(workDir, d); err != nil {
+		log.Fatalf("%+v", err)
+	}
+	vdb.Reset()
+
+	xids := make([]int64, nb)
+	vecs_per_user := uint64(100)
+	for i := 0; i < nb; i++ {
+		xids[i] = int64(vectodb.GetXid(uint64(i)/vecs_per_user, uint64(i)))
+	}
+
+	log.Infof("Inserting vectors")
+	if err = vdb.AddWithIds(xb, xids); err != nil {
+		log.Fatalf("%+v", err)
+	}
+
+	nq := 1000
+	k := 400
+	xq := xb[0 : d*nq]
+	rbs := make([]*roaring.Bitmap, nq)
+	uids := make([][]byte, nq)
+	bitmap_cardinality := uint64(3)
+	for i := 0; i < nq; i++ {
+		uid := uint64(i) / vecs_per_user
+		rbs[i] = roaring.NewBitmap()
+		rbs[i].AddRange(uint64(uid), uint64(uid+bitmap_cardinality))
+		if uids[i] = vectodb.ChBitmapToBytes(rbs[i]); err != nil {
+			log.Fatalf("%+v", err)
+		}
+	}
+
+	log.Infof("Searching index")
+	var res [][]vectodb.XidScore
+	if res, err = vdb.Search(k, xq, uids); err != nil {
+		log.Fatalf("%+v", err)
+	}
+	log.Debugf("search result: %+v", res)
+	log.Infof("checking result")
+	for i := 0; i < nq; i++ {
+		msg := fmt.Sprintf("i %d", i)
+		for j := 0; j < len(res[i]); j++ {
+			xid := res[i][j].Xid
+			uid := vectodb.GetUid(uint64(xid))
+			pid := vectodb.GetPid(uint64(xid))
+			msg += fmt.Sprintf(", %d.%d %f", uid, pid, res[i][j].Score)
+			if !rbs[i].Contains(uint32(uid)) {
+				log.Fatalf("Bitmap filter bug, i %d, j %d, xid %d, uid.pid %d.%d", i, j, xid, uid, pid)
+			}
+		}
+		log.Debug(msg)
+	}
+
+	if err = vdb.Destroy(); err != nil {
+		log.Fatalf("%+v", err)
+	}
+}
+
 func main() {
 	var bench bool
+	var verbose bool
 	flag.BoolVar(&bench, "b", false, "benchmark (*VectoDB)AddWithIds")
+	flag.BoolVar(&verbose, "v", false, "verbose output")
 	flag.Parse()
+	if verbose {
+		log.SetLevel(log.DebugLevel)
+	}
+	log.SetFormatter(&log.TextFormatter{
+		FullTimestamp:   true,
+		TimestampFormat: time.RFC3339,
+	})
+
 	if bench {
 		go func() {
 			sc := make(chan os.Signal, 1)
@@ -185,15 +293,8 @@ func main() {
 		return
 	}
 
-	var err error
-	var vdb *vectodb.VectoDB
-
-	if vdb, err = vectodb.NewVectoDB(workDir, siftDim); err != nil {
-		log.Fatalf("%+v", err)
-	}
-	vdb.Reset()
-
 	log.Infof("Loading database")
+	var err error
 	var xb []float32
 	var dim int
 	var nb int
@@ -203,36 +304,10 @@ func main() {
 	if dim != siftDim {
 		log.Fatalf("%s dim %d, expects 128", siftBase, dim)
 	}
-
-	xids := make([]int64, nb)
 	for i := 0; i < nb; i++ {
-		xids[i] = int64(i)
+		vectodb.NormalizeVec(dim, xb[i*dim:(i+1)*dim])
 	}
 
-	if err = vdb.AddWithIds(xb, xids); err != nil {
-		log.Fatalf("%+v", err)
-	}
-
-	log.Infof("Searching index")
-	var xq []float32
-	var dim2 int
-	var nq int
-	if xq, dim2, nq, err = fvecs_read(siftQuery); err != nil {
-		log.Fatalf("%+v", err)
-	}
-	if dim2 != siftDim {
-		log.Fatalf("%s dim %d, expects %d", siftQuery, dim2, siftDim)
-	}
-
-	var res [][]vectodb.XidScore
-	uids := make([]string, nq)
-	k := 10
-	if res, err = vdb.Search(k, xq, uids); err != nil {
-		log.Fatalf("%+v", err)
-	}
-	log.Infof("search result: %+v", res)
-
-	if err = vdb.Destroy(); err != nil {
-		log.Fatalf("%+v", err)
-	}
+	demo_search(dim, nb, xb)
+	demo_search_roaring(dim, nb, xb)
 }

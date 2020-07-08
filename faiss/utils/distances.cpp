@@ -8,6 +8,7 @@
 // -*- c++ -*-
 
 #include <faiss/utils/distances.h>
+#include <faiss/roaring.h>
 
 #include <cstdio>
 #include <cassert>
@@ -141,13 +142,15 @@ void fvec_renorm_L2 (size_t d, size_t nx, float * __restrict x)
  * KNN functions
  ***************************************************************************/
 
-
+// Keey sync with vectodb.hpp
+#define BITMAP_NOT_CONTAINS_UID (yid!=nullptr && rbs!=nullptr && rbs[i]!=nullptr && !roaring_bitmap_contains(rbs[i], uint32_t(yid[j]>>34)))
 
 /* Find the nearest neighbors for nx queries in a set of ny vectors */
 static void knn_inner_product_sse (const float * x,
                         const float * y,
                         const int64_t * yid,
                         size_t d, size_t nx, size_t ny,
+                        roaring_bitmap_t ** rbs,
                         float_minheap_array_t * res)
 {
     size_t k = res->k;
@@ -168,14 +171,15 @@ static void knn_inner_product_sse (const float * x,
 
             minheap_heapify (k, simi, idxi);
 
-            for (size_t j = 0; j < ny; j++) {
+            for (size_t j = 0; j < ny; j++, y_j += d) {
+                if (BITMAP_NOT_CONTAINS_UID)
+                    continue;
                 float ip = fvec_inner_product (x_i, y_j, d);
-
                 if (ip > simi[0]) {
+                    //TODO: keep one element for each uid
                     minheap_pop (k, simi, idxi);
                     minheap_push (k, simi, idxi, ip, (yid==nullptr)?j:yid[j]);
                 }
-                y_j += d;
             }
             minheap_reorder (k, simi, idxi);
         }
@@ -189,6 +193,7 @@ static void knn_L2sqr_sse (
                 const float * y,
                 const int64_t * yid,
                 size_t d, size_t nx, size_t ny,
+                roaring_bitmap_t ** rbs,
                 float_maxheap_array_t * res)
 {
     size_t k = res->k;
@@ -208,14 +213,15 @@ static void knn_L2sqr_sse (
             int64_t * idxi = res->get_ids (i);
 
             maxheap_heapify (k, simi, idxi);
-            for (j = 0; j < ny; j++) {
+            for (j = 0; j < ny; j++, y_j += d) {
+                if (BITMAP_NOT_CONTAINS_UID)
+                    continue;
                 float disij = fvec_L2sqr (x_i, y_j, d);
-
                 if (disij < simi[0]) {
+                    //TODO: keep one element for each uid
                     maxheap_pop (k, simi, idxi);
                     maxheap_push (k, simi, idxi, disij, (yid==nullptr)?j:yid[j]);
                 }
-                y_j += d;
             }
             maxheap_reorder (k, simi, idxi);
         }
@@ -231,8 +237,10 @@ static void knn_inner_product_blas (
         const float * y,
         const int64_t * yid,
         size_t d, size_t nx, size_t ny,
+        roaring_bitmap_t ** rbs,
         float_minheap_array_t * res)
 {
+    size_t k = res->k;
     res->heapify ();
 
     // BLAS does not like empty matrices
@@ -263,8 +271,21 @@ static void knn_inner_product_blas (
             /* collect maxima */
             if (yid==nullptr)
                 res->addn (j1 - j0, ip_block.get(), j0, i0, i1 - i0);
-            else
-                res->addn_with_ids (j1 - j0, ip_block.get(), yid + j0, 0, i0, i1 - i0);
+            else {
+                for (size_t i = i0; i < i1; i++) {
+                    float * simi = res->get_val(i);
+                    int64_t * idxi = res->get_ids (i);
+                    const float *ip_line = ip_block.get() + (i - i0) * (j1 - j0);
+                    for (size_t j=j0; j<j1; j++) {
+                        float ip = ip_line[j-j0];
+                        if (ip > simi[0] && !BITMAP_NOT_CONTAINS_UID) {
+                            //TODO: keep one element for each uid
+                            minheap_pop (k, simi, idxi);
+                            minheap_push (k, simi, idxi, ip, (yid==nullptr)?j:yid[j]);
+                        }
+                    }
+                }
+            }
         }
         InterruptCallback::check ();
     }
@@ -278,6 +299,7 @@ static void knn_L2sqr_blas (const float * x,
         const float * y,
         const int64_t * yid,
         size_t d, size_t nx, size_t ny,
+        roaring_bitmap_t ** rbs,
         float_maxheap_array_t * res,
         const DistanceCorrection &corr)
 {
@@ -325,16 +347,16 @@ static void knn_L2sqr_blas (const float * x,
                 const float *ip_line = ip_block + (i - i0) * (j1 - j0);
 
                 for (size_t j = j0; j < j1; j++) {
-                    float ip = *ip_line++;
+                    float ip = ip_line[j-j0];
                     float dis = x_norms[i] + y_norms[j] - 2 * ip;
-
                     // negative values can occur for identical vectors
                     // due to roundoff errors
                     if (dis < 0) dis = 0;
 
                     dis = corr (dis, i, j);
 
-                    if (dis < simi[0]) {
+                    if (dis < simi[0] && !BITMAP_NOT_CONTAINS_UID) {
+                        //TODO: keep one element for each uid
                         maxheap_pop (k, simi, idxi);
                         maxheap_push (k, simi, idxi, dis, (yid==nullptr)?j:yid[j]);
                     }
@@ -364,12 +386,13 @@ int distance_compute_blas_threshold = 20;
 void knn_inner_product (const float * x,
         const float * y, const int64_t * yid,
         size_t d, size_t nx, size_t ny,
+        roaring_bitmap_t ** rbs,
         float_minheap_array_t * res)
 {
     if (nx < distance_compute_blas_threshold) {
-        knn_inner_product_sse (x, y, yid, d, nx, ny, res);
+        knn_inner_product_sse (x, y, yid, d, nx, ny, rbs, res);
     } else {
-        knn_inner_product_blas (x, y, yid, d, nx, ny, res);
+        knn_inner_product_blas (x, y, yid, d, nx, ny, rbs, res);
     }
 }
 
@@ -385,13 +408,14 @@ void knn_L2sqr (const float * x,
                 const float * y,
                 const int64_t * yid,
                 size_t d, size_t nx, size_t ny,
+                roaring_bitmap_t ** rbs,
                 float_maxheap_array_t * res)
 {
     if (nx < distance_compute_blas_threshold) {
-        knn_L2sqr_sse (x, y, yid, d, nx, ny, res);
+        knn_L2sqr_sse (x, y, yid, d, nx, ny, rbs, res);
     } else {
         NopDistanceCorrection nop;
-        knn_L2sqr_blas (x, y, yid, d, nx, ny, res, nop);
+        knn_L2sqr_blas (x, y, yid, d, nx, ny, rbs, res, nop);
     }
 }
 
@@ -410,7 +434,7 @@ void knn_L2sqr_base_shift (
          const float *base_shift)
 {
     BaseShiftDistanceCorrection corr = {base_shift};
-    knn_L2sqr_blas (x, y, nullptr, d, nx, ny, res, corr);
+    knn_L2sqr_blas (x, y, nullptr, d, nx, ny, nullptr, res, corr);
 }
 
 

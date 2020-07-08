@@ -48,24 +48,31 @@ void IndexFlat::reset() {
 void IndexFlat::search (idx_t n, const float *x, idx_t k,
                                float *distances, idx_t *labels) const
 {
+    search(n, x, k, nullptr, distances, labels);
+}
+
+
+void IndexFlat::search (idx_t n, const float *x, idx_t k, roaring_bitmap_t ** rbs,
+                               float *distances, idx_t *labels) const
+{
     // we see the distances and labels as heaps
 
     if (metric_type == METRIC_INNER_PRODUCT) {
         float_minheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
-        knn_inner_product (x, xb.data(), nullptr, d, n, ntotal, &res);
+        knn_inner_product (x, xb.data(), nullptr, d, n, ntotal, rbs, &res);
     } else if (metric_type == METRIC_L2) {
         float_maxheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
-        knn_L2sqr (x, xb.data(), nullptr, d, n, ntotal, &res);
+        knn_L2sqr (x, xb.data(), nullptr, d, n, ntotal, rbs, &res);
     } else {
         float_maxheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
         knn_extra_metrics (x, xb.data(), nullptr, d, n, ntotal,
-                           metric_type, metric_arg,
-                           &res);
+                           metric_type, metric_arg, rbs, &res);
     }
 }
+
 
 void IndexFlat::range_search (idx_t n, const float *x, float radius,
                               RangeSearchResult *result) const
@@ -582,8 +589,7 @@ void IndexFlatDisk::add_with_ids (idx_t n, const float * x, const idx_t *xids) {
     reserve(n);
     pthread_rwlock_wrlock(&rwlock);
     memcpy((uint8_t *)xb+sizeof(float)*d*ntotal, x, sizeof(float)*d*n);
-    for(int i=0; i<n; i++)
-        ids[ntotal+i] = xids[i];
+    memcpy((uint8_t *)ids+sizeof(idx_t)*ntotal, xids, sizeof(idx_t)*n);
     ntotal += n;
     *p_ntotal = ntotal;
     msync(ptr, totsize, MS_ASYNC);
@@ -593,8 +599,8 @@ void IndexFlatDisk::add_with_ids (idx_t n, const float * x, const idx_t *xids) {
 
 void IndexFlatDisk::reset() {
     pthread_rwlock_wrlock(&rwlock);
-    ntotal = 0;
-    if (ptr != nullptr) {
+    if (ntotal != 0) {
+        ntotal = 0;
         *p_ntotal = ntotal;
         msync(p_ntotal, sizeof(idx_t), MS_SYNC);
     }
@@ -633,21 +639,28 @@ void IndexFlatDisk::reserve(size_t n) {
 void IndexFlatDisk::search (idx_t n, const float *x, idx_t k,
                                float *distances, idx_t *labels) const
 {
+    search(n, x, k, nullptr, distances, labels);
+}
+
+
+void IndexFlatDisk::search (idx_t n, const float *x, idx_t k, roaring_bitmap_t ** rbs,
+                               float *distances, idx_t *labels) const
+{
     // we see the distances and labels as heaps
     pthread_rwlock_rdlock(&rwlock);
     if (metric_type == METRIC_INNER_PRODUCT) {
         float_minheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
-        knn_inner_product (x, xb, (int64_t *)ids, d, n, ntotal, &res);
+        knn_inner_product (x, xb, (int64_t *)ids, d, n, ntotal, rbs, &res);
     } else if (metric_type == METRIC_L2) {
         float_maxheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
-        knn_L2sqr (x, xb, (int64_t *)ids, d, n, ntotal, &res);
+        knn_L2sqr (x, xb, (int64_t *)ids, d, n, ntotal, rbs, &res);
     } else {
         float_maxheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
         knn_extra_metrics (x, xb, (int64_t *)ids, d, n, ntotal,
-                           metric_type, metric_arg,
+                           metric_type, metric_arg, rbs,
                            &res);
     }
     pthread_rwlock_unlock(&rwlock);
@@ -749,6 +762,16 @@ void IndexFlatDisk::sa_encode (idx_t n, const float *x, uint8_t *bytes) const
 void IndexFlatDisk::sa_decode (idx_t n, const uint8_t *bytes, float *x) const
 {
     memcpy (x, bytes, sizeof(float) * d * n);
+}
+
+IndexFlatDisk::~IndexFlatDisk ()
+{
+    if (ptr != nullptr) {
+        munmap(ptr, totsize);
+        ptr = nullptr;
+        xb = nullptr;
+        ids = nullptr;
+    }
 }
 
 } // namespace faiss

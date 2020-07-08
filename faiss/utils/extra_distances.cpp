@@ -153,6 +153,7 @@ void knn_extra_metrics_template (
         const float * y,
         const int64_t * yid,
         size_t nx, size_t ny,
+        roaring_bitmap_t ** rbs,
         float_maxheap_array_t * res)
 {
     size_t k = res->k;
@@ -276,6 +277,7 @@ void knn_extra_metrics (
         const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         MetricType mt, float metric_arg,
+        roaring_bitmap_t ** rbs,
         float_maxheap_array_t * res)
 {
 
@@ -283,7 +285,7 @@ void knn_extra_metrics (
 #define HANDLE_VAR(kw)                                          \
      case METRIC_ ## kw: {                                      \
         VectorDistance ## kw vd({(size_t)d});                   \
-        knn_extra_metrics_template (vd, x, y, yid, nx, ny, res);     \
+        knn_extra_metrics_template (vd, x, y, yid, nx, ny, rbs, res);     \
         break;                                                  \
     }
         HANDLE_VAR(L2);
@@ -295,7 +297,7 @@ void knn_extra_metrics (
 #undef HANDLE_VAR
     case METRIC_Lp: {
         VectorDistanceLp vd({(size_t)d, metric_arg});
-        knn_extra_metrics_template (vd, x, y, yid, nx, ny, res);
+        knn_extra_metrics_template (vd, x, y, yid, nx, ny, rbs, res);
         break;
     }
     default:

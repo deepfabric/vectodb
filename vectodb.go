@@ -10,11 +10,16 @@ package vectodb
 import "C"
 
 import (
+	"encoding/binary"
 	"math"
 	"unsafe"
 
+	"github.com/RoaringBitmap/roaring"
+
 	log "github.com/sirupsen/logrus"
 )
+
+const small_set_size int = 32
 
 type VectoDB struct {
 	vdbC          unsafe.Pointer
@@ -100,19 +105,30 @@ output parameters:
 return parameters:
 @return err     错误
 */
-func (vdb *VectoDB) Search(k int, xq []float32, uids []string) (res [][]XidScore, err error) {
+func (vdb *VectoDB) Search(k int, xq []float32, uids [][]byte) (res [][]XidScore, err error) {
 	nq := len(xq) / vdb.dim
 	if len(xq) != nq*vdb.dim {
 		log.Fatalf("invalid length of xq, want %v, have %v", nq*vdb.dim, len(xq))
 	}
-	if len(uids) != nq {
-		log.Fatalf("invalid length of uids, want %v, have %v", nq, len(uids))
+	if uids != nil && len(uids) != nq {
+		log.Fatalf("invalid length of uids, want nil or %v, have %v", nq, len(uids))
 	}
 	res = make([][]XidScore, nq)
 	scores := make([]float32, nq*k)
 	xids := make([]int64, nq*k)
-	var uidsFilter int64
-	C.VectodbSearch(vdb.vdbC, C.long(nq), (*C.float)(&xq[0]), C.long(k), (*C.long)(&uidsFilter), (*C.float)(&scores[0]), (*C.long)(&xids[0]))
+	var p_uids **uint8
+	if uids != nil {
+		uids2 := make([]*uint8, nq)
+		for i := 0; i < nq; i++ {
+			if uids[i] != nil && len(uids[i]) > 0 {
+				uids2[i] = &uids[i][0]
+			} else {
+				uids2[i] = nil
+			}
+		}
+		p_uids = &uids2[0]
+	}
+	C.VectodbSearch(vdb.vdbC, C.long(nq), (*C.float)(&xq[0]), C.long(k), (*C.long)(unsafe.Pointer(p_uids)), (*C.float)(&scores[0]), (*C.long)(&xids[0]))
 	for i := 0; i < nq; i++ {
 		for j := 0; j < k; j++ {
 			if xids[i*k+j] == int64(-1) {
@@ -145,4 +161,39 @@ func NormalizeVec(d int, v []float32) {
 	for i := 0; i < d; i++ {
 		v[i] = float32(float64(v[i]) / norm)
 	}
+}
+
+// Keey sync with vectodb.hpp
+func GetUid(xid uint64) uint64      { return xid >> 34 }
+func GetPid(xid uint64) uint64      { return xid & 0x3FFFFFFFF }
+func GetXid(uid, pid uint64) uint64 { return (uid << 34) + pid }
+
+func ChBitmapToBytes(rb *roaring.Bitmap) (buf []byte) {
+	num := int(rb.GetCardinality())
+	buf2 := make([]byte, 9)
+	if num <= small_set_size {
+		written := binary.PutUvarint(buf2, uint64(num))
+		buf = make([]byte, 1+written+4*num)
+		buf[0] = byte(0)
+		copy(buf[1:1+written], buf2)
+		off := 1 + written
+		values := rb.ToArray()
+		for i := 0; i < num; i++ {
+			binary.LittleEndian.PutUint32(buf[off:], values[i])
+			off += 4
+		}
+	} else {
+		size := rb.GetSizeInBytes()
+		written := binary.PutUvarint(buf2, uint64(size))
+		buf = make([]byte, 1+written+4*num)
+		buf[0] = byte(0)
+		copy(buf[1:1+written], buf2)
+
+		var err error
+		if buf2, err = rb.ToBytes(); err != nil {
+			log.Fatalf("got error %+v", err)
+		}
+		copy(buf[1+written:], buf2)
+	}
+	return
 }

@@ -11,4 +11,4 @@ for filename in ['demo_sift1M.cpp', 'faiss_train.cpp', 'faiss_search.cpp', 'gene
 # https://stackoverflow.com/questions/33149878/experimentalfilesystem-linker-error/33159746#33159746
 for filename in ['demo_sift1M_vectodb.cpp']:
 	exename = os.path.splitext(filename)[0] 
-	env.Program(exename, filename, LIBS=['vectodb', 'faiss', 'openblas', 'glog', 'gflags', 'stdc++fs'])
+	env.Program(exename, filename, CXXFLAGS=['-O2'], LIBS=['vectodb', 'faiss', 'openblas', 'glog', 'gflags', 'stdc++fs'])
