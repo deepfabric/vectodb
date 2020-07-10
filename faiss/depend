@@ -1,13 +1,15 @@
+IndexIVFPQR.o: IndexIVFPQR.cpp faiss/IndexIVFPQR.h faiss/IndexIVFPQ.h \
+ faiss/IndexIVF.h faiss/Index.h faiss/MetricType.h faiss/InvertedLists.h \
+ faiss/DirectMap.h faiss/Clustering.h faiss/utils/Heap.h faiss/IndexPQ.h \
+ faiss/impl/ProductQuantizer.h faiss/impl/ProductQuantizer-inl.h \
+ faiss/impl/PolysemousTraining.h faiss/utils/utils.h \
+ faiss/utils/distances.h faiss/roaring.h faiss/impl/FaissAssert.h \
+ faiss/impl/FaissException.h
 IndexFlat.o: IndexFlat.cpp faiss/IndexFlat.h faiss/Index.h \
  faiss/MetricType.h faiss/roaring.h faiss/utils/distances.h \
  faiss/utils/Heap.h faiss/utils/extra_distances.h faiss/utils/utils.h \
  faiss/impl/FaissAssert.h faiss/impl/FaissException.h \
  faiss/impl/AuxIndexStructures.h
-OnDiskInvertedLists.o: OnDiskInvertedLists.cpp \
- faiss/OnDiskInvertedLists.h faiss/IndexIVF.h faiss/Index.h \
- faiss/MetricType.h faiss/InvertedLists.h faiss/DirectMap.h \
- faiss/Clustering.h faiss/utils/Heap.h faiss/impl/FaissAssert.h \
- faiss/impl/FaissException.h faiss/utils/utils.h
 IndexIVFSpectralHash.o: IndexIVFSpectralHash.cpp \
  faiss/IndexIVFSpectralHash.h faiss/IndexIVF.h faiss/Index.h \
  faiss/MetricType.h faiss/InvertedLists.h faiss/DirectMap.h \
@@ -77,6 +79,11 @@ IndexIVFPQ.o: IndexIVFPQ.cpp faiss/IndexIVFPQ.h faiss/IndexIVF.h \
  faiss/utils/distances.h faiss/roaring.h faiss/IndexFlat.h \
  faiss/utils/hamming.h faiss/utils/hamming-inl.h faiss/impl/FaissAssert.h \
  faiss/impl/FaissException.h faiss/impl/AuxIndexStructures.h
+OnDiskInvertedLists.o: OnDiskInvertedLists.cpp \
+ faiss/OnDiskInvertedLists.h faiss/IndexIVF.h faiss/Index.h \
+ faiss/MetricType.h faiss/InvertedLists.h faiss/DirectMap.h \
+ faiss/Clustering.h faiss/utils/Heap.h faiss/impl/FaissAssert.h \
+ faiss/impl/FaissException.h faiss/utils/utils.h
 MatrixStats.o: MatrixStats.cpp faiss/MatrixStats.h faiss/utils/utils.h \
  faiss/utils/Heap.h
 IndexLattice.o: IndexLattice.cpp faiss/IndexLattice.h faiss/IndexIVF.h \
@@ -145,13 +152,6 @@ IndexIVFFlat.o: IndexIVFFlat.cpp faiss/IndexIVFFlat.h faiss/IndexIVF.h \
  faiss/Clustering.h faiss/utils/Heap.h faiss/IndexFlat.h faiss/roaring.h \
  faiss/utils/distances.h faiss/utils/utils.h faiss/impl/FaissAssert.h \
  faiss/impl/FaissException.h faiss/impl/AuxIndexStructures.h
-IndexIVFPQR.o: IndexIVFPQR.cpp faiss/IndexIVFPQR.h faiss/IndexIVFPQ.h \
- faiss/IndexIVF.h faiss/Index.h faiss/MetricType.h faiss/InvertedLists.h \
- faiss/DirectMap.h faiss/Clustering.h faiss/utils/Heap.h faiss/IndexPQ.h \
- faiss/impl/ProductQuantizer.h faiss/impl/ProductQuantizer-inl.h \
- faiss/impl/PolysemousTraining.h faiss/utils/utils.h \
- faiss/utils/distances.h faiss/roaring.h faiss/impl/FaissAssert.h \
- faiss/impl/FaissException.h
 IndexScalarQuantizer.o: IndexScalarQuantizer.cpp \
  faiss/IndexScalarQuantizer.h faiss/IndexIVF.h faiss/Index.h \
  faiss/MetricType.h faiss/InvertedLists.h faiss/DirectMap.h \
@@ -199,13 +199,13 @@ IndexBinaryHash.o: IndexBinaryHash.cpp faiss/IndexBinaryHash.h \
  faiss/Index.h faiss/MetricType.h faiss/IndexBinaryFlat.h \
  faiss/utils/Heap.h faiss/utils/hamming.h faiss/utils/hamming-inl.h \
  faiss/utils/utils.h faiss/impl/AuxIndexStructures.h
-roaring.o: roaring.cpp roaring.h
 IndexBinaryHNSW.o: IndexBinaryHNSW.cpp faiss/IndexBinaryHNSW.h \
  faiss/impl/HNSW.h faiss/Index.h faiss/MetricType.h \
  faiss/impl/FaissAssert.h faiss/impl/FaissException.h \
  faiss/utils/random.h faiss/utils/Heap.h faiss/IndexBinaryFlat.h \
  faiss/IndexBinary.h faiss/utils/utils.h faiss/utils/hamming.h \
  faiss/utils/hamming-inl.h faiss/impl/AuxIndexStructures.h
+roaring.o: roaring.cpp roaring.h
 index_write.o: impl/index_write.cpp faiss/index_io.h \
  faiss/impl/FaissAssert.h faiss/impl/FaissException.h faiss/impl/io.h \
  faiss/Index.h faiss/MetricType.h faiss/utils/hamming.h \

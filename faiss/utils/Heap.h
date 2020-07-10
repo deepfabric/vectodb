@@ -144,6 +144,56 @@ void heap_push (size_t k,
 
 
 
+/** Replaces the element bh_val[dst] with (val, ids).
+ */
+template <class C> inline
+void heap_replace (size_t k,
+                typename C::T * bh_val, typename C::TI * bh_ids,
+                size_t dst,
+                typename C::T val, typename C::TI ids)
+{
+    bh_val--; /* Use 1-based indexing for easier node->child translation */
+    bh_ids--;
+    dst++;
+    //up-heap operation
+    size_t i = dst, i_father;
+    while (i > 1) {
+        i_father = i >> 1;
+        if (!C::cmp (val, bh_val[i_father]))  /* the heap structure is ok */
+            break;
+        bh_val[i] = bh_val[i_father];
+        bh_ids[i] = bh_ids[i_father];
+        i = i_father;
+    }
+    if (i == dst) {
+        //down-heap operation
+        size_t i1, i2;
+        while (1) {
+            i1 = i << 1;
+            i2 = i1 + 1;
+            if (i1 > k)
+                break;
+            if (i2 == k + 1 || C::cmp(bh_val[i1], bh_val[i2])) {
+                if (C::cmp(val, bh_val[i1]))  /* the heap structure is ok */
+                    break;
+                bh_val[i] = bh_val[i1];
+                bh_ids[i] = bh_ids[i1];
+                i = i1;
+            }
+            else {
+                if (C::cmp(val, bh_val[i2]))  /* the heap structure is ok */
+                    break;
+                bh_val[i] = bh_val[i2];
+                bh_ids[i] = bh_ids[i2];
+                i = i2;
+            }
+        }
+    }
+    bh_val[i] = val;
+    bh_ids[i] = ids;
+}
+
+
 /* Partial instanciation for heaps with TI = int64_t */
 
 template <typename T> inline
@@ -161,6 +211,13 @@ void minheap_push (size_t k, T * bh_val, int64_t * bh_ids, T val, int64_t ids)
 
 
 template <typename T> inline
+void minheap_replace (size_t k, T * bh_val, int64_t * bh_ids, size_t dst, T val, int64_t ids)
+{
+    heap_replace<CMin<T, int64_t> > (k, bh_val, bh_ids, dst, val, ids);
+}
+
+
+template <typename T> inline
 void maxheap_pop (size_t k, T * bh_val, int64_t * bh_ids)
 {
     heap_pop<CMax<T, int64_t> > (k, bh_val, bh_ids);
@@ -171,6 +228,13 @@ template <typename T> inline
 void maxheap_push (size_t k, T * bh_val, int64_t * bh_ids, T val, int64_t ids)
 {
     heap_push<CMax<T, int64_t> > (k, bh_val, bh_ids, val, ids);
+}
+
+
+template <typename T> inline
+void maxheap_replace (size_t k, T * bh_val, int64_t * bh_ids, size_t dst, T val, int64_t ids)
+{
+    heap_replace<CMax<T, int64_t> > (k, bh_val, bh_ids, dst, val, ids);
 }
 
 

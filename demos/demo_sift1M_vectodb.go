@@ -246,12 +246,12 @@ func demo_search_roaring(d, nb int, xb []float32) {
 			xid := res[i][j].Xid
 			uid := vectodb.GetUid(uint64(xid))
 			pid := vectodb.GetPid(uint64(xid))
-			msg += fmt.Sprintf(", %d.%d %f", uid, pid, res[i][j].Score)
+			msg += fmt.Sprintf(", %d-%d %f", uid, pid, res[i][j].Score)
 			if !rbs[i].Contains(uint32(uid)) {
-				log.Fatalf("Bitmap filter bug, i %d, j %d, xid %d, uid.pid %d.%d", i, j, xid, uid, pid)
+				log.Fatalf("Bitmap filter bug, i %d, j %d, xid %d, uid-pid %d-%d", i, j, xid, uid, pid)
 			}
 		}
-		log.Debug(msg)
+		log.Info(msg)
 	}
 
 	if err = vdb.Destroy(); err != nil {
