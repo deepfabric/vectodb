@@ -40,95 +40,6 @@ namespace fs = std::filesystem;
 
 const int small_set_size = 32;
 
-roaring_bitmap_t * RoaringBitmapWithSmallSet::CastAndReset()
-{
-    roaring_bitmap_t * ra;
-    if(rb) {
-        ra = rb;
-        rb = nullptr;
-    } else {
-        ra = roaring_bitmap_of_ptr(small.size(), &small[0]);
-        small.clear();
-    }
-    return ra;
-}
-
-void RoaringBitmapWithSmallSet::Add(uint32_t value)
-{
-    if(IsSmall()){
-        for(size_t i = 0; i<small.size(); i++)
-            if(small[i] == value)
-                return;
-        if(small.size() < small_set_size){
-            small.push_back(value);
-            return;
-        }
-        rb = roaring_bitmap_of_ptr(small.size(), &small[0]);
-        small.clear();
-    }
-    roaring_bitmap_add(rb, value);
-}
-
-bool RoaringBitmapWithSmallSet::Contains(uint32_t value)
-{
-    if(IsSmall()){
-        for(size_t i = 0; i<small.size(); i++)
-            if(small[i] == value)
-                return true;
-        return false;
-    } else {
-        return roaring_bitmap_contains(rb, value);
-    }
-}
-
-void RoaringBitmapWithSmallSet::Read(char *in)
-{
-    Reset();
-    bool isSmall = (0 == *(in++));
-    uint64_t num;
-    int readed = ReadVarUInt(num, in);
-    in += readed; 
-    if(isSmall){
-        for(int i=0; i<(int)num; i++){
-            Add(*(uint32_t*)in);
-            in += 4;
-        }
-    } else {
-        rb = roaring_bitmap_portable_deserialize(in);
-    }
-}
-
-int RoaringBitmapWithSmallSet::Write(char *out)
-{
-    int written = 0;
-    if(IsSmall()){
-        *(out++) = 0x00;
-        written = WriteVarUInt((uint64_t)small.size(), out);
-        out += written;
-        memcpy(out, &small[0], 4*small.size());
-        return 1 + written + 4*small.size();
-    } else {
-        *(out++) = 0x01;
-        size_t bs = roaring_bitmap_portable_serialize(rb, out);
-        written = GetLengthOfVarUInt(bs);
-        memmove(out+written, out, bs);
-        WriteVarUInt((uint64_t)bs, out);
-        return 1 + written + bs;
-    }
-}
-
-int RoaringBitmapWithSmallSet::SizeInBytes()
-{
-    int size;
-    if(IsSmall()){
-        size = 1 + GetLengthOfVarUInt(small.size()) + 4*small.size();
-    } else {
-        size = roaring_bitmap_portable_size_in_bytes(rb); 
-        size += 1 + GetLengthOfVarUInt(size); 
-    }
-    return size;
-}
-
 struct DbState {
     DbState()
         : flat(nullptr)
@@ -197,9 +108,7 @@ void VectoDB::Search(long nq, const float* xq, long k, const long* uids, float* 
         for (int i=0; i<nq; i++) {
             char *buf = (char *)uids[i];
             if(buf!=nullptr){
-                RoaringBitmapWithSmallSet rbwss;
-                rbwss.Read(buf);
-                rbs[i] = rbwss.CastAndReset();
+                rbs[i] = ChBitmapDeserialize(buf);
             }
             else
                 rbs[i] = nullptr;
@@ -214,12 +123,12 @@ void VectoDB::Search(long nq, const float* xq, long k, const long* uids, float* 
                 roaring_advance_uint32_iterator(it);
             }
             roaring_free_uint32_iterator(it);
-            printf("rbs[0]:");
-            for(size_t i=0; i<bits.size(); i++)
+            printf("rbs[0].size=%ld:", bits.size());
+            for(size_t i=0; i<bits.size() && i<10; i++)
                 printf(" %d", bits[i]);
             printf("\n");
-        }*/
-
+        }
+        */
         state->flat->search(nq, xq, k, &rbs[0], scores, xids);
         for (int i=0; i<nq; i++) {
             if(rbs[i]!=nullptr)
@@ -303,4 +212,43 @@ void VectodbClearDir(char* work_dir)
 void VectodbNormVec(float* vec, int dim)
 {
     NormVec(vec, dim);
+}
+
+void ChBitmapSerialize(const roaring_bitmap_t * rb, char *& buf, int& size) {
+	int num = (int)roaring_bitmap_get_cardinality(rb);
+	if (num <= small_set_size) {
+        int vsize = GetLengthOfVarUInt((uint64_t)num);
+        size = 1 + vsize + 4*num;
+        buf = new char[size];
+		buf[0] = 0x00;
+        WriteVarUInt((uint64_t)num, buf+1);
+		int off = 1 + vsize;
+        roaring_uint32_iterator_t *it = roaring_create_iterator(rb);
+        roaring_read_uint32_iterator(it, (uint32_t*)(buf+off), (uint32_t)num);
+        roaring_free_uint32_iterator(it);
+	} else {
+        int rsize = roaring_bitmap_portable_size_in_bytes(rb);
+        int vsize = GetLengthOfVarUInt(rsize);
+        size = 1 + vsize + rsize;
+        buf = new char[size];
+        buf[0] = 0x01;
+        WriteVarUInt((uint64_t)rsize, buf+1);
+		int off = 1 + vsize;
+        roaring_bitmap_portable_serialize(rb, buf+off);
+    }
+}
+
+roaring_bitmap_t * ChBitmapDeserialize(const char * buf) {
+	bool isSmall = (0x0 == buf[0]);
+    roaring_bitmap_t *rb;
+    uint64_t num;
+    int readed = ReadVarUInt(num, buf+1);
+    int off = 1 + readed;
+	if (isSmall) {
+        rb = roaring_bitmap_create();
+        roaring_bitmap_add_many(rb, num, (uint32_t *)(buf+off));
+	} else {
+        rb = roaring_bitmap_portable_deserialize(buf+off);
+	}
+	return rb;
 }

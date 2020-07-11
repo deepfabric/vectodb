@@ -24,6 +24,8 @@ using namespace std;
 const long sift_dim = 128L;
 const char* work_dir = "/tmp/demo_sift1M_vectodb_cpp";
 
+const int small_set_size = 32;
+
 /**
  * To run this demo, please download the ANN_SIFT1M dataset from
  *
@@ -77,7 +79,7 @@ int* ivecs_read(const char* fname, size_t* d_out, size_t* n_out)
     return (int*)fvecs_read(fname, d_out, n_out);
 }
 
-int check_indexflat(faiss::IndexFlat *flat, const string& work_dir, long id_shift)
+int check_indexflat(faiss::IndexFlat *flat, const string& work_dir, long vecs_per_user)
 {
     string fp = work_dir + "/flatdisk.index";
     int fd = open(fp.c_str(), O_RDONLY);
@@ -96,7 +98,7 @@ int check_indexflat(faiss::IndexFlat *flat, const string& work_dir, long id_shif
         return rc;
     }
     int i = 0;
-    for(; (i<flat->ntotal) && ids[i]==id_shift+i; i++);
+    for(; (i<flat->ntotal) && ids[i]==GetXid(i/vecs_per_user, i); i++);
     if(i<flat->ntotal){
         LOG(ERROR) << "IndexFlatDisk xid is corrupted!";
         return rc;
@@ -105,7 +107,7 @@ int check_indexflat(faiss::IndexFlat *flat, const string& work_dir, long id_shif
     return 0;
 }
 
-int demo_search(size_t d, size_t nb, float* xb)
+int demo_search_recall(size_t d, size_t nb, float* xb)
 {
     LOG(INFO) << "Loading database";
 
@@ -121,9 +123,9 @@ int demo_search(size_t d, size_t nb, float* xb)
     faiss::IndexFlat flat(d, faiss::METRIC_INNER_PRODUCT);
 
     long* xids = new long[nb];
-    const static long id_shift = 1000L;
+    const static long vecs_per_user = 100L;
     for (long i = 0; i < (long)nb; i++) {
-        xids[i] = id_shift + i;
+        xids[i] = GetXid(i/vecs_per_user, i);
     }
 
     const bool incremental = false;
@@ -148,7 +150,7 @@ int demo_search(size_t d, size_t nb, float* xb)
         LOG(ERROR) << "vdb is corrupted! flat.ntotal " << flat.ntotal << ", vdb.GetTotal() " << vdb.GetTotal();
         return -1;
     }
-    int rc = check_indexflat(&flat, work_dir, id_shift);
+    int rc = check_indexflat(&flat, work_dir, vecs_per_user);
     if(rc!=0){
         LOG(ERROR) << "IndexFlatDisk file is corrupted!";
         return rc;
@@ -207,7 +209,7 @@ int demo_search(size_t d, size_t nb, float* xb)
             if(I2[q*k+i]!=-1L){
                 total[i]++;
                 for(int j=0; j<k; j++){
-                    if(I2[q*k+i]+id_shift==I[q*k+j]){
+                    if(GetXid(I2[q*k+i]/vecs_per_user, I2[q*k+i])==I[q*k+j]){
                         hit[i]++;
                         break;
                     }
@@ -232,36 +234,36 @@ int demo_search(size_t d, size_t nb, float* xb)
     return 0;
 }
 
-int demo_search_roaring(size_t d, size_t nb, float* xb)
+int demo_search_bitmap(size_t d, size_t nb, float* xb, int vecs_per_user, int nq, int k, int bm_card)
 {
     VectoDB vdb(work_dir, d);
     vdb.Reset();
 
     long* xids = new long[nb];
-    const static long vecs_per_user = 100L;
     for (long i = 0; i < (long)nb; i++) {
         xids[i] = GetXid(i/vecs_per_user, i);
     }
     LOG(INFO) << "Calling vdb.AddWithIds " << nb;
     vdb.AddWithIds(nb, xb, xids);
 
-    const long nq = 1000;
-    const long k = 400;
     const float* xq = xb;
     vector<float> D(nq*k);
     vector<long> I(nq*k);
     vector<roaring_bitmap_t *> rbs(nq);
     vector<char *> uids(nq);
 
-    const int bitmap_cardinality = 3;
-    for(int i=0; i<nq; i++){
-        int uid = i/vecs_per_user;
-        RoaringBitmapWithSmallSet rbwss;
-        for(int j=0; j<bitmap_cardinality; j++)
-            rbwss.Add(uid+j);
-        uids[i] = new char[rbwss.SizeInBytes()];
-        rbwss.Write(uids[i]);
-        rbs[i] = rbwss.CastAndReset();
+    if (bm_card >= 0) {
+        for(int i=0; i<nq; i++){
+            int uid = i/vecs_per_user;
+            rbs[i] = roaring_bitmap_create();
+            roaring_bitmap_add_range(rbs[i], uid, uid+bm_card);
+            int size;
+            ChBitmapSerialize(rbs[i], uids[i], size);
+        }
+    } else {
+        for(int i=0; i<nq; i++){
+            rbs[i] = nullptr;
+        }
     }
 
     LOG(INFO) << "Executing " << nq << " queries in single batch";
@@ -269,47 +271,62 @@ int demo_search_roaring(size_t d, size_t nb, float* xb)
 
     LOG(INFO) << "Checking result";
     bool printed_error = false;
-    for(int i=0; i<nq; i++){
-        for(int j=0; j<k; j++){
-            long xid = I[i*k+j];
-            if(xid==-1L)
-                break;
-            uint64_t uid = GetUid(xid);
-            uint64_t pid = GetPid(xid);
-            bool c = roaring_bitmap_contains(rbs[i], uint32_t(uid));
-            if(!c && !printed_error){
-                LOG(ERROR) << "Bitmap filter bug, i " << i << ", xid " << xid << ", uid " << uid << ", pid " << pid;
-                printed_error = true;
+    if (bm_card >= 0) {
+        for(int i=0; i<nq; i++){
+            for(int j=0; j<k; j++){
+                long xid = I[i*k+j];
+                if(xid==-1L)
+                    break;
+                uint64_t uid = GetUid(xid);
+                uint64_t pid = GetPid(xid);
+                bool c = roaring_bitmap_contains(rbs[i], uint32_t(uid));
+                if(!c && !printed_error){
+                    LOG(ERROR) << "Bitmap filter bug, i " << i << ", xid " << xid << ", uid " << uid << ", pid " << pid;
+                    printed_error = true;
+                }
             }
         }
     }
 
     for(int i=0; i<nq; i++){
-        roaring_bitmap_free(rbs[i]);
+        if(rbs[i]!=nullptr)
+            roaring_bitmap_free(rbs[i]);
         delete[] uids[i];
     }
     delete[] xids;
     return 0;
 }
 
-int demo_roaring_bitmap()
+int demo_bitmap_codec()
 {
-    RoaringBitmapWithSmallSet rbwss, rbwss2;
-    for(int j=0; j<10; j++)
-        rbwss.Add(j);
-    size_t len = rbwss.SizeInBytes();
-    char *buf = new char[len];
-    rbwss.Write(buf);
+    int nums[] = {0, 1, small_set_size-1, small_set_size, small_set_size+1, 100, 10000};
+    for(int i=0; i<sizeof(nums)/sizeof(int); i++) {
+        int num = nums[i];
+        roaring_bitmap_t *rb1, *rb2;
+        rb1 = roaring_bitmap_create();
+        roaring_bitmap_add_range(rb1, 0, num);
 
-    rbwss2.Read(buf);
-    delete []buf;
-    int rc = 0;
-    for(int j=0; j<10; j++)
-        if(!rbwss2.Contains(j)){
-            printf("RoaringBitmapWithSmallSet bug, want Contains %d\n", j);
-            rc = -1;
+        char *buf;
+        int size;
+        ChBitmapSerialize(rb1, buf, size);
+
+        rb2 = ChBitmapDeserialize(buf);
+        if(rb2==nullptr){
+            LOG(ERROR) << "ChBitmapSerialize/ChBitmapDeserialize bug, failed to deserialize, num " << num;
+            return -1;
         }
-    return rc;
+        roaring_bitmap_t *rb3 = roaring_bitmap_xor(rb1, rb2);
+        int can = roaring_bitmap_get_cardinality(rb3);
+        if(can != 0) {
+            LOG(ERROR) << "ChBitmapSerialize/ChBitmapDeserialize bug, num " << num << ", xor size " << can;
+            roaring_bitmap_free(rb3);
+            return -1;
+        }
+        delete[] buf;
+        roaring_bitmap_free(rb1);
+        roaring_bitmap_free(rb2);
+    }
+    return 0;
 }
 
 int main(int /*argc*/, char** argv)
@@ -329,11 +346,25 @@ int main(int /*argc*/, char** argv)
         NormVec(xb+i*d, d);
     }
 
-    int rc = demo_roaring_bitmap();
+    int rc = demo_bitmap_codec();
     if(rc<0)
         return rc;
-    demo_search(d, nb, xb);
-    demo_search_roaring(d, nb, xb);
+    demo_search_recall(d, nb, xb);
+
+	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, -1)";
+	demo_search_bitmap(d, nb, xb, 1, 1000, 400, -1);
+
+	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 100, 1000, 400, -1)";
+	demo_search_bitmap(d, nb, xb, 100, 1000, 400, -1);
+
+	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, 10)";
+	demo_search_bitmap(d, nb, xb, 1, 1000, 400, 10);
+
+	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, 100000000)";
+	demo_search_bitmap(d, nb, xb, 1, 1000, 400, 100000000);
+
+	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 100, 1000, 400, 100000000)";
+	demo_search_bitmap(d, nb, xb, 100, 1000, 400, 100000000);
 
     delete[] xb;
 }

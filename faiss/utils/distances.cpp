@@ -179,20 +179,15 @@ static void knn_inner_product_sse (const float * x,
                 float ip = fvec_inner_product (x_i, y_j, d);
                 if (ip > simi[0]) {
                     int64_t xid = (yid==nullptr)?j:yid[j];
-                    if (yid!=nullptr && rbs!=nullptr && rbs[i]!=nullptr) {
-                        uint64_t uid = GetUid((uint64_t)xid);
-                        //keep one element for each uid
-                        size_t dst;
-                        for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
-                        if (dst == k) {
-                            minheap_pop (k, simi, idxi);
-                            minheap_push (k, simi, idxi, ip, xid);
-                        } else if (ip > simi[dst]) {
-                            minheap_replace(k, simi, idxi, dst, ip, xid);
-                        }
-                    } else {
+                    uint64_t uid = GetUid((uint64_t)xid);
+                    //keep one element for each uid
+                    size_t dst;
+                    for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
+                    if (dst == k) {
                         minheap_pop (k, simi, idxi);
                         minheap_push (k, simi, idxi, ip, xid);
+                    } else if (ip > simi[dst]) {
+                        minheap_replace(k, simi, idxi, dst, ip, xid);
                     }
                 }
             }
@@ -234,20 +229,15 @@ static void knn_L2sqr_sse (
                 float disij = fvec_L2sqr (x_i, y_j, d);
                 if (disij < simi[0]) {
                     int64_t xid = (yid==nullptr)?j:yid[j];
-                    if (yid!=nullptr && rbs!=nullptr && rbs[i]!=nullptr) {
-                        uint64_t uid = GetUid((uint64_t)xid);
-                        //keep one element for each uid
-                        size_t dst;
-                        for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
-                        if (dst == k || disij > simi[dst]) {
-                            maxheap_pop (k, simi, idxi);
-                            maxheap_push (k, simi, idxi, disij, xid);
-                        } else if (disij < simi[dst]) {
-                            maxheap_replace(k, simi, idxi, dst, disij, xid);
-                        }
-                    } else {
+                    uint64_t uid = GetUid((uint64_t)xid);
+                    //keep one element for each uid
+                    size_t dst;
+                    for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
+                    if (dst == k || disij > simi[dst]) {
                         maxheap_pop (k, simi, idxi);
                         maxheap_push (k, simi, idxi, disij, xid);
+                    } else if (disij < simi[dst]) {
+                        maxheap_replace(k, simi, idxi, dst, disij, xid);
                     }
                 }
             }
@@ -308,20 +298,15 @@ static void knn_inner_product_blas (
                         float ip = ip_line[j-j0];
                         if (ip > simi[0] && !BITMAP_NOT_CONTAINS_UID) {
                             int64_t xid = (yid==nullptr)?j:yid[j];
-                            if (yid!=nullptr && rbs!=nullptr && rbs[i]!=nullptr) {
-                                uint64_t uid = GetUid((uint64_t)xid);
-                                //keep one element for each uid
-                                size_t dst;
-                                for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
-                                if (dst == k) {
-                                    minheap_pop (k, simi, idxi);
-                                    minheap_push (k, simi, idxi, ip, xid);
-                                } else if (ip > simi[dst]) {
-                                    minheap_replace(k, simi, idxi, dst, ip, xid);
-                                }
-                            } else {
+                            uint64_t uid = GetUid((uint64_t)xid);
+                            //keep one element for each uid
+                            size_t dst;
+                            for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
+                            if (dst == k) {
                                 minheap_pop (k, simi, idxi);
                                 minheap_push (k, simi, idxi, ip, xid);
+                            } else if (ip > simi[dst]) {
+                                minheap_replace(k, simi, idxi, dst, ip, xid);
                             }
                         }
                     }
@@ -398,20 +383,15 @@ static void knn_L2sqr_blas (const float * x,
 
                     if (dis < simi[0] && !BITMAP_NOT_CONTAINS_UID) {
                         int64_t xid = (yid==nullptr)?j:yid[j];
-                        if (yid!=nullptr && rbs!=nullptr && rbs[i]!=nullptr) {
-                            uint64_t uid = GetUid((uint64_t)xid);
-                            //keep one element for each uid
-                            size_t dst;
-                            for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
-                            if (dst == k) {
-                                maxheap_pop (k, simi, idxi);
-                                maxheap_push (k, simi, idxi, ip, xid);
-                            } else if (dis < simi[dst]) {
-                                maxheap_replace(k, simi, idxi, dst, ip, xid);
-                            }
-                        } else {
+                        uint64_t uid = GetUid((uint64_t)xid);
+                        //keep one element for each uid
+                        size_t dst;
+                        for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
+                        if (dst == k) {
                             maxheap_pop (k, simi, idxi);
                             maxheap_push (k, simi, idxi, ip, xid);
+                        } else if (dis < simi[dst]) {
+                            maxheap_replace(k, simi, idxi, dst, ip, xid);
                         }
                     }
                 }

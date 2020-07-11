@@ -15,6 +15,7 @@ import (
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring"
+	"github.com/pkg/errors"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -163,12 +164,13 @@ func NormalizeVec(d int, v []float32) {
 	}
 }
 
-// Keey sync with vectodb.hpp
+// Keep sync with vectodb.hpp, vectodb.cpp
 func GetUid(xid uint64) uint64      { return xid >> 34 }
 func GetPid(xid uint64) uint64      { return xid & 0x3FFFFFFFF }
 func GetXid(uid, pid uint64) uint64 { return (uid << 34) + pid }
 
-func ChBitmapToBytes(rb *roaring.Bitmap) (buf []byte) {
+// Keep sync with RoaringBitmapWithSmallSet in Clickhouse
+func ChBitmapSerialize(rb *roaring.Bitmap) (buf []byte, err error) {
 	num := int(rb.GetCardinality())
 	buf2 := make([]byte, 9)
 	if num <= small_set_size {
@@ -183,17 +185,38 @@ func ChBitmapToBytes(rb *roaring.Bitmap) (buf []byte) {
 			off += 4
 		}
 	} else {
-		size := rb.GetSizeInBytes()
-		written := binary.PutUvarint(buf2, uint64(size))
-		buf = make([]byte, 1+written+4*num)
-		buf[0] = byte(0)
-		copy(buf[1:1+written], buf2)
-
-		var err error
-		if buf2, err = rb.ToBytes(); err != nil {
-			log.Fatalf("got error %+v", err)
+		var buf3 []byte
+		if buf3, err = rb.MarshalBinary(); err != nil {
+			err = errors.Wrap(err, "")
+			return
 		}
-		copy(buf[1+written:], buf2)
+		size := len(buf3)
+		written := binary.PutUvarint(buf2, uint64(size))
+		buf = make([]byte, 1+written+size)
+		buf[0] = byte(1)
+		copy(buf[1:1+written], buf2)
+		copy(buf[1+written:], buf3)
+	}
+	return
+}
+
+func ChBitmapDeserialize(buf []byte) (rb *roaring.Bitmap, err error) {
+	isSmall := (0x0 == buf[0])
+	num, readed := binary.Uvarint(buf[1:])
+	if readed <= 0 {
+		err = errors.Errorf("Failed to decode uvarint from %v", buf[1:10])
+		return
+	}
+	off := 1 + readed
+	rb = roaring.New()
+	if isSmall {
+		for i := 0; i < int(num); i++ {
+			val := binary.LittleEndian.Uint32(buf[off : off+4])
+			rb.Add(val)
+			off += 4
+		}
+	} else {
+		err = rb.UnmarshalBinary(buf[off:])
 	}
 	return
 }

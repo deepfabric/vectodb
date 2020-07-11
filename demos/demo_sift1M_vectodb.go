@@ -163,7 +163,11 @@ func benchmarkAdd() {
 	return
 }
 
-func demo_search(d, nb int, xb []float32) {
+/**
+ * @param vecs_per_user: how many pictures each user has
+ * @param bm_card: bitmap cardinality in search. negative value means all.
+ */
+func demo_search_bitmap(d, nb int, xb []float32, vecs_per_user int, nq, k, bm_card int) {
 	var err error
 	var vdb *vectodb.VectoDB
 
@@ -173,9 +177,8 @@ func demo_search(d, nb int, xb []float32) {
 	vdb.Reset()
 
 	xids := make([]int64, nb)
-	id_shift := int64(1000)
 	for i := 0; i < nb; i++ {
-		xids[i] = id_shift + int64(i)
+		xids[i] = int64(vectodb.GetXid(uint64(i/vecs_per_user), uint64(i)))
 	}
 
 	log.Infof("Inserting vectors")
@@ -183,53 +186,22 @@ func demo_search(d, nb int, xb []float32) {
 		log.Fatalf("%+v", err)
 	}
 
-	log.Infof("Searching index")
-	nq := 1000
-	k := 400
-	xq := xb[0 : d*nq]
-	var res [][]vectodb.XidScore
-	if res, err = vdb.Search(k, xq, nil); err != nil {
-		log.Fatalf("%+v", err)
-	}
-	log.Debugf("search result: %+v", res)
-
-	if err = vdb.Destroy(); err != nil {
-		log.Fatalf("%+v", err)
-	}
-}
-
-func demo_search_roaring(d, nb int, xb []float32) {
-	var err error
-	var vdb *vectodb.VectoDB
-
-	if vdb, err = vectodb.NewVectoDB(workDir, d); err != nil {
-		log.Fatalf("%+v", err)
-	}
-	vdb.Reset()
-
-	xids := make([]int64, nb)
-	vecs_per_user := uint64(100)
-	for i := 0; i < nb; i++ {
-		xids[i] = int64(vectodb.GetXid(uint64(i)/vecs_per_user, uint64(i)))
-	}
-
-	log.Infof("Inserting vectors")
-	if err = vdb.AddWithIds(xb, xids); err != nil {
-		log.Fatalf("%+v", err)
-	}
-
-	nq := 1000
-	k := 400
 	xq := xb[0 : d*nq]
 	rbs := make([]*roaring.Bitmap, nq)
-	uids := make([][]byte, nq)
-	bitmap_cardinality := uint64(3)
-	for i := 0; i < nq; i++ {
-		uid := uint64(i) / vecs_per_user
-		rbs[i] = roaring.NewBitmap()
-		rbs[i].AddRange(uint64(uid), uint64(uid+bitmap_cardinality))
-		if uids[i] = vectodb.ChBitmapToBytes(rbs[i]); err != nil {
-			log.Fatalf("%+v", err)
+	var uids [][]byte
+	if bm_card >= 0 {
+		uids = make([][]byte, nq)
+		for i := 0; i < nq; i++ {
+			uid := uint64(i / vecs_per_user)
+			rbs[i] = roaring.NewBitmap()
+			rbs[i].AddRange(uid, uid+uint64(bm_card))
+			rbs[i].RunOptimize()
+			if rbs[i].GetCardinality() != uint64(bm_card) {
+				log.Fatalf("rbs[i].GetCardinality()", i, rbs[i].GetCardinality())
+			}
+			if uids[i], err = vectodb.ChBitmapSerialize(rbs[i]); err != nil {
+				log.Fatalf("%+v", err)
+			}
 		}
 	}
 
@@ -239,9 +211,10 @@ func demo_search_roaring(d, nb int, xb []float32) {
 		log.Fatalf("%+v", err)
 	}
 	log.Debugf("search result: %+v", res)
-	log.Infof("checking result")
-	for i := 0; i < nq; i++ {
-		msg := fmt.Sprintf("i %d", i)
+	if bm_card >= 0 {
+		i := 0
+		log.Infof("checking result of query %d", i)
+		msg := fmt.Sprintf("len(res[%d])=%d", i, len(res[i]))
 		for j := 0; j < len(res[i]); j++ {
 			xid := res[i][j].Xid
 			uid := vectodb.GetUid(uint64(xid))
@@ -308,6 +281,19 @@ func main() {
 		vectodb.NormalizeVec(dim, xb[i*dim:(i+1)*dim])
 	}
 
-	demo_search(dim, nb, xb)
-	demo_search_roaring(dim, nb, xb)
+	log.Info("demo_search_bitmap(dim, nb, xb, 1, 1000, 400, -1)")
+	demo_search_bitmap(dim, nb, xb, 1, 1000, 400, -1)
+
+	log.Info("demo_search_bitmap(dim, nb, xb, 100, 1000, 400, -1)")
+	demo_search_bitmap(dim, nb, xb, 100, 1000, 400, -1)
+
+	log.Info("demo_search_bitmap(dim, nb, xb, 1, 1000, 400, 10)")
+	demo_search_bitmap(dim, nb, xb, 1, 1000, 400, 10)
+
+	log.Info("demo_search_bitmap(dim, nb, xb, 1, 1000, 400, 100000000)")
+	demo_search_bitmap(dim, nb, xb, 1, 1000, 400, 100000000)
+
+	log.Info("demo_search_bitmap(dim, nb, xb, 100, 1000, 400, 100000000)")
+	demo_search_bitmap(dim, nb, xb, 100, 1000, 400, 100000000)
+
 }

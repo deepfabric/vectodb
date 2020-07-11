@@ -82,65 +82,18 @@ private:
 void ClearDir(const char* work_dir);
 void NormVec(float* vec, int dim);
 
-// Keey sync with vectodb.go
+// Keep sync with vectodb.go
 inline uint64_t GetUid(uint64_t xid) {return xid>>34;}
 inline uint64_t GetPid(uint64_t xid) {return xid&0x3FFFFFFFF;}
 inline uint64_t GetXid(uint64_t uid, uint64_t pid) {return (uid<<34) + pid;}
 
-// Compatible with ClickHouse bitmap serialization
-class RoaringBitmapWithSmallSet {
-private:
-    std::vector<uint32_t> small;
-    roaring_bitmap_t * rb = nullptr;
-public:
-    bool IsLarge() const { return rb != nullptr; }
-    bool IsSmall() const { return rb == nullptr; }
-
-    ~RoaringBitmapWithSmallSet()
-    {
-        if (IsLarge())
-            roaring_bitmap_free(rb);
-    }
-
-    void Reset()
-    {
-        small.clear();
-        if (rb != nullptr) {
-            roaring_bitmap_free(rb);
-            rb = nullptr;
-        }
-    }
-
-    void Add(uint32_t);
-
-    /** 
-     * Cast to roaring_bitmap and reset self.
-     */
-    roaring_bitmap_t * CastAndReset();
-
-    bool Contains(uint32_t value);
-
-    /** 
-     * Deserialize bitmap.
-     */
-    void Read(char *in);
-
-    /** 
-     * Serialize bitmap.
-     *
-     * @return how many bytes written. -1 on error.
-     */
-    int Write(char *out);
-
-    /** 
-     * Calculate how many bytes written when do serialization.
-     */
-    int SizeInBytes();
-};
+// Keep sync with RoaringBitmapWithSmallSet in Clickhouse
+void ChBitmapSerialize(const roaring_bitmap_t * rb, char *& buf, int& size);
+roaring_bitmap_t * ChBitmapDeserialize(const char * buf);
 
 // Compatible with ClickHouse readVarUInt
 // Returns how many bytes readed.
-inline int ReadVarUInt(uint64_t &x, char *in)
+inline int ReadVarUInt(uint64_t &x, const char *in)
 {
     size_t i;
     x = 0;
@@ -149,6 +102,7 @@ inline int ReadVarUInt(uint64_t &x, char *in)
         x += uint64_t((*in) & 0x7F) << (i * 7);
         if (uint8_t(*in) <= 0x7F)
             break;
+        in++;
     }
     return(int(i + 1));
 }
