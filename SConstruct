@@ -41,8 +41,4 @@ SConscript(["demos/SConscript"])
 
 env.StaticLibrary('vectodb', ['vectodb.cpp'])
 
-env.Command('demos/demo_sift1M_vectodb_go', glob.glob('*.go') + glob.glob('demos/*.go') + glob.glob('*.cpp') + ['faiss/libfaiss.a'], 'go install -x . && pushd demos && go build -o demo_sift1M_vectodb_go demo_sift1M_vectodb.go && go build -o demo_vectodblite_go demo_vectodblite.go && popd')
-
-env.Command('cmd/vectodblite_cluster/vectodblite_cluster', glob.glob('cmd/vectodblite_cluster/*.go') + ['demos/demo_sift1M_vectodb_go'], 'pushd cmd/vectodblite_cluster && go build . && popd')
-
-env.Command('cmd/vdblc_bb/vdblc_bb', glob.glob('cmd/vdblc_bb/*.go') + ['cmd/vectodblite_cluster/vectodblite_cluster'], 'pushd cmd/vdblc_bb && go build . && popd')
+env.Command('demos/demo_sift1M_vectodb_go', glob.glob('*.go') + glob.glob('demos/*.go') + glob.glob('*.cpp') + ['faiss/libfaiss.a'], 'go install -x . && pushd demos && go build -o demo_sift1M_vectodb_go demo_sift1M_vectodb.go && popd')
