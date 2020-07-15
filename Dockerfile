@@ -8,7 +8,7 @@ RUN yum -y install devtoolset-8
 
 RUN curl -o go.tgz https://mirrors.ustc.edu.cn/golang/go1.14.5.linux-amd64.tar.gz && tar -C /usr/local -xzf go.tgz
 
-ENV GOPROXY=https://mirrors.aliyun.com/goproxy/,https://goproxy.cn,direct PATH=/usr/local/go/bin:${PATH} GOPATH=$HOME/go
+ENV GOPROXY=https://mirrors.aliyun.com/goproxy/,https://goproxy.cn,direct PATH=/usr/local/go/bin:${PATH} GOPATH=/root/go
 
 RUN yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
 
@@ -25,5 +25,5 @@ FROM centos:7
 RUN yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm && yum clean all && rm -rf /var/cache/yum
 RUN yum -y install glog gflags openblas-devel jemalloc && yum clean all && rm -rf /var/cache/yum
 # Finally we copy the statically compiled Go binary.
-COPY --from=build_base /opt/app-root/src/go/src/github.com/infinivision/vectodb/cmd/vectodblite_cluster/vectodblite_cluster /usr/local/bin/vectodblite_cluster
-ENTRYPOINT ["/usr/local/bin/vectodblite_cluster"]
+COPY --from=build_base /root/go/src/github.com/infinivision/vectodb/demos/demo_sift1M_vectodb_go /usr/local/bin/demo_sift1M_vectodb_go
+ENTRYPOINT ["/usr/local/bin/demo_sift1M_vectodb_go"]
