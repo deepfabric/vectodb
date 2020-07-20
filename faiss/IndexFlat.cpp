@@ -592,7 +592,7 @@ void IndexFlatDisk::add_with_ids (idx_t n, const float * x, const idx_t *xids) {
     memcpy((uint8_t *)ids+sizeof(idx_t)*ntotal, xids, sizeof(idx_t)*n);
     ntotal += n;
     *p_ntotal = ntotal;
-    msync(ptr, totsize, MS_ASYNC);
+    msync(ptr, totsize, MS_SYNC);
     pthread_rwlock_unlock(&rwlock);
 }
 
