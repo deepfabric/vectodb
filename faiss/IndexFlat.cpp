@@ -516,9 +516,10 @@ void IndexFlat1D::search (
 
 }
 
-const static int off_header_d = 4;
-const static int off_header_ntotal = off_header_d + sizeof(idx_t);
-const static int off_header_is_trained = off_header_ntotal + 2 * sizeof(idx_t);
+// keep sync with read_index_header, write_index_header
+const static int off_header_d = sizeof(uint32_t);
+const static int off_header_ntotal = off_header_d + sizeof(int);
+const static int off_header_is_trained = off_header_ntotal + 3 * sizeof(idx_t);
 const static int off_header_metric_type = off_header_is_trained + sizeof(int);
 const static int off_header_metric_arg = off_header_metric_type + sizeof(int);
 
@@ -552,10 +553,9 @@ IndexFlatDisk::IndexFlatDisk (const std::string& filename_in, idx_t d, MetricTyp
         *(int *)(ptr + off_header_is_trained) = 1; //is_trained
         *(int *)(ptr + off_header_metric_type) = metric_type;
         if (metric_type > 1)
-            *(int *)(ptr + off_header_metric_arg) = metric_arg;
+            *(float *)(ptr + off_header_metric_arg) = metric_arg;
         *(size_t *)(ptr + header_size()) = capacity;
         msync(ptr, totsize, MS_SYNC);
-        p_ntotal = (idx_t *)(ptr + off_header_ntotal);
         xb = (float *)(ptr + header_size() + sizeof(capacity));
         ids = (idx_t *)(ptr + header_size() + sizeof(capacity) + sizeof(float)*d*capacity);
     } else {
@@ -572,7 +572,7 @@ IndexFlatDisk::IndexFlatDisk (const std::string& filename_in, idx_t d, MetricTyp
         is_trained = 1;
         metric_type = (MetricType)*(int *)(ptr + off_header_metric_type);
         if (metric_type > 1)
-            metric_arg = *(int *)(ptr + off_header_metric_arg);
+            metric_arg = *(float *)(ptr + off_header_metric_arg);
         capacity = *(size_t *)(ptr + header_size());
     }
     p_ntotal = (idx_t *)(ptr + off_header_ntotal);

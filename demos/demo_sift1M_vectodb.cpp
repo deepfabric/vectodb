@@ -117,9 +117,9 @@ int demo_search_recall(size_t d, size_t nb, float* xb)
     //"IVF4096,PQ32", "nprobe=256"  26s
     //"IVF16384_HNSW32,Flat", "nprobe=384"  23s
 
-    //ClearDir(work_dir);
+    ClearDir(work_dir);
     VectoDB vdb(work_dir, d);
-    vdb.Reset();
+    //vdb.Reset();
     faiss::IndexFlat flat(d, faiss::METRIC_INNER_PRODUCT);
 
     long* xids = new long[nb];
@@ -236,8 +236,9 @@ int demo_search_recall(size_t d, size_t nb, float* xb)
 
 int demo_search_bitmap(size_t d, size_t nb, float* xb, int vecs_per_user, int nq, int k, int bm_card)
 {
+    ClearDir(work_dir);
     VectoDB vdb(work_dir, d);
-    vdb.Reset();
+    //vdb.Reset();
 
     long* xids = new long[nb];
     for (long i = 0; i < (long)nb; i++) {
