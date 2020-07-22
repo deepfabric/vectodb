@@ -168,6 +168,7 @@ void knn_inner_product (
         const float * y,
         const int64_t * yid,
         size_t d, size_t nx, size_t ny,
+        bool top_vectors,
         roaring_bitmap_t ** rbs,
         float_minheap_array_t * res);
 
@@ -177,6 +178,7 @@ void knn_L2sqr (
         const float * y,
         const int64_t * yid,
         size_t d, size_t nx, size_t ny,
+        bool top_vectors,
         roaring_bitmap_t ** rbs,
         float_maxheap_array_t * res);
 

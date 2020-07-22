@@ -95,14 +95,14 @@ long VectoDB::GetTotal()
     return state->flat->ntotal;
 }
 
-void VectoDB::Search(long nq, const float* xq, long k, const long* uids, float* scores, long* xids)
+void VectoDB::Search(long nq, const float* xq, long k, bool top_vectors, const long* uids, float* scores, long* xids)
 {
     for (int i = 0; i < nq*k; i++) {
         xids[i] = -1L;
         scores[i] = -1.0;
     }
     if (uids==nullptr) {
-        state->flat->search(nq, xq, k, scores, xids);
+        state->flat->search(nq, xq, k, top_vectors, nullptr, scores, xids);
     } else {
         vector<roaring_bitmap_t *> rbs(nq);
         for (int i=0; i<nq; i++) {
@@ -129,7 +129,7 @@ void VectoDB::Search(long nq, const float* xq, long k, const long* uids, float* 
             printf("\n");
         }
         */
-        state->flat->search(nq, xq, k, &rbs[0], scores, xids);
+        state->flat->search(nq, xq, k, top_vectors, &rbs[0], scores, xids);
         for (int i=0; i<nq; i++) {
             if(rbs[i]!=nullptr)
                 roaring_bitmap_free(rbs[i]);
@@ -199,9 +199,9 @@ long VectodbGetTotal(void* vdb)
     return static_cast<VectoDB*>(vdb)->GetTotal();
 }
 
-void VectodbSearch(void* vdb, long nq, float* xq, long k, long* uids, float* scores, long* xids)
+void VectodbSearch(void* vdb, long nq, float* xq, long k, int top_vectors, long* uids, float* scores, long* xids)
 {
-    static_cast<VectoDB*>(vdb)->Search(nq, xq, k, uids, scores, xids);
+    static_cast<VectoDB*>(vdb)->Search(nq, xq, k, bool(top_vectors), uids, scores, xids);
 }
 
 void VectodbClearDir(char* work_dir)

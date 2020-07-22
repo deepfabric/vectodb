@@ -145,6 +145,10 @@ void pairwise_extra_distances_template (
     }
 }
 
+// Keey sync with vectodb.hpp
+#define BITMAP_NOT_CONTAINS_UID (rbs!=nullptr && rbs[i]!=nullptr && !roaring_bitmap_contains(rbs[i], uint32_t(xid>>34)))
+
+inline uint64_t GetUid(uint64_t xid) {return xid>>34;}
 
 template<class VD>
 void knn_extra_metrics_template (
@@ -153,6 +157,7 @@ void knn_extra_metrics_template (
         const float * y,
         const int64_t * yid,
         size_t nx, size_t ny,
+        bool top_vectors,
         roaring_bitmap_t ** rbs,
         float_maxheap_array_t * res)
 {
@@ -174,11 +179,27 @@ void knn_extra_metrics_template (
 
             maxheap_heapify (k, simi, idxi);
             for (j = 0; j < ny; j++) {
+                int64_t xid = (yid==nullptr)?j:yid[j];
+                if (BITMAP_NOT_CONTAINS_UID)
+                    continue;
                 float disij = vd (x_i, y_j);
 
                 if (disij < simi[0]) {
-                    maxheap_pop (k, simi, idxi);
-                    maxheap_push (k, simi, idxi, disij, (yid==nullptr)?j:yid[j]);
+                    if(top_vectors) {
+                        maxheap_pop (k, simi, idxi);
+                        maxheap_push (k, simi, idxi, disij, xid);
+                    } else {
+                        uint64_t uid = GetUid((uint64_t)xid);
+                        //keep one element for each uid
+                        size_t dst;
+                        for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
+                        if (dst == k || disij > simi[dst]) {
+                            maxheap_pop (k, simi, idxi);
+                            maxheap_push (k, simi, idxi, disij, xid);
+                        } else if (disij < simi[dst]) {
+                            maxheap_replace(k, simi, idxi, dst, disij, xid);
+                        }
+                    }
                 }
                 y_j += d;
             }
@@ -277,6 +298,7 @@ void knn_extra_metrics (
         const int64_t * yid,
         size_t d, size_t nx, size_t ny,
         MetricType mt, float metric_arg,
+        bool top_vectors,
         roaring_bitmap_t ** rbs,
         float_maxheap_array_t * res)
 {
@@ -285,7 +307,7 @@ void knn_extra_metrics (
 #define HANDLE_VAR(kw)                                          \
      case METRIC_ ## kw: {                                      \
         VectorDistance ## kw vd({(size_t)d});                   \
-        knn_extra_metrics_template (vd, x, y, yid, nx, ny, rbs, res);     \
+        knn_extra_metrics_template (vd, x, y, yid, nx, ny, top_vectors, rbs, res);     \
         break;                                                  \
     }
         HANDLE_VAR(L2);
@@ -297,7 +319,7 @@ void knn_extra_metrics (
 #undef HANDLE_VAR
     case METRIC_Lp: {
         VectorDistanceLp vd({(size_t)d, metric_arg});
-        knn_extra_metrics_template (vd, x, y, yid, nx, ny, rbs, res);
+        knn_extra_metrics_template (vd, x, y, yid, nx, ny, top_vectors, rbs, res);
         break;
     }
     default:

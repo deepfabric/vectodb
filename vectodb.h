@@ -12,7 +12,7 @@ void VectodbDelete(void* vdb);
 void VectodbAddWithIds(void* vdb, long nb, float* xb, long* xids);
 long VectodbRemoveIds(void* vdb, long nb, long* xids);
 void VectodbReset(void* vdb);
-void VectodbSearch(void* vdb, long nq, float* xq, long k, long* uids, float* scores, long* xids);
+void VectodbSearch(void* vdb, long nq, float* xq, long k, int top_vectors, long* uids, float* scores, long* xids);
 long VectodbGetTotal(void* vdb);
 
 /**

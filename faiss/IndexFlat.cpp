@@ -48,11 +48,11 @@ void IndexFlat::reset() {
 void IndexFlat::search (idx_t n, const float *x, idx_t k,
                                float *distances, idx_t *labels) const
 {
-    search(n, x, k, nullptr, distances, labels);
+    search(n, x, k, true, nullptr, distances, labels);
 }
 
 
-void IndexFlat::search (idx_t n, const float *x, idx_t k, roaring_bitmap_t ** rbs,
+void IndexFlat::search (idx_t n, const float *x, idx_t k, bool top_vectors, roaring_bitmap_t ** rbs,
                                float *distances, idx_t *labels) const
 {
     // we see the distances and labels as heaps
@@ -60,16 +60,16 @@ void IndexFlat::search (idx_t n, const float *x, idx_t k, roaring_bitmap_t ** rb
     if (metric_type == METRIC_INNER_PRODUCT) {
         float_minheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
-        knn_inner_product (x, xb.data(), nullptr, d, n, ntotal, rbs, &res);
+        knn_inner_product (x, xb.data(), nullptr, d, n, ntotal, top_vectors, rbs, &res);
     } else if (metric_type == METRIC_L2) {
         float_maxheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
-        knn_L2sqr (x, xb.data(), nullptr, d, n, ntotal, rbs, &res);
+        knn_L2sqr (x, xb.data(), nullptr, d, n, ntotal, top_vectors, rbs, &res);
     } else {
         float_maxheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
         knn_extra_metrics (x, xb.data(), nullptr, d, n, ntotal,
-                           metric_type, metric_arg, rbs, &res);
+                           metric_type, metric_arg, top_vectors, rbs, &res);
     }
 }
 
@@ -639,11 +639,11 @@ void IndexFlatDisk::reserve(size_t n) {
 void IndexFlatDisk::search (idx_t n, const float *x, idx_t k,
                                float *distances, idx_t *labels) const
 {
-    search(n, x, k, nullptr, distances, labels);
+    search(n, x, k, true, nullptr, distances, labels);
 }
 
 
-void IndexFlatDisk::search (idx_t n, const float *x, idx_t k, roaring_bitmap_t ** rbs,
+void IndexFlatDisk::search (idx_t n, const float *x, idx_t k, bool top_vectors, roaring_bitmap_t ** rbs,
                                float *distances, idx_t *labels) const
 {
     // we see the distances and labels as heaps
@@ -651,16 +651,16 @@ void IndexFlatDisk::search (idx_t n, const float *x, idx_t k, roaring_bitmap_t *
     if (metric_type == METRIC_INNER_PRODUCT) {
         float_minheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
-        knn_inner_product (x, xb, (int64_t *)ids, d, n, ntotal, rbs, &res);
+        knn_inner_product (x, xb, (int64_t *)ids, d, n, ntotal, top_vectors, rbs, &res);
     } else if (metric_type == METRIC_L2) {
         float_maxheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
-        knn_L2sqr (x, xb, (int64_t *)ids, d, n, ntotal, rbs, &res);
+        knn_L2sqr (x, xb, (int64_t *)ids, d, n, ntotal, top_vectors, rbs, &res);
     } else {
         float_maxheap_array_t res = {
             size_t(n), size_t(k), labels, distances};
         knn_extra_metrics (x, xb, (int64_t *)ids, d, n, ntotal,
-                           metric_type, metric_arg, rbs,
+                           metric_type, metric_arg, top_vectors, rbs,
                            &res);
     }
     pthread_rwlock_unlock(&rwlock);

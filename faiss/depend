@@ -128,9 +128,6 @@ IndexShards.o: IndexShards.cpp faiss/IndexShards.h faiss/Index.h \
  faiss/impl/FaissException.h faiss/impl/ThreadedIndex.h \
  faiss/utils/WorkerThread.h faiss/impl/ThreadedIndex-inl.h \
  faiss/utils/Heap.h
-IndexBinary.o: IndexBinary.cpp faiss/IndexBinary.h \
- faiss/impl/FaissAssert.h faiss/impl/FaissException.h faiss/Index.h \
- faiss/MetricType.h
 MetaIndexes.o: MetaIndexes.cpp faiss/MetaIndexes.h faiss/Index.h \
  faiss/MetricType.h faiss/IndexShards.h faiss/IndexBinary.h \
  faiss/impl/FaissAssert.h faiss/impl/FaissException.h \
@@ -150,6 +147,9 @@ IndexIVFFlat.o: IndexIVFFlat.cpp faiss/IndexIVFFlat.h faiss/IndexIVF.h \
  faiss/Clustering.h faiss/utils/Heap.h faiss/IndexFlat.h faiss/roaring.h \
  faiss/utils/distances.h faiss/utils/utils.h faiss/impl/FaissAssert.h \
  faiss/impl/FaissException.h faiss/impl/AuxIndexStructures.h
+IndexBinary.o: IndexBinary.cpp faiss/IndexBinary.h \
+ faiss/impl/FaissAssert.h faiss/impl/FaissException.h faiss/Index.h \
+ faiss/MetricType.h
 IndexScalarQuantizer.o: IndexScalarQuantizer.cpp \
  faiss/IndexScalarQuantizer.h faiss/IndexIVF.h faiss/Index.h \
  faiss/MetricType.h faiss/InvertedLists.h faiss/DirectMap.h \
@@ -190,6 +190,7 @@ IVFlib.o: IVFlib.cpp faiss/IVFlib.h faiss/IndexIVF.h faiss/Index.h \
  faiss/IndexBinary.h faiss/impl/ThreadedIndex.h \
  faiss/utils/WorkerThread.h faiss/impl/ThreadedIndex-inl.h \
  faiss/IndexReplicas.h
+roaring.o: roaring.cpp roaring.h
 Index.o: Index.cpp faiss/Index.h faiss/MetricType.h \
  faiss/impl/AuxIndexStructures.h faiss/impl/FaissAssert.h \
  faiss/impl/FaissException.h faiss/utils/distances.h faiss/utils/Heap.h \
@@ -199,7 +200,6 @@ IndexBinaryHash.o: IndexBinaryHash.cpp faiss/IndexBinaryHash.h \
  faiss/Index.h faiss/MetricType.h faiss/IndexBinaryFlat.h \
  faiss/utils/Heap.h faiss/utils/hamming.h faiss/utils/hamming-inl.h \
  faiss/utils/utils.h faiss/impl/AuxIndexStructures.h
-roaring.o: roaring.cpp roaring.h
 IndexBinaryHNSW.o: IndexBinaryHNSW.cpp faiss/IndexBinaryHNSW.h \
  faiss/impl/HNSW.h faiss/Index.h faiss/MetricType.h \
  faiss/impl/FaissAssert.h faiss/impl/FaissException.h \

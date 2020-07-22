@@ -143,7 +143,7 @@ void fvec_renorm_L2 (size_t d, size_t nx, float * __restrict x)
  ***************************************************************************/
 
 // Keey sync with vectodb.hpp
-#define BITMAP_NOT_CONTAINS_UID (yid!=nullptr && rbs!=nullptr && rbs[i]!=nullptr && !roaring_bitmap_contains(rbs[i], uint32_t(yid[j]>>34)))
+#define BITMAP_NOT_CONTAINS_UID (rbs!=nullptr && rbs[i]!=nullptr && !roaring_bitmap_contains(rbs[i], uint32_t(xid>>34)))
 
 inline uint64_t GetUid(uint64_t xid) {return xid>>34;}
 
@@ -152,6 +152,7 @@ static void knn_inner_product_sse (const float * x,
                         const float * y,
                         const int64_t * yid,
                         size_t d, size_t nx, size_t ny,
+                        bool top_vectors,
                         roaring_bitmap_t ** rbs,
                         float_minheap_array_t * res)
 {
@@ -174,20 +175,25 @@ static void knn_inner_product_sse (const float * x,
             minheap_heapify (k, simi, idxi);
 
             for (size_t j = 0; j < ny; j++, y_j += d) {
+                int64_t xid = (yid==nullptr)?j:yid[j];
                 if (BITMAP_NOT_CONTAINS_UID)
                     continue;
                 float ip = fvec_inner_product (x_i, y_j, d);
                 if (ip > simi[0]) {
-                    int64_t xid = (yid==nullptr)?j:yid[j];
-                    uint64_t uid = GetUid((uint64_t)xid);
-                    //keep one element for each uid
-                    size_t dst;
-                    for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
-                    if (dst == k) {
+                    if(top_vectors){
                         minheap_pop (k, simi, idxi);
                         minheap_push (k, simi, idxi, ip, xid);
-                    } else if (ip > simi[dst]) {
-                        minheap_replace(k, simi, idxi, dst, ip, xid);
+                    } else {
+                        uint64_t uid = GetUid((uint64_t)xid);
+                        //keep one element for each uid
+                        size_t dst;
+                        for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
+                        if (dst == k) {
+                            minheap_pop (k, simi, idxi);
+                            minheap_push (k, simi, idxi, ip, xid);
+                        } else if (ip > simi[dst]) {
+                            minheap_replace(k, simi, idxi, dst, ip, xid);
+                        }
                     }
                 }
             }
@@ -203,6 +209,7 @@ static void knn_L2sqr_sse (
                 const float * y,
                 const int64_t * yid,
                 size_t d, size_t nx, size_t ny,
+                bool top_vectors,
                 roaring_bitmap_t ** rbs,
                 float_maxheap_array_t * res)
 {
@@ -224,20 +231,25 @@ static void knn_L2sqr_sse (
 
             maxheap_heapify (k, simi, idxi);
             for (j = 0; j < ny; j++, y_j += d) {
+                int64_t xid = (yid==nullptr)?j:yid[j];
                 if (BITMAP_NOT_CONTAINS_UID)
                     continue;
                 float disij = fvec_L2sqr (x_i, y_j, d);
                 if (disij < simi[0]) {
-                    int64_t xid = (yid==nullptr)?j:yid[j];
-                    uint64_t uid = GetUid((uint64_t)xid);
-                    //keep one element for each uid
-                    size_t dst;
-                    for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
-                    if (dst == k || disij > simi[dst]) {
+                    if(top_vectors) {
                         maxheap_pop (k, simi, idxi);
                         maxheap_push (k, simi, idxi, disij, xid);
-                    } else if (disij < simi[dst]) {
-                        maxheap_replace(k, simi, idxi, dst, disij, xid);
+                    } else {
+                        uint64_t uid = GetUid((uint64_t)xid);
+                        //keep one element for each uid
+                        size_t dst;
+                        for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
+                        if (dst == k || disij > simi[dst]) {
+                            maxheap_pop (k, simi, idxi);
+                            maxheap_push (k, simi, idxi, disij, xid);
+                        } else if (disij < simi[dst]) {
+                            maxheap_replace(k, simi, idxi, dst, disij, xid);
+                        }
                     }
                 }
             }
@@ -255,6 +267,7 @@ static void knn_inner_product_blas (
         const float * y,
         const int64_t * yid,
         size_t d, size_t nx, size_t ny,
+        bool top_vectors,
         roaring_bitmap_t ** rbs,
         float_minheap_array_t * res)
 {
@@ -296,17 +309,22 @@ static void knn_inner_product_blas (
                     const float *ip_line = ip_block.get() + (i - i0) * (j1 - j0);
                     for (size_t j=j0; j<j1; j++) {
                         float ip = ip_line[j-j0];
+                        int64_t xid = (yid==nullptr)?j:yid[j];
                         if (ip > simi[0] && !BITMAP_NOT_CONTAINS_UID) {
-                            int64_t xid = (yid==nullptr)?j:yid[j];
-                            uint64_t uid = GetUid((uint64_t)xid);
-                            //keep one element for each uid
-                            size_t dst;
-                            for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
-                            if (dst == k) {
+                            if (top_vectors) {
                                 minheap_pop (k, simi, idxi);
                                 minheap_push (k, simi, idxi, ip, xid);
-                            } else if (ip > simi[dst]) {
-                                minheap_replace(k, simi, idxi, dst, ip, xid);
+                            } else {
+                                uint64_t uid = GetUid((uint64_t)xid);
+                                //keep one element for each uid
+                                size_t dst;
+                                for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
+                                if (dst == k) {
+                                    minheap_pop (k, simi, idxi);
+                                    minheap_push (k, simi, idxi, ip, xid);
+                                } else if (ip > simi[dst]) {
+                                    minheap_replace(k, simi, idxi, dst, ip, xid);
+                                }
                             }
                         }
                     }
@@ -325,6 +343,7 @@ static void knn_L2sqr_blas (const float * x,
         const float * y,
         const int64_t * yid,
         size_t d, size_t nx, size_t ny,
+        bool top_vectors,
         roaring_bitmap_t ** rbs,
         float_maxheap_array_t * res,
         const DistanceCorrection &corr)
@@ -381,17 +400,22 @@ static void knn_L2sqr_blas (const float * x,
 
                     dis = corr (dis, i, j);
 
+                    int64_t xid = (yid==nullptr)?j:yid[j];
                     if (dis < simi[0] && !BITMAP_NOT_CONTAINS_UID) {
-                        int64_t xid = (yid==nullptr)?j:yid[j];
-                        uint64_t uid = GetUid((uint64_t)xid);
-                        //keep one element for each uid
-                        size_t dst;
-                        for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
-                        if (dst == k) {
+                        if (top_vectors){
                             maxheap_pop (k, simi, idxi);
                             maxheap_push (k, simi, idxi, ip, xid);
-                        } else if (dis < simi[dst]) {
-                            maxheap_replace(k, simi, idxi, dst, ip, xid);
+                        } else {
+                            uint64_t uid = GetUid((uint64_t)xid);
+                            //keep one element for each uid
+                            size_t dst;
+                            for (dst = 0; (dst < res->k) && (uid != GetUid((uint64_t)idxi[dst])); dst++);
+                            if (dst == k) {
+                                maxheap_pop (k, simi, idxi);
+                                maxheap_push (k, simi, idxi, ip, xid);
+                            } else if (dis < simi[dst]) {
+                                maxheap_replace(k, simi, idxi, dst, ip, xid);
+                            }
                         }
                     }
                 }
@@ -420,13 +444,14 @@ int distance_compute_blas_threshold = 20;
 void knn_inner_product (const float * x,
         const float * y, const int64_t * yid,
         size_t d, size_t nx, size_t ny,
+        bool top_vectors,
         roaring_bitmap_t ** rbs,
         float_minheap_array_t * res)
 {
     if (nx < distance_compute_blas_threshold) {
-        knn_inner_product_sse (x, y, yid, d, nx, ny, rbs, res);
+        knn_inner_product_sse (x, y, yid, d, nx, ny, top_vectors, rbs, res);
     } else {
-        knn_inner_product_blas (x, y, yid, d, nx, ny, rbs, res);
+        knn_inner_product_blas (x, y, yid, d, nx, ny, top_vectors, rbs, res);
     }
 }
 
@@ -442,14 +467,15 @@ void knn_L2sqr (const float * x,
                 const float * y,
                 const int64_t * yid,
                 size_t d, size_t nx, size_t ny,
+                bool top_vectors,
                 roaring_bitmap_t ** rbs,
                 float_maxheap_array_t * res)
 {
     if (nx < distance_compute_blas_threshold) {
-        knn_L2sqr_sse (x, y, yid, d, nx, ny, rbs, res);
+        knn_L2sqr_sse (x, y, yid, d, nx, ny, top_vectors, rbs, res);
     } else {
         NopDistanceCorrection nop;
-        knn_L2sqr_blas (x, y, yid, d, nx, ny, rbs, res, nop);
+        knn_L2sqr_blas (x, y, yid, d, nx, ny, top_vectors, rbs, res, nop);
     }
 }
 
@@ -468,7 +494,7 @@ void knn_L2sqr_base_shift (
          const float *base_shift)
 {
     BaseShiftDistanceCorrection corr = {base_shift};
-    knn_L2sqr_blas (x, y, nullptr, d, nx, ny, nullptr, res, corr);
+    knn_L2sqr_blas (x, y, nullptr, d, nx, ny, true, nullptr, res, corr);
 }
 
 

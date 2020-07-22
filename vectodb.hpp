@@ -57,11 +57,12 @@ public:
      * @param nq            input the number of vectors to search
      * @param xq            input vectors to search, size nq * d
      * @param k             input do kNN search
+     * @param top_vectors   input top vectors(true) or users(false) 
      * @param uids          input uid bitmap pointer array, size nq
      * @param scores        output pairwise scores, size nq * k
      * @param xids          output labels of the kNN, size nq * k
      */
-    void Search(long nq, const float* xq, long k, const long* uids, float* scores, long* xids);
+    void Search(long nq, const float* xq, long k, bool top_vectors, const long* uids, float* scores, long* xids);
 
 private:
     std::string getFlatFp() const;

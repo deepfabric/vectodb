@@ -167,7 +167,7 @@ int demo_search_recall(size_t d, size_t nb, float* xb)
     long* I2 = new long[nq*k];
 
     LOG(INFO) << "Executing " << nq << " queries in single batch";
-    vdb.Search(nq, xq, k, nullptr, D, I);
+    vdb.Search(nq, xq, k, true, nullptr, D, I);
 
     const long num_threads = 0;
     if (num_threads >= 2) {
@@ -177,7 +177,7 @@ int demo_search_recall(size_t d, size_t nb, float* xb)
         for (long i = 0; i < num_threads; i++) {
             std::thread worker{ [&vdb, batch_size, i, &xq, &D, &I]() {
                 LOG(INFO) << "thread " << i << " begins";
-                vdb.Search(batch_size, xq + i * batch_size * sift_dim, k, nullptr, D + i * batch_size * k, I + i * batch_size * k);
+                vdb.Search(batch_size, xq + i * batch_size * sift_dim, k, true, nullptr, D + i * batch_size * k, I + i * batch_size * k);
                 LOG(INFO) << "thread " << i << " ends";
             } };
             workers.push_back(std::move(worker));
@@ -191,7 +191,7 @@ int demo_search_recall(size_t d, size_t nb, float* xb)
     if (one_by_one) {
         LOG(INFO) << "Executing " << nq << " queries one by one";
         for (long i = 0; i < (long)nq; i++) {
-            vdb.Search(1, xq + i * sift_dim, k, nullptr, D + i*k, I + i*k);
+            vdb.Search(1, xq + i * sift_dim, k, true, nullptr, D + i*k, I + i*k);
         }
     }
 
@@ -234,7 +234,7 @@ int demo_search_recall(size_t d, size_t nb, float* xb)
     return 0;
 }
 
-int demo_search_bitmap(size_t d, size_t nb, float* xb, int vecs_per_user, int nq, int k, int bm_card)
+int demo_search_bitmap(size_t d, size_t nb, float* xb, int vecs_per_user, int nq, int k, bool top_vectors, int bm_card)
 {
     ClearDir(work_dir);
     VectoDB vdb(work_dir, d);
@@ -268,7 +268,7 @@ int demo_search_bitmap(size_t d, size_t nb, float* xb, int vecs_per_user, int nq
     }
 
     LOG(INFO) << "Executing " << nq << " queries in single batch";
-    vdb.Search(nq, xq, k, (long *)(&uids[0]), &D[0], &I[0]);
+    vdb.Search(nq, xq, k, top_vectors, (long *)(&uids[0]), &D[0], &I[0]);
 
     LOG(INFO) << "Checking result";
     bool printed_error = false;
@@ -352,20 +352,23 @@ int main(int /*argc*/, char** argv)
         return rc;
     demo_search_recall(d, nb, xb);
 
-	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, -1)";
-	demo_search_bitmap(d, nb, xb, 1, 1000, 400, -1);
+	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, true, -1)";
+	demo_search_bitmap(d, nb, xb, 1, 1000, 400, true, -1);
 
-	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 100, 1000, 400, -1)";
-	demo_search_bitmap(d, nb, xb, 100, 1000, 400, -1);
+	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, -1)";
+	demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, -1);
 
-	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, 10)";
-	demo_search_bitmap(d, nb, xb, 1, 1000, 400, 10);
+	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 100, 1000, 400, false, -1)";
+	demo_search_bitmap(d, nb, xb, 100, 1000, 400, false, -1);
 
-	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, 100000000)";
-	demo_search_bitmap(d, nb, xb, 1, 1000, 400, 100000000);
+	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, 10)";
+	demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, 10);
 
-	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 100, 1000, 400, 100000000)";
-	demo_search_bitmap(d, nb, xb, 100, 1000, 400, 100000000);
+	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, 100000000)";
+	demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, 100000000);
+
+	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 100, 1000, 400, false, 100000000)";
+	demo_search_bitmap(d, nb, xb, 100, 1000, 400, false, 100000000);
 
     delete[] xb;
 }

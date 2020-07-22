@@ -106,7 +106,7 @@ output parameters:
 return parameters:
 @return err     错误
 */
-func (vdb *VectoDB) Search(k int, xq []float32, uids [][]byte) (res [][]XidScore, err error) {
+func (vdb *VectoDB) Search(k int, top_vectors bool, xq []float32, uids [][]byte) (res [][]XidScore, err error) {
 	nq := len(xq) / vdb.dim
 	if len(xq) != nq*vdb.dim {
 		log.Fatalf("invalid length of xq, want %v, have %v", nq*vdb.dim, len(xq))
@@ -129,7 +129,11 @@ func (vdb *VectoDB) Search(k int, xq []float32, uids [][]byte) (res [][]XidScore
 		}
 		p_uids = &uids2[0]
 	}
-	C.VectodbSearch(vdb.vdbC, C.long(nq), (*C.float)(&xq[0]), C.long(k), (*C.long)(unsafe.Pointer(p_uids)), (*C.float)(&scores[0]), (*C.long)(&xids[0]))
+	vector_or_user := int(0)
+	if top_vectors {
+		vector_or_user = 1
+	}
+	C.VectodbSearch(vdb.vdbC, C.long(nq), (*C.float)(&xq[0]), C.long(k), C.int(vector_or_user), (*C.long)(unsafe.Pointer(p_uids)), (*C.float)(&scores[0]), (*C.long)(&xids[0]))
 	for i := 0; i < nq; i++ {
 		for j := 0; j < k; j++ {
 			if xids[i*k+j] == int64(-1) {

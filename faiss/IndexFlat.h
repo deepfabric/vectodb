@@ -42,6 +42,7 @@ struct IndexFlat: Index {
         idx_t n,
         const float* x,
         idx_t k,
+        bool top_vectors,
         roaring_bitmap_t ** rbs,
         float* distances,
         idx_t* labels) const;
@@ -202,6 +203,7 @@ struct IndexFlatDisk: Index {
 
     void reset() override;
 
+    // search topK vectors
     void search(
         idx_t n,
         const float* x,
@@ -209,10 +211,12 @@ struct IndexFlatDisk: Index {
         float* distances,
         idx_t* labels) const override;
 
+    // search topK vectors or users
     void search(
         idx_t n,
         const float* x,
         idx_t k,
+        bool top_vectors,
         roaring_bitmap_t ** rbs,
         float* distances,
         idx_t* labels) const;

@@ -114,7 +114,7 @@ func searcherLoop(ctx context.Context, vdb *vectodb.VectoDB) {
 			return
 		default:
 			log.Infof("search iteration begin")
-			if res, err = vdb.Search(k, xq, uids); err != nil {
+			if res, err = vdb.Search(k, true, xq, uids); err != nil {
 				log.Fatalf("%+v", err)
 			}
 			log.Infof("search iteration done, res=%v", res)
@@ -167,7 +167,7 @@ func benchmarkAdd() {
  * @param vecs_per_user: how many pictures each user has
  * @param bm_card: bitmap cardinality in search. negative value means all.
  */
-func demo_search_bitmap(d, nb int, xb []float32, vecs_per_user int, nq, k, bm_card int) {
+func demo_search_bitmap(d, nb int, xb []float32, vecs_per_user, nq, k int, top_vectors bool, bm_card int) {
 	var err error
 	var vdb *vectodb.VectoDB
 
@@ -207,7 +207,7 @@ func demo_search_bitmap(d, nb int, xb []float32, vecs_per_user int, nq, k, bm_ca
 
 	log.Infof("Searching index")
 	var res [][]vectodb.XidScore
-	if res, err = vdb.Search(k, xq, uids); err != nil {
+	if res, err = vdb.Search(k, false, xq, uids); err != nil {
 		log.Fatalf("%+v", err)
 	}
 	log.Debugf("search result: %+v", res)
@@ -281,19 +281,22 @@ func main() {
 		vectodb.NormalizeVec(dim, xb[i*dim:(i+1)*dim])
 	}
 
-	log.Info("demo_search_bitmap(dim, nb, xb, 1, 1000, 400, -1)")
-	demo_search_bitmap(dim, nb, xb, 1, 1000, 400, -1)
+	log.Info("demo_search_bitmap(dim, nb, xb, 1, 1000, 400, true, -1)")
+	demo_search_bitmap(dim, nb, xb, 1, 1000, 400, true, -1)
 
-	log.Info("demo_search_bitmap(dim, nb, xb, 100, 1000, 400, -1)")
-	demo_search_bitmap(dim, nb, xb, 100, 1000, 400, -1)
+	log.Info("demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, -1)")
+	demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, -1)
 
-	log.Info("demo_search_bitmap(dim, nb, xb, 1, 1000, 400, 10)")
-	demo_search_bitmap(dim, nb, xb, 1, 1000, 400, 10)
+	log.Info("demo_search_bitmap(dim, nb, xb, 100, 1000, 400, false, -1)")
+	demo_search_bitmap(dim, nb, xb, 100, 1000, 400, false, -1)
 
-	log.Info("demo_search_bitmap(dim, nb, xb, 1, 1000, 400, 100000000)")
-	demo_search_bitmap(dim, nb, xb, 1, 1000, 400, 100000000)
+	log.Info("demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, 10)")
+	demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, 10)
 
-	log.Info("demo_search_bitmap(dim, nb, xb, 100, 1000, 400, 100000000)")
-	demo_search_bitmap(dim, nb, xb, 100, 1000, 400, 100000000)
+	log.Info("demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, 100000000)")
+	demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, 100000000)
+
+	log.Info("demo_search_bitmap(dim, nb, xb, 100, 1000, 400, false, 100000000)")
+	demo_search_bitmap(dim, nb, xb, 100, 1000, 400, false, 100000000)
 
 }
