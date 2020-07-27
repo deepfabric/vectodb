@@ -555,7 +555,8 @@ IndexFlatDisk::IndexFlatDisk (const std::string& filename_in, idx_t d, MetricTyp
         if (metric_type > 1)
             *(float *)(ptr + off_header_metric_arg) = metric_arg;
         *(size_t *)(ptr + header_size()) = capacity;
-        msync(ptr, totsize, MS_SYNC);
+        rc = msync(ptr, header_size() + sizeof(capacity), MS_SYNC|MS_INVALIDATE);
+        FAISS_THROW_IF_NOT_FMT(rc == 0, "could not msync %s: %s", filename.c_str(), strerror(errno));
         xb = (float *)(ptr + header_size() + sizeof(capacity));
         ids = (idx_t *)(ptr + header_size() + sizeof(capacity) + sizeof(float)*d*capacity);
     } else {
@@ -566,7 +567,7 @@ IndexFlatDisk::IndexFlatDisk (const std::string& filename_in, idx_t d, MetricTyp
         FAISS_THROW_IF_NOT_FMT(ptr != MAP_FAILED, "could not mmap %s: %s", filename.c_str(), strerror(errno));
         close(fd);
         int rc = strncmp((char *)ptr, "IxFD", 4);
-        FAISS_THROW_IF_NOT_MSG(rc==0, "index type is not IxFD");
+        FAISS_THROW_IF_NOT_FMT(rc==0, "index type %s is not IxFD", strndup((char *)ptr, 4));
         d = *(int *)(ptr + off_header_d);
         ntotal = *(idx_t *)(ptr + off_header_ntotal);
         is_trained = 1;
@@ -592,7 +593,8 @@ void IndexFlatDisk::add_with_ids (idx_t n, const float * x, const idx_t *xids) {
     memcpy((uint8_t *)ids+sizeof(idx_t)*ntotal, xids, sizeof(idx_t)*n);
     ntotal += n;
     *p_ntotal = ntotal;
-    msync(ptr, totsize, MS_SYNC);
+    int rc = msync(ptr, totsize, MS_SYNC|MS_INVALIDATE);
+    FAISS_THROW_IF_NOT_FMT(rc == 0, "could not msync %s: %s", filename.c_str(), strerror(errno));
     pthread_rwlock_unlock(&rwlock);
 }
 
@@ -602,7 +604,8 @@ void IndexFlatDisk::reset() {
     if (ntotal != 0) {
         ntotal = 0;
         *p_ntotal = ntotal;
-        msync(p_ntotal, sizeof(idx_t), MS_SYNC);
+        int rc = msync(p_ntotal, sizeof(idx_t), MS_SYNC|MS_INVALIDATE);
+        FAISS_THROW_IF_NOT_FMT(rc == 0, "could not sync %s: %s", filename.c_str(), strerror(errno));
     }
     pthread_rwlock_unlock(&rwlock);
 }
@@ -612,11 +615,14 @@ void IndexFlatDisk::reserve(size_t n) {
     pthread_rwlock_wrlock(&rwlock);
     FAISS_THROW_IF_NOT_FMT(ptr != nullptr, "inconsistent state, ptr nullptr, ntotal %ld, filename %s", ntotal, filename.c_str());
     if (ntotal + n > capacity) {
+        size_t new_cap = ntotal + n;
+        if(new_cap % 1000000 != 0)
+            new_cap = ((new_cap / 1000000) + 1) * 1000000;
         munmap(ptr, totsize);
         size_t xb_off = header_size() + sizeof(capacity);
         size_t xb_cap = sizeof(float)*d*capacity;
-        size_t xb_ids_cap = sizeof(float)*d*capacity + sizeof(idx_t)*capacity;
-        totsize = xb_off + 2 * xb_ids_cap;
+        size_t xb_new_cap = sizeof(float)*d*new_cap;
+        totsize = xb_off + (sizeof(float)*d + sizeof(idx_t))*new_cap;
         int rc = truncate(filename.c_str(), totsize);
         FAISS_THROW_IF_NOT_FMT(rc == 0, "could not truncate %s: %s", filename.c_str(), strerror(errno));
         int fd = open(filename.c_str(), O_RDWR);
@@ -624,13 +630,14 @@ void IndexFlatDisk::reserve(size_t n) {
         ptr = (uint8_t*)mmap (nullptr, totsize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
         FAISS_THROW_IF_NOT_FMT(ptr != MAP_FAILED, "could not mmap %s: %s", filename.c_str(), strerror(errno));
         close(fd);
-        memcpy(ptr + xb_off + 2 * xb_cap, ptr + xb_off + xb_cap, sizeof(idx_t)*ntotal);
-        capacity *= 2;
+        memcpy(ptr + xb_off + xb_new_cap, ptr + xb_off + xb_cap, sizeof(idx_t)*ntotal);
+        capacity = new_cap;
         *(size_t *)(ptr + header_size()) = capacity;
-        msync(ptr, totsize, MS_SYNC);
+        rc = msync(ptr, totsize, MS_SYNC|MS_INVALIDATE);
+        FAISS_THROW_IF_NOT_FMT(rc == 0, "could not msync %s: %s", filename.c_str(), strerror(errno));
         p_ntotal = (idx_t *)(ptr + 4 + sizeof(d));
         xb = (float *)(ptr + header_size() + sizeof(capacity));
-        ids = (idx_t *)(ptr + header_size() + sizeof(capacity) + sizeof(float)*d*capacity);
+        ids = (idx_t *)(ptr + header_size() + sizeof(capacity) + xb_new_cap);
     }
     pthread_rwlock_unlock(&rwlock);
 }
@@ -728,7 +735,8 @@ size_t IndexFlatDisk::remove_ids (const IDSelector & sel)
     size_t nremove = ntotal - j;
     ntotal -= j;
     *p_ntotal = ntotal;
-    msync(ptr, totsize, MS_SYNC);
+    int rc = msync(ptr, totsize, MS_SYNC|MS_INVALIDATE);
+    FAISS_THROW_IF_NOT_FMT(rc == 0, "could not sync %s: %s", filename.c_str(), strerror(errno));
     pthread_rwlock_unlock(&rwlock);
     return nremove;
 }

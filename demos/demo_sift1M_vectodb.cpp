@@ -23,7 +23,7 @@
 using namespace std;
 
 const long sift_dim = 128L;
-const char* work_dir = "/tmp/demo_sift1M_vectodb_cpp";
+const char* work_dir = "/data/sdc/demo_sift1M_vectodb_cpp";
 
 const int small_set_size = 32;
 
@@ -335,19 +335,21 @@ int demo_bitmap_codec()
 int demo_search_shards(size_t d, size_t nb, float* xb, int vecs_per_user, int nq, int k, bool top_vectors, int bm_card, int shards, int threads)
 {
     vector<VectoDB *> vdbs(shards);
-    vector<long> xids(nb);
     for(int i=0; i<shards; i++){
-        stringstream ss(work_dir);
-        ss << ".s" << i;
+        ostringstream ss;
+        ss << work_dir << ".s" << i;
         string dir = ss.str();
+        LOG(INFO) << "populating data into shard " << dir  << " ...";
         ClearDir(dir.c_str());
         VectoDB* vdb = new VectoDB(dir.c_str(), d);
         vdbs[i] = vdb;
+        vector<long> xids(nb);
         for (long j = 0; j < (long)nb; j++) {
             xids[j] = GetXid((i*nb+j)/vecs_per_user, i*nb+j);
         }
         vdb->AddWithIds(nb, xb, &xids[0]);
     }
+    LOG(INFO) << "populated all shards";
 
     float* xq = xb;
     vector<roaring_bitmap_t *> rbs(nq);
@@ -367,8 +369,8 @@ int demo_search_shards(size_t d, size_t nb, float* xb, int vecs_per_user, int nq
         }
     }
 
-    atomic<long> cnt_queries(0);
     vector<thread> workers;
+    atomic<long> cnt_queries(0);
     long cnt1 = 0;
     time_t t1 = time(NULL);
     bool stop = false;
@@ -393,7 +395,7 @@ int demo_search_shards(size_t d, size_t nb, float* xb, int vecs_per_user, int nq
         sleep(60);
         long cnt2 = cnt_queries.load();
         time_t t2 = time(NULL);
-        LOG(INFO) << cnt2-cnt1 << " queries in " << t2-t1 << " seconds, " << (cnt2-cnt1)*1.0/(t2-t1) << " qps";
+        LOG(INFO) << (cnt2-cnt1)*1.0/shards << " queries in " << t2-t1 << " seconds, " << (cnt2-cnt1)*1.0/(shards*(t2-t1)) << " qps";
         cnt1 = cnt2;
         t1 = t2;
     }
@@ -402,6 +404,7 @@ int demo_search_shards(size_t d, size_t nb, float* xb, int vecs_per_user, int nq
     stop = true;
     for(int i=0; i<workers.size(); i++)
         workers[i].join();
+    workers.clear();
 
     for(int i=0; i<nq; i++){
         if(rbs[i]!=nullptr)
@@ -415,6 +418,20 @@ int demo_search_shards(size_t d, size_t nb, float* xb, int vecs_per_user, int nq
     return 0;
 }
 
+int demo_open_shards()
+{
+    const char * dirs[] = {"/data/sdc/beevector/dbs-2", "/data/sdc/beevector/dbs-5", "/data/sdc/beevector/dbs-7", "/data/sdc/beevector/dbs-9", "/data/sdc/beevector/dbs-11", "/data/sdc/beevector/dbs-13"};
+    int shards = sizeof(dirs)/sizeof(const char *);
+    vector<VectoDB *> vdbs(shards);
+    for(int i=0; i<shards; i++){
+        VectoDB* vdb = new VectoDB(dirs[i], 512);
+        vdbs[i] = vdb;
+    }
+	//LOG(INFO) << "have opened shards. sleep 600s before quit...";
+    //sleep(600);
+    return 0;
+}
+
 int main(int /*argc*/, char** argv)
 {
     FLAGS_stderrthreshold = 0;
@@ -423,6 +440,23 @@ int main(int /*argc*/, char** argv)
 
     size_t nb, d;
     float* xb = fvecs_read("sift1M/sift_base.fvecs", &d, &nb);
+    size_t nb2 = 3125000;
+    size_t d2 = 256;
+    if (nb2*d2 > nb*d) {
+        float* xb2 = new float[nb2*d2];
+        int i = 0;
+        for(; i<(nb2*d2)/(nb*d); i++) {
+            memcpy(xb2+i*nb*d, xb, nb*d*sizeof(float));
+        }
+        int remained = (nb2*d2)%(nb*d);
+        if (remained != 0)
+            memcpy(xb2+(nb2*d2-remained), xb, remained*sizeof(float));
+        delete[] xb;
+        xb = xb2;
+    }
+    nb = nb2;
+    d = d2;
+	LOG(INFO) << "d = " << d <<  ", nb = " << nb << ", xb = " << xb;
     for (long i = 0; i < (long)nb; i++) {
         /*
         //Randomlizing causes far less recall. Don't do that.
@@ -440,10 +474,13 @@ int main(int /*argc*/, char** argv)
 
 	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, true, -1)";
 	demo_search_bitmap(d, nb, xb, 1, 1000, 400, true, -1);
-*/
 
 	LOG(INFO) << "demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, -1)";
 	demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, -1);
+*/
+
+	LOG(INFO) << "demo_search_bitmap(d, nb, xb, 1, 1, 400, false, -1)";
+	demo_search_bitmap(d, nb, xb, 1, 1, 400, false, -1);
 
 /*
 	LOG(INFO) << "demo_search_bitmap(d, nb, xb, 100, 1000, 400, false, -1)";
@@ -457,12 +494,21 @@ int main(int /*argc*/, char** argv)
 
 	LOG(INFO) << "demo_search_bitmap(d, nb, xb, 100, 1000, 400, false, 100000000)";
 	demo_search_bitmap(d, nb, xb, 100, 1000, 400, false, 100000000);
-*/
 
-    LOG(INFO) << "demo_search_shards(d, nb, xb, 1, 1000, 400, false, -1, shards, threads)";
-    int shards = 8;
-    int threads = 4;
-    demo_search_shards(d, nb, xb, 1, 1000, 400, false, -1, shards, threads);
+*/
+    //gpu07: Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz, 48 vcpu
+    //256 dim, 1M vectors per shard, 32 shards, 1 thread per shard, 1 vector per query, 1.82187 qps
+    //256 dim, 1M vectors per shard, 32 shards, 1 thread per shard, 1000 vector per query, 49.4792 qps
+    //256 dim, 3.125M vectors per shard, 32 shards, 1 thread per shard, 1 vector per query, 0.964583 qps
+    LOG(INFO) << "demo_search_shards(d, nb, xb, 1, 1, 400, false, -1, shards, threads)";
+    int shards = 32;
+    int threads = 1;
+    demo_search_shards(d, nb, xb, 1, 1, 400, false, -1, shards, threads);
+    //demo_search_shards(d, nb, xb, 1, 1000, 400, false, -1, shards, threads);
+
+	LOG(INFO) << "demo_open_shards()";
+    demo_open_shards();
+	LOG(INFO) << "done";
 
     delete[] xb;
 }

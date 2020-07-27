@@ -44,21 +44,6 @@ IndexBinaryFromFloat.o: IndexBinaryFromFloat.cpp \
  faiss/IndexBinaryFromFloat.h faiss/IndexBinary.h \
  faiss/impl/FaissAssert.h faiss/impl/FaissException.h faiss/Index.h \
  faiss/MetricType.h faiss/utils/utils.h faiss/utils/Heap.h
-clone_index.o: clone_index.cpp faiss/clone_index.h \
- faiss/impl/FaissAssert.h faiss/impl/FaissException.h faiss/IndexFlat.h \
- faiss/Index.h faiss/MetricType.h faiss/roaring.h faiss/VectorTransform.h \
- faiss/IndexPreTransform.h faiss/IndexLSH.h faiss/IndexPQ.h \
- faiss/impl/ProductQuantizer.h faiss/Clustering.h faiss/utils/Heap.h \
- faiss/impl/ProductQuantizer-inl.h faiss/impl/PolysemousTraining.h \
- faiss/IndexIVF.h faiss/InvertedLists.h faiss/DirectMap.h \
- faiss/IndexIVFPQ.h faiss/IndexIVFPQR.h faiss/Index2Layer.h \
- faiss/IndexIVFFlat.h faiss/IndexIVFSpectralHash.h faiss/MetaIndexes.h \
- faiss/IndexShards.h faiss/IndexBinary.h faiss/impl/ThreadedIndex.h \
- faiss/utils/WorkerThread.h faiss/impl/ThreadedIndex-inl.h \
- faiss/IndexReplicas.h faiss/IndexScalarQuantizer.h \
- faiss/impl/ScalarQuantizer.h faiss/impl/AuxIndexStructures.h \
- faiss/IndexHNSW.h faiss/impl/HNSW.h faiss/utils/random.h \
- faiss/utils/utils.h faiss/IndexLattice.h faiss/impl/lattice_Zn.h
 VectorTransform.o: VectorTransform.cpp faiss/VectorTransform.h \
  faiss/Index.h faiss/MetricType.h faiss/utils/distances.h \
  faiss/utils/Heap.h faiss/roaring.h faiss/utils/random.h \
@@ -91,11 +76,10 @@ IndexBinaryFlat.o: IndexBinaryFlat.cpp faiss/IndexBinaryFlat.h \
  faiss/Index.h faiss/MetricType.h faiss/utils/hamming.h \
  faiss/utils/Heap.h faiss/utils/hamming-inl.h faiss/utils/utils.h \
  faiss/impl/AuxIndexStructures.h
-IndexLattice.o: IndexLattice.cpp faiss/IndexLattice.h faiss/IndexIVF.h \
- faiss/Index.h faiss/MetricType.h faiss/InvertedLists.h faiss/DirectMap.h \
- faiss/Clustering.h faiss/utils/Heap.h faiss/impl/lattice_Zn.h \
- faiss/utils/hamming.h faiss/utils/hamming-inl.h faiss/impl/FaissAssert.h \
- faiss/impl/FaissException.h faiss/utils/distances.h faiss/roaring.h
+IndexReplicas.o: IndexReplicas.cpp faiss/IndexReplicas.h faiss/Index.h \
+ faiss/MetricType.h faiss/IndexBinary.h faiss/impl/FaissAssert.h \
+ faiss/impl/FaissException.h faiss/impl/ThreadedIndex.h \
+ faiss/utils/WorkerThread.h faiss/impl/ThreadedIndex-inl.h
 index_factory.o: index_factory.cpp faiss/AutoTune.h faiss/Index.h \
  faiss/MetricType.h faiss/IndexBinary.h faiss/impl/FaissAssert.h \
  faiss/impl/FaissException.h faiss/utils/utils.h faiss/utils/Heap.h \
@@ -112,13 +96,29 @@ index_factory.o: index_factory.cpp faiss/AutoTune.h faiss/Index.h \
  faiss/impl/AuxIndexStructures.h faiss/IndexHNSW.h faiss/impl/HNSW.h \
  faiss/IndexLattice.h faiss/impl/lattice_Zn.h faiss/IndexBinaryFlat.h \
  faiss/IndexBinaryHNSW.h faiss/IndexBinaryIVF.h
-IndexReplicas.o: IndexReplicas.cpp faiss/IndexReplicas.h faiss/Index.h \
- faiss/MetricType.h faiss/IndexBinary.h faiss/impl/FaissAssert.h \
- faiss/impl/FaissException.h faiss/impl/ThreadedIndex.h \
- faiss/utils/WorkerThread.h faiss/impl/ThreadedIndex-inl.h
+IndexLattice.o: IndexLattice.cpp faiss/IndexLattice.h faiss/IndexIVF.h \
+ faiss/Index.h faiss/MetricType.h faiss/InvertedLists.h faiss/DirectMap.h \
+ faiss/Clustering.h faiss/utils/Heap.h faiss/impl/lattice_Zn.h \
+ faiss/utils/hamming.h faiss/utils/hamming-inl.h faiss/impl/FaissAssert.h \
+ faiss/impl/FaissException.h faiss/utils/distances.h faiss/roaring.h
 IndexPreTransform.o: IndexPreTransform.cpp faiss/IndexPreTransform.h \
  faiss/Index.h faiss/MetricType.h faiss/VectorTransform.h \
  faiss/impl/FaissAssert.h faiss/impl/FaissException.h
+clone_index.o: clone_index.cpp faiss/clone_index.h \
+ faiss/impl/FaissAssert.h faiss/impl/FaissException.h faiss/IndexFlat.h \
+ faiss/Index.h faiss/MetricType.h faiss/roaring.h faiss/VectorTransform.h \
+ faiss/IndexPreTransform.h faiss/IndexLSH.h faiss/IndexPQ.h \
+ faiss/impl/ProductQuantizer.h faiss/Clustering.h faiss/utils/Heap.h \
+ faiss/impl/ProductQuantizer-inl.h faiss/impl/PolysemousTraining.h \
+ faiss/IndexIVF.h faiss/InvertedLists.h faiss/DirectMap.h \
+ faiss/IndexIVFPQ.h faiss/IndexIVFPQR.h faiss/Index2Layer.h \
+ faiss/IndexIVFFlat.h faiss/IndexIVFSpectralHash.h faiss/MetaIndexes.h \
+ faiss/IndexShards.h faiss/IndexBinary.h faiss/impl/ThreadedIndex.h \
+ faiss/utils/WorkerThread.h faiss/impl/ThreadedIndex-inl.h \
+ faiss/IndexReplicas.h faiss/IndexScalarQuantizer.h \
+ faiss/impl/ScalarQuantizer.h faiss/impl/AuxIndexStructures.h \
+ faiss/IndexHNSW.h faiss/impl/HNSW.h faiss/utils/random.h \
+ faiss/utils/utils.h faiss/IndexLattice.h faiss/impl/lattice_Zn.h
 IndexLSH.o: IndexLSH.cpp faiss/IndexLSH.h faiss/Index.h \
  faiss/MetricType.h faiss/VectorTransform.h faiss/utils/utils.h \
  faiss/utils/Heap.h faiss/utils/hamming.h faiss/utils/hamming-inl.h \
@@ -190,7 +190,6 @@ IVFlib.o: IVFlib.cpp faiss/IVFlib.h faiss/IndexIVF.h faiss/Index.h \
  faiss/IndexBinary.h faiss/impl/ThreadedIndex.h \
  faiss/utils/WorkerThread.h faiss/impl/ThreadedIndex-inl.h \
  faiss/IndexReplicas.h
-roaring.o: roaring.cpp roaring.h
 Index.o: Index.cpp faiss/Index.h faiss/MetricType.h \
  faiss/impl/AuxIndexStructures.h faiss/impl/FaissAssert.h \
  faiss/impl/FaissException.h faiss/utils/distances.h faiss/utils/Heap.h \
@@ -200,6 +199,7 @@ IndexBinaryHash.o: IndexBinaryHash.cpp faiss/IndexBinaryHash.h \
  faiss/Index.h faiss/MetricType.h faiss/IndexBinaryFlat.h \
  faiss/utils/Heap.h faiss/utils/hamming.h faiss/utils/hamming-inl.h \
  faiss/utils/utils.h faiss/impl/AuxIndexStructures.h
+roaring.o: roaring.cpp roaring.h
 IndexBinaryHNSW.o: IndexBinaryHNSW.cpp faiss/IndexBinaryHNSW.h \
  faiss/impl/HNSW.h faiss/Index.h faiss/MetricType.h \
  faiss/impl/FaissAssert.h faiss/impl/FaissException.h \
