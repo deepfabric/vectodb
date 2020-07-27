@@ -12,12 +12,12 @@ import glob
 # 4. Build all
 # $ scons
 
-# Build vectodb on Linux Mint 19 x86_64:
+# Build vectodb on Linux Mint 19, 20 x86_64:
 # 1. Change default shell from dash to bash.
 # $ sudo dpkg-reconfigure dash
 # select No.
 # 2. Install dependencies.
-# $ sudo apt install libopenblas-dev libgoogle-glog-dev libjemalloc-dev
+# $ sudo apt install libopenblas-serial-dev libgoogle-glog-dev libjemalloc-dev
 # 3. Build all
 # $ scons
 

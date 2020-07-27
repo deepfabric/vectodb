@@ -11,12 +11,13 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <thread>
+#include <atomic>
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-
+#include <time.h>
 #include <cassert>
 
 using namespace std;
@@ -330,6 +331,90 @@ int demo_bitmap_codec()
     return 0;
 }
 
+
+int demo_search_shards(size_t d, size_t nb, float* xb, int vecs_per_user, int nq, int k, bool top_vectors, int bm_card, int shards, int threads)
+{
+    vector<VectoDB *> vdbs(shards);
+    vector<long> xids(nb);
+    for(int i=0; i<shards; i++){
+        stringstream ss(work_dir);
+        ss << ".s" << i;
+        string dir = ss.str();
+        ClearDir(dir.c_str());
+        VectoDB* vdb = new VectoDB(dir.c_str(), d);
+        vdbs[i] = vdb;
+        for (long j = 0; j < (long)nb; j++) {
+            xids[j] = GetXid((i*nb+j)/vecs_per_user, i*nb+j);
+        }
+        vdb->AddWithIds(nb, xb, &xids[0]);
+    }
+
+    float* xq = xb;
+    vector<roaring_bitmap_t *> rbs(nq);
+    vector<char *> uids(nq);
+    if (bm_card >= 0) {
+        for(int i=0; i<nq; i++){
+            int uid = i/vecs_per_user;
+            rbs[i] = roaring_bitmap_create();
+            roaring_bitmap_add_range(rbs[i], uid, uid+bm_card);
+            int size;
+            ChBitmapSerialize(rbs[i], uids[i], size);
+        }
+    } else {
+        for(int i=0; i<nq; i++){
+            rbs[i] = nullptr;
+            uids[i] = nullptr;
+        }
+    }
+
+    atomic<long> cnt_queries(0);
+    vector<thread> workers;
+    long cnt1 = 0;
+    time_t t1 = time(NULL);
+    bool stop = false;
+    for(int i=0; i<shards; i++) {
+        for(int j = 0; j < threads; j++) {
+            std::thread worker{ [i, j, &vdbs, xq, nq, k, top_vectors, &uids, &cnt_queries, &stop]() {
+                LOG(INFO) << "thread " << i << "." << j << " begins";
+                vector<float> D(nq*k);
+                vector<long> I(nq*k);
+                while(!stop) {
+                    vdbs[i]->Search(nq, xq, k, top_vectors, (long *)(&uids[0]), &D[0], &I[0]);
+                    cnt_queries.fetch_add(nq);
+                }
+                LOG(INFO) << "thread " << i << "." << j << " ends";
+            } };
+            workers.push_back(std::move(worker));
+        }
+    }
+
+    LOG(INFO) << "watching query throughput during 10 miutes...";
+    for(int i=0; i<10; i++){
+        sleep(60);
+        long cnt2 = cnt_queries.load();
+        time_t t2 = time(NULL);
+        LOG(INFO) << cnt2-cnt1 << " queries in " << t2-t1 << " seconds, " << (cnt2-cnt1)*1.0/(t2-t1) << " qps";
+        cnt1 = cnt2;
+        t1 = t2;
+    }
+
+    LOG(INFO) << "stopping threads...";
+    stop = true;
+    for(int i=0; i<workers.size(); i++)
+        workers[i].join();
+
+    for(int i=0; i<nq; i++){
+        if(rbs[i]!=nullptr)
+            roaring_bitmap_free(rbs[i]);
+        delete[] uids[i];
+    }
+
+    for(int i=0; i<shards; i++){
+        delete vdbs[i];
+    }
+    return 0;
+}
+
 int main(int /*argc*/, char** argv)
 {
     FLAGS_stderrthreshold = 0;
@@ -350,25 +435,34 @@ int main(int /*argc*/, char** argv)
     int rc = demo_bitmap_codec();
     if(rc<0)
         return rc;
+/*
     demo_search_recall(d, nb, xb);
 
 	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, true, -1)";
 	demo_search_bitmap(d, nb, xb, 1, 1000, 400, true, -1);
+*/
 
-	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, -1)";
+	LOG(INFO) << "demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, -1)";
 	demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, -1);
 
-	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 100, 1000, 400, false, -1)";
+/*
+	LOG(INFO) << "demo_search_bitmap(d, nb, xb, 100, 1000, 400, false, -1)";
 	demo_search_bitmap(d, nb, xb, 100, 1000, 400, false, -1);
 
-	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, 10)";
+	LOG(INFO) << "demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, 10)";
 	demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, 10);
 
-	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, 100000000)";
+	LOG(INFO) << "demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, 100000000)";
 	demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, 100000000);
 
-	LOG(INFO) << "demo_search_bitmap(dim, nb, xb, 100, 1000, 400, false, 100000000)";
+	LOG(INFO) << "demo_search_bitmap(d, nb, xb, 100, 1000, 400, false, 100000000)";
 	demo_search_bitmap(d, nb, xb, 100, 1000, 400, false, 100000000);
+*/
+
+    LOG(INFO) << "demo_search_shards(d, nb, xb, 1, 1000, 400, false, -1, shards, threads)";
+    int shards = 8;
+    int threads = 4;
+    demo_search_shards(d, nb, xb, 1, 1000, 400, false, -1, shards, threads);
 
     delete[] xb;
 }
