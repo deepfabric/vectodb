@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	runPprof "runtime/pprof"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -23,7 +24,7 @@ const (
 	siftBase   string = "sift1M/sift_base.fvecs"
 	siftQuery  string = "sift1M/sift_query.fvecs"
 	siftGround string = "sift1M/sift_groundtruth.ivecs"
-	workDir    string = "/tmp/demo_sift1M_vectodb_go"
+	workDir    string = "/data/sdc/demo_sift1M_vectodb_go"
 )
 
 //FileMmap mmaps the given file.
@@ -171,6 +172,8 @@ func demo_search_bitmap(d, nb int, xb []float32, vecs_per_user, nq, k int, top_v
 	var err error
 	var vdb *vectodb.VectoDB
 
+	// TODO: Comment out following line, Reset() crashs!
+	vectodb.VectodbClearWorkDir(workDir)
 	if vdb, err = vectodb.NewVectoDB(workDir, d); err != nil {
 		log.Fatalf("%+v", err)
 	}
@@ -181,7 +184,7 @@ func demo_search_bitmap(d, nb int, xb []float32, vecs_per_user, nq, k int, top_v
 		xids[i] = int64(vectodb.GetXid(uint64(i/vecs_per_user), uint64(i)))
 	}
 
-	log.Infof("Inserting vectors")
+	log.Infof("Calling vdb.AddWithIds %v", nb)
 	if err = vdb.AddWithIds(xb, xids); err != nil {
 		log.Fatalf("%+v", err)
 	}
@@ -232,6 +235,78 @@ func demo_search_bitmap(d, nb int, xb []float32, vecs_per_user, nq, k int, top_v
 	}
 }
 
+func demo_search_shards(d, nb int, xb []float32, vecs_per_user, nq, k int, top_vectors bool, bm_card, shards, threads int) {
+	var err error
+	vdbs := make([]*vectodb.VectoDB, shards)
+	for i := 0; i < shards; i++ {
+		dir := fmt.Sprintf("%s.s%d", workDir, i)
+		log.Infof("populating data into shard %s", dir)
+		vectodb.VectodbClearWorkDir(dir)
+		var vdb *vectodb.VectoDB
+		if vdb, err = vectodb.NewVectoDB(dir, d); err != nil {
+			log.Fatalf("%+v", err)
+		}
+		xids := make([]int64, nb)
+		for j := 0; i < nb; i++ {
+			xids[j] = int64(vectodb.GetXid(uint64((i*nb+j)/vecs_per_user), uint64(i*nb+j)))
+		}
+		if err = vdb.AddWithIds(xb, xids); err != nil {
+			log.Fatalf("%+v", err)
+		}
+		vdbs[i] = vdb
+	}
+
+	xq := xb[0 : d*nq]
+	rbs := make([]*roaring.Bitmap, nq)
+	var uids [][]byte
+	if bm_card >= 0 {
+		uids = make([][]byte, nq)
+		for i := 0; i < nq; i++ {
+			uid := uint64(i / vecs_per_user)
+			rbs[i] = roaring.NewBitmap()
+			rbs[i].AddRange(uid, uid+uint64(bm_card))
+			rbs[i].RunOptimize()
+			if rbs[i].GetCardinality() != uint64(bm_card) {
+				log.Fatalf("rbs[i].GetCardinality()", i, rbs[i].GetCardinality())
+			}
+			if uids[i], err = vectodb.ChBitmapSerialize(rbs[i]); err != nil {
+				log.Fatalf("%+v", err)
+			}
+		}
+	}
+
+	var cnt_queries int64
+	stop := false
+	for i := 0; i < shards; i++ {
+		go func(shard int) {
+			for stop != false {
+				if _, err = vdbs[i].Search(k, false, xq, uids); err != nil {
+					log.Fatalf("%+v", err)
+				}
+				atomic.AddInt64(&cnt_queries, int64(nq))
+			}
+		}(i)
+	}
+
+	cnt1 := int64(0)
+	t1 := time.Now()
+	for i := 0; i < 10; i++ {
+		time.Sleep(time.Duration(60) * time.Second)
+		t2 := time.Now()
+		duration := t2.Sub(t1)
+		cnt2 := atomic.LoadInt64(&cnt_queries)
+		log.Info("%v queries in %v seconds, %v qps", float64(cnt2-cnt1)/float64(shards), duration.Seconds(), float64(cnt2-cnt1)/float64(float64(shards)*duration.Seconds()))
+		cnt1 = cnt2
+		t1 = t2
+	}
+
+	for i := 0; i < shards; i++ {
+		if err = vdbs[i].Destroy(); err != nil {
+			log.Fatalf("%+v", err)
+		}
+	}
+}
+
 func main() {
 	var bench bool
 	var verbose bool
@@ -269,34 +344,53 @@ func main() {
 	log.Infof("Loading database")
 	var err error
 	var xb []float32
-	var dim int
+	var d int
 	var nb int
-	if xb, dim, nb, err = fvecs_read(siftBase); err != nil {
+	if xb, d, nb, err = fvecs_read(siftBase); err != nil {
 		log.Fatalf("%+v", err)
 	}
-	if dim != siftDim {
-		log.Fatalf("%s dim %d, expects 128", siftBase, dim)
+	if d != siftDim {
+		log.Fatalf("%s d %d, expects 128", siftBase, d)
 	}
+
+	nb2 := 3125000
+	d2 := 256
+	if nb2*d2 > nb*d {
+		for len(xb) < nb2*d2 {
+			xb = append(xb, xb[:nb*d]...)
+		}
+		xb = xb[:nb2*d2]
+	}
+	nb = nb2
+	d = d2
+	log.Infof("d = %d, nb = %d", d, nb)
+
 	for i := 0; i < nb; i++ {
-		vectodb.NormalizeVec(dim, xb[i*dim:(i+1)*dim])
+		vectodb.NormalizeVec(d, xb[i*d:(i+1)*d])
 	}
 
-	log.Info("demo_search_bitmap(dim, nb, xb, 1, 1000, 400, true, -1)")
-	demo_search_bitmap(dim, nb, xb, 1, 1000, 400, true, -1)
+	log.Info("demo_search_bitmap(d, nb, xb, 1, 1000, 400, true, -1)")
+	demo_search_bitmap(d, nb, xb, 1, 1000, 400, true, -1)
 
-	log.Info("demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, -1)")
-	demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, -1)
+	log.Info("demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, -1)")
+	demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, -1)
 
-	log.Info("demo_search_bitmap(dim, nb, xb, 100, 1000, 400, false, -1)")
-	demo_search_bitmap(dim, nb, xb, 100, 1000, 400, false, -1)
+	log.Info("demo_search_bitmap(d, nb, xb, 100, 1000, 400, false, -1)")
+	demo_search_bitmap(d, nb, xb, 100, 1000, 400, false, -1)
 
-	log.Info("demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, 10)")
-	demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, 10)
+	log.Info("demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, 10)")
+	demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, 10)
 
-	log.Info("demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, 100000000)")
-	demo_search_bitmap(dim, nb, xb, 1, 1000, 400, false, 100000000)
+	log.Info("demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, 100000000)")
+	demo_search_bitmap(d, nb, xb, 1, 1000, 400, false, 100000000)
 
-	log.Info("demo_search_bitmap(dim, nb, xb, 100, 1000, 400, false, 100000000)")
-	demo_search_bitmap(dim, nb, xb, 100, 1000, 400, false, 100000000)
+	log.Info("demo_search_bitmap(d, nb, xb, 100, 1000, 400, false, 100000000)")
+	demo_search_bitmap(d, nb, xb, 100, 1000, 400, false, 100000000)
+
+	//gpu07: Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz, 48 vcpu
+	log.Info("demo_search_shards(d, nb, xb, 1, 1, 400, false, -1, shards, threads)")
+	shards := 32
+	threads := 1
+	demo_search_shards(d, nb, xb, 1, 1, 400, false, -1, shards, threads)
 
 }
