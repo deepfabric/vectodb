@@ -3,7 +3,7 @@ module github.com/infinivision/vectodb
 go 1.14
 
 require (
-	github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc
+	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/cenkalti/backoff v2.1.1+incompatible // indirect
 	github.com/cespare/xxhash v1.1.0
 	github.com/clbanning/x2j v0.0.0-20180326210544-5e605d46809c // indirect
@@ -28,13 +28,12 @@ require (
 	github.com/hudl/fargo v1.2.1-0.20180614092839-fce5cf495554
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/miekg/dns v1.1.25 // indirect
-	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/montanaflynn/stats v0.0.0-20181214052348-945b007cb92f
 	github.com/onsi/ginkgo v1.7.0 // indirect
 	github.com/onsi/gomega v1.4.3 // indirect
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7 // indirect
-	github.com/pkg/errors v0.8.1
-	github.com/prometheus/client_golang v0.9.2 // indirect
+	github.com/pkg/errors v0.9.1
+	github.com/prometheus/client_golang v1.11.1 // indirect
 	github.com/sirupsen/logrus v1.8.1
 	github.com/soheilhy/cmux v0.1.4 // indirect
 	github.com/stretchr/testify v1.7.0
